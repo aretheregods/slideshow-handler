@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Native PPTX Parser - Step 4</title>
+    <style>
+        /* General Body Styling */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            background-color: #f9fafb;
+            color: #1f2937;
+            margin: 0;
+            padding: 0;
+            line-height: 1.5;
+        }
+
+        /* Container and Layout */
+        .container {
+            width: 100%;
+            max-width: 56rem;
+            /* 896px */
+            margin-left: auto;
+            margin-right: auto;
+            padding: 2rem 1rem;
+        }
+
+        /* Header and Typography */
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        header h1 {
+            font-size: 2.25rem;
+            /* 36px */
+            font-weight: 700;
+            color: #111827;
+        }
+
+        header p {
+            margin-top: 0.5rem;
+            font-size: 1.125rem;
+            /* 18px */
+            color: #4b5563;
+        }
+
+        /* Card-like Sections */
+        .card {
+            background-color: #ffffff;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .card h2 {
+            font-size: 1.5rem;
+            /* 24px */
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        /* File Upload Area */
+        .file-upload-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 12rem;
+            /* 192px */
+            border: 2px dashed #d1d5db;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            background-color: #f9fafb;
+            transition: background-color 0.2s ease-in-out;
+        }
+
+        .file-upload-label:hover {
+            background-color: #f3f4f6;
+        }
+
+        #pptx-file {
+            display: none;
+        }
+
+        #file-info {
+            margin-top: 1rem;
+            text-align: center;
+            font-size: 0.875rem;
+            /* 14px */
+            color: #6b7280;
+        }
+
+        /* --- Slide Viewer & Debug Styling --- */
+        .slide-viewer {
+            border: 1px solid #e5e7eb;
+            background-color: #fff;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            margin: 2rem auto;
+            position: relative;
+            /* FIX: Width and height are now set dynamically */
+            max-width: 960px;
+            /* Limit max size on large screens */
+        }
+
+        .slide-viewer svg {
+            width: 100%;
+            height: 100%;
+            border: 1px solid #ccc;
+            /* For visualization */
+        }
+
+        #debug-output {
+            margin-top: 1.5rem;
+            background-color: #1f2937;
+            color: #f3f4f6;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+            font-size: 0.875rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        #debug-output h3 {
+            margin-top: 0;
+            color: #9ca3af;
+            font-weight: 500;
+        }
+
+        /* Loading Spinner */
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Native PPTX Parser</h1>
+            <p><strong>Step 4:</strong> Integrating Slide Layouts for correct positioning.</p>
+        </header>
+
+        <div>
+            <!-- File Upload Section -->
+            <div class="card">
+                <h2>1. Upload Presentation</h2>
+                <div>
+                    <label for="pptx-file" class="file-upload-label">
+                        <!-- SVG icon for upload -->
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                            </path>
+                        </svg>
+                        <p><span>Click to upload</span> or drag and drop</p>
+                        <p>PPTX file</p>
+                        <input id="pptx-file" type="file" accept=".pptx" />
+                    </label>
+                </div>
+                <div id="file-info"></div>
+            </div>
+
+            <!-- Slide Render Section -->
+            <div id="output-container" style="display: none;">
+                <div id="loading-indicator" style="text-align: center; padding: 2rem;">
+                    <!-- SVG spinner -->
+                    <svg aria-hidden="true"
+                        style="display: inline; width: 2rem; height: 2rem; margin-right: 0.5rem; color: #e5e7eb; animation: spin 1s linear infinite;"
+                        viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
+                            fill="currentColor" />
+                        <path
+                            d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0492C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
+                            fill="#4f46e5" />
+                    </svg>
+                    <p>Rendering slides...</p>
+                </div>
+                <div id="slide-viewer-container"></div>
+                <div id="debug-output" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main application script -->
+    <script type="module">
+        import JSZip from 'https://cdn.jsdelivr.net/npm/jszip/+esm';
+
+        const EMU_PER_PIXEL = 9525; // Standard conversion for 96 DPI
+        const LINE_HEIGHT = 24; // A default line height in pixels for SVG text
+        const INDENTATION_AMOUNT = 30; // Pixels per indentation level
+        const BULLET_OFFSET = 20; // Space between bullet and text
+
+        const fileInput = document.getElementById( 'pptx-file' );
+        const fileInfo = document.getElementById( 'file-info' );
+        const outputContainer = document.getElementById( 'output-container' );
+        const slideViewerContainer = document.getElementById( 'slide-viewer-container' );
+        const loadingIndicator = document.getElementById( 'loading-indicator' );
+        const debugOutput = document.getElementById( 'debug-output' );
+
+        fileInput.addEventListener( 'change', async ( event ) => {
+            const file = event.target.files[ 0 ];
+            if ( !file ) return;
+
+            fileInfo.textContent = `File selected: ${ file.name }`;
+            outputContainer.style.display = 'block';
+            slideViewerContainer.innerHTML = '';
+            debugOutput.style.display = 'none';
+            loadingIndicator.style.display = 'block';
+            debugOutput.innerHTML = '';
+
+            try {
+                const zip = await JSZip.loadAsync( file );
+
+                const presRels = await getRelationships( zip, "ppt/_rels/presentation.xml.rels" );
+                const presentationXml = await zip.file( "ppt/presentation.xml" ).async( "string" );
+                const slideIds = getSlideOrder( presentationXml );
+
+                const slideSize = getSlideSize( presentationXml );
+
+                if ( slideIds.length === 0 ) {
+                    fileInfo.textContent = "No slides found in the presentation.";
+                    return;
+                }
+
+                let allSlidesDebugText = '<h3>Raw Parsed Content:</h3>';
+                let totalElementsFound = 0;
+
+                for ( let i = 0; i < slideIds.length; i++ ) {
+                    const slideId = slideIds[ i ];
+                    const slideRel = presRels[ slideId ];
+                    if ( !slideRel ) continue;
+
+                    const slidePath = new URL( slideRel.target, `file:///ppt/` ).pathname.substring( 1 );
+                    const slideRelsPath = `ppt/slides/_rels/${ slidePath.split( '/' ).pop() }.rels`;
+
+                    const slideRels = await getRelationships( zip, slideRelsPath );
+                    const layoutRel = Object.values( slideRels ).find( r => r.type.endsWith( '/slideLayout' ) );
+
+                    let finalPlaceholders = {};
+                    let defaultTextStyles = {};
+                    if ( layoutRel ) {
+                        const layoutPath = new URL( layoutRel.target, `file:///ppt/slides/` ).pathname.substring( 1 );
+                        const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
+                        const layoutRels = await getRelationships( zip, layoutRelsPath );
+                        const masterRel = Object.values( layoutRels ).find( r => r.type.endsWith( '/slideMaster' ) );
+
+                        let masterPlaceholders = {};
+                        if ( masterRel ) {
+                            const masterPath = new URL( masterRel.target, `file:///ppt/slideLayouts/` ).pathname.substring( 1 );
+                            const masterXml = await zip.file( masterPath ).async( "string" );
+                            const masterData = parseMasterOrLayout( masterXml );
+                            masterPlaceholders = masterData.placeholders;
+                            defaultTextStyles = masterData.defaultTextStyles;
+                        }
+
+                        const layoutXml = await zip.file( layoutPath ).async( "string" );
+                        const layoutData = parseMasterOrLayout( layoutXml );
+
+                        // Layout placeholders override master placeholders
+                        finalPlaceholders = { ...masterPlaceholders, ...layoutData.placeholders };
+                    }
+
+                    const slideXml = await zip.file( slidePath ).async( "string" );
+
+                    const slideContainer = document.createElement( 'div' );
+                    slideContainer.className = 'slide-viewer';
+                    slideContainer.id = `slide-${ i + 1 }`;
+                    slideContainer.style.width = `${ slideSize.width }px`;
+                    slideContainer.style.height = `${ slideSize.height }px`;
+                    slideViewerContainer.appendChild( slideContainer );
+
+                    const { renderedElements, debugText } = renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles );
+                    if ( renderedElements > 0 ) {
+                        allSlidesDebugText += `--- SLIDE ${ i + 1 } ---\n${ debugText }\n`;
+                        totalElementsFound += renderedElements;
+                    }
+                }
+
+                if ( totalElementsFound === 0 ) {
+                    allSlidesDebugText += "No text elements found in any slide.";
+                }
+
+                debugOutput.innerHTML = allSlidesDebugText;
+                debugOutput.style.display = 'block';
+
+            } catch ( error ) {
+                console.error( 'Error parsing the presentation:', error );
+                fileInfo.textContent = `Error: Could not parse presentation. ${ error.message }`;
+            } finally {
+                loadingIndicator.style.display = 'none';
+            }
+        } );
+
+        async function getRelationships( zip, path ) {
+            const relsFile = zip.file( path );
+            if ( !relsFile ) return {};
+            const xmlString = await relsFile.async( "string" );
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString( xmlString, "application/xml" );
+            const relationships = xmlDoc.getElementsByTagName( "Relationship" );
+            const rels = {};
+            for ( const rel of relationships ) {
+                rels[ rel.getAttribute( "Id" ) ] = {
+                    type: rel.getAttribute( "Type" ),
+                    target: rel.getAttribute( "Target" )
+                };
+            }
+            return rels;
+        }
+
+        function getSlideOrder( xmlString ) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString( xmlString, "application/xml" );
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const slideIdNodes = xmlDoc.getElementsByTagNameNS( PML_NS, "sldId" );
+            return Array.from( slideIdNodes ).map( node => node.getAttribute( "r:id" ) );
+        }
+
+        function getSlideSize( xmlString ) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString( xmlString, "application/xml" );
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const sldSzNode = xmlDoc.getElementsByTagNameNS( PML_NS, "sldSz" )[ 0 ];
+            if ( sldSzNode ) {
+                const cx = parseInt( sldSzNode.getAttribute( "cx" ) );
+                const cy = parseInt( sldSzNode.getAttribute( "cy" ) );
+                return { width: cx / EMU_PER_PIXEL, height: cy / EMU_PER_PIXEL };
+            }
+            return { width: 960, height: 720 }; // Default size
+        }
+
+        function parseMasterOrLayout( xml ) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString( xml, "application/xml" );
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const placeholders = xmlDoc.getElementsByTagNameNS( PML_NS, 'sp' );
+            const layoutData = {};
+            const defaultTextStyles = {};
+
+            // Parse default text styles from the master
+            const txStyles = xmlDoc.getElementsByTagNameNS( PML_NS, 'txStyles' )[ 0 ];
+            if ( txStyles ) {
+                const bodyStyle = txStyles.getElementsByTagNameNS( PML_NS, 'bodyStyle' )[ 0 ];
+                if ( bodyStyle ) {
+                    defaultTextStyles.body = {};
+                    for ( let i = 1; i <= 9; i++ ) {
+                        const lvlPr = bodyStyle.getElementsByTagNameNS( DML_NS, `lvl${ i }pPr` )[ 0 ];
+                        if ( lvlPr ) {
+                            defaultTextStyles.body[ i - 1 ] = {
+                                indent: parseInt( lvlPr.getAttribute( 'marL' ) || '0' ) / EMU_PER_PIXEL,
+                                bullet: lvlPr.getElementsByTagNameNS( DML_NS, 'buChar' ).length > 0
+                            };
+                        }
+                    }
+                }
+            }
+
+            for ( const sp of placeholders ) {
+                const nvPr = sp.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ];
+                if ( !nvPr ) continue;
+                const ph = nvPr.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ];
+                if ( !ph ) continue;
+
+                const type = ph.getAttribute( 'type' );
+                const idx = ph.getAttribute( 'idx' );
+                const key = type || `idx_${ idx }`;
+
+                let pos = null;
+                const xfrmNode = sp.getElementsByTagNameNS( DML_NS, 'xfrm' )[ 0 ];
+                if ( xfrmNode ) {
+                    const offNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
+                    const extNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
+                    if ( offNode && extNode ) {
+                        pos = {
+                            x: parseInt( offNode.getAttribute( "x" ) ) / EMU_PER_PIXEL,
+                            y: parseInt( offNode.getAttribute( "y" ) ) / EMU_PER_PIXEL,
+                            width: parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL,
+                            height: parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL,
+                        };
+                    }
+                }
+
+                const paraNodes = sp.getElementsByTagNameNS( DML_NS, 'p' );
+                const textContent = Array.from( paraNodes ).map( p => p.textContent.trim() ).join( '\n' );
+
+                if ( pos ) {
+                    layoutData[ key ] = { pos, text: textContent, type: type };
+                }
+            }
+            return { placeholders: layoutData, defaultTextStyles };
+        }
+
+        function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles ) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const SVG_NS = "http://www.w3.org/2000/svg";
+
+            let debugText = '';
+            let elementsFound = 0;
+            const filledPlaceholders = new Set();
+            let slideHasTitle = false;
+            let slideHasBodyContent = false;
+
+            const svg = document.createElementNS( SVG_NS, "svg" );
+            svg.setAttribute( "viewBox", `0 0 ${ slideSize.width } ${ slideSize.height }` );
+            slideContainer.appendChild( svg );
+
+            const defs = document.createElementNS( SVG_NS, 'defs' );
+            svg.appendChild( defs );
+
+            const shapes = xmlDoc.getElementsByTagNameNS( PML_NS, 'sp' );
+            for ( const shape of shapes ) {
+                const nvPr = shape.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ];
+                if ( nvPr ) {
+                    const placeholder = nvPr.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ];
+                    if ( placeholder ) {
+                        const phType = placeholder.getAttribute( 'type' );
+                        const phIdx = placeholder.getAttribute( 'idx' );
+                        const phKey = phType || ( phIdx ? `idx_${ phIdx }` : null );
+                        if ( phKey ) {
+                            filledPlaceholders.add( phKey );
+                            if ( [ 'title', 'ctrTitle', 'subTitle' ].includes( phType ) ) {
+                                slideHasTitle = true;
+                            }
+                            if ( [ 'body', 'obj' ].includes( phType ) ) {
+                                slideHasBodyContent = true;
+                            }
+                        }
+                    }
+                }
+                const paraNodes = shape.getElementsByTagNameNS( DML_NS, 'p' );
+                if ( Array.from( paraNodes ).some( p => p.textContent.trim() ) ) {
+                    slideHasBodyContent = true;
+                }
+            }
+
+            for ( const shape of shapes ) {
+                let pos = null;
+                const nvPr = shape.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ];
+                let phKey = null;
+                if ( nvPr ) {
+                    const placeholder = nvPr.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ];
+                    if ( placeholder ) {
+                        const phType = placeholder.getAttribute( 'type' );
+                        const phIdx = placeholder.getAttribute( 'idx' );
+                        phKey = phType || ( phIdx ? `idx_${ phIdx }` : null );
+                    }
+                }
+
+                const xfrmNode = shape.getElementsByTagNameNS( DML_NS, 'xfrm' )[ 0 ];
+                if ( xfrmNode ) {
+                    const offNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
+                    const extNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
+                    if ( offNode && extNode ) {
+                        pos = {
+                            x: parseInt( offNode.getAttribute( "x" ) ) / EMU_PER_PIXEL,
+                            y: parseInt( offNode.getAttribute( "y" ) ) / EMU_PER_PIXEL,
+                            width: parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL,
+                            height: parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL,
+                        };
+                    }
+                } else if ( phKey && layoutPlaceholders[ phKey ] ) {
+                    pos = layoutPlaceholders[ phKey ].pos;
+                }
+
+                const paraNodes = shape.getElementsByTagNameNS( DML_NS, 'p' );
+                const paragraphs = Array.from( paraNodes );
+
+                if ( paragraphs.length > 0 && pos ) {
+                    elementsFound++;
+
+                    const clipId = `clip-${ slideNum }-${ elementsFound }`;
+                    const clipPath = document.createElementNS( SVG_NS, 'clipPath' );
+                    clipPath.setAttribute( 'id', clipId );
+                    const clipRect = document.createElementNS( SVG_NS, 'rect' );
+                    clipRect.setAttribute( 'x', pos.x );
+                    clipRect.setAttribute( 'y', pos.y );
+                    clipRect.setAttribute( 'width', pos.width );
+                    clipRect.setAttribute( 'height', pos.height );
+                    clipPath.appendChild( clipRect );
+                    defs.appendChild( clipPath );
+
+                    const textGroup = document.createElementNS( SVG_NS, 'g' );
+                    textGroup.setAttribute( 'clip-path', `url(#${ clipId })` );
+
+                    let fullDebugText = [];
+                    paragraphs.forEach( ( pNode, index ) => {
+                        const pText = pNode.textContent.trim();
+                        if ( pText ) {
+                            const pPr = pNode.getElementsByTagNameNS( DML_NS, 'pPr' )[ 0 ];
+                            const level = pPr ? parseInt( pPr.getAttribute( 'lvl' ) || '0' ) : 0;
+                            const buCharNode = pPr ? pPr.getElementsByTagNameNS( DML_NS, 'buChar' )[ 0 ] : null;
+                            const bulletChar = buCharNode ? buCharNode.getAttribute( 'char' ) : null;
+
+                            let indent = ( defaultTextStyles.body && defaultTextStyles.body[ level ] ) ? defaultTextStyles.body[ level ].indent : 0;
+                            const finalX = pos.x + ( level * INDENTATION_AMOUNT );
+                            const finalY = pos.y + ( index * LINE_HEIGHT ) + 20;
+
+                            if ( bulletChar ) {
+                                const bulletEl = document.createElementNS( SVG_NS, 'text' );
+                                bulletEl.setAttribute( 'x', finalX );
+                                bulletEl.setAttribute( 'y', finalY );
+                                bulletEl.setAttribute( 'font-size', '18' );
+                                bulletEl.textContent = bulletChar;
+                                textGroup.appendChild( bulletEl );
+                            }
+
+                            const textEl = document.createElementNS( SVG_NS, 'text' );
+                            textEl.setAttribute( 'x', finalX + ( bulletChar ? BULLET_OFFSET : 0 ) );
+                            textEl.setAttribute( 'y', finalY );
+                            textEl.setAttribute( 'font-size', '18' );
+                            textEl.textContent = pText;
+                            textGroup.appendChild( textEl );
+                            fullDebugText.push( pText );
+                        }
+                    } );
+
+                    svg.appendChild( textGroup );
+                    if ( fullDebugText.length > 0 ) {
+                        debugText += `Element ${ elementsFound } (from slide, type: ${ phKey || 'custom' }): "${ fullDebugText.join( '\n' ) }"\n\n`;
+                    }
+                }
+            }
+
+            for ( const [ key, data ] of Object.entries( layoutPlaceholders ) ) {
+                if ( !filledPlaceholders.has( key ) && data.text.trim() ) {
+                    if ( data.type === 'body' ) continue;
+                    if ( ( data.type === 'title' || data.type === 'ctrTitle' ) && slideHasTitle ) continue;
+                    if ( key.startsWith( 'idx_' ) ) continue;
+
+                    elementsFound++;
+                    const pos = data.pos;
+                    let textContent = data.text;
+
+                    if ( data.type === 'sldNum' ) {
+                        textContent = slideNum;
+                    }
+
+                    const paragraphs = String( textContent ).split( '\n' );
+                    paragraphs.forEach( ( pText, index ) => {
+                        if ( pText ) {
+                            const textEl = document.createElementNS( SVG_NS, 'text' );
+                            textEl.setAttribute( 'x', pos.x );
+                            textEl.setAttribute( 'y', pos.y + ( index * LINE_HEIGHT ) + 20 );
+                            textEl.setAttribute( 'font-size', '18' );
+                            textEl.textContent = pText;
+                            svg.appendChild( textEl );
+                        }
+                    } );
+
+                    debugText += `Element ${ elementsFound } (from layout, type: ${ key }): "${ textContent }"\n\n`;
+                }
+            }
+
+            return { renderedElements: elementsFound, debugText };
+        }
+    </script>
+</body>
+
+</html>
