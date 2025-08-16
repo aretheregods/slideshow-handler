@@ -197,6 +197,7 @@
     <!-- Main application script -->
     <script type="module">
         import JSZip from 'https://cdn.jsdelivr.net/npm/jszip/+esm';
+        import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 
         const EMU_PER_PIXEL = 9525; // Standard conversion for 96 DPI
         const LINE_HEIGHT = 24; // A default line height in pixels for SVG text
@@ -247,6 +248,20 @@
                     const slideRelsPath = `ppt/slides/_rels/${ slidePath.split( '/' ).pop() }.rels`;
 
                     const slideRels = await getRelationships( zip, slideRelsPath );
+
+                    const imageMap = {};
+                    for (const relId in slideRels) {
+                        const rel = slideRels[relId];
+                        if (rel.type.endsWith('/image')) {
+                            const imagePath = new URL(rel.target, `file:///ppt/slides/`).pathname.substring(1);
+                            const imageFile = zip.file(imagePath);
+                            if (imageFile) {
+                                const imageData = await imageFile.async('base64');
+                                imageMap[relId] = `data:image/png;base64,${imageData}`;
+                            }
+                        }
+                    }
+
                     const layoutRel = Object.values( slideRels ).find( r => r.type.endsWith( '/slideLayout' ) );
 
                     let finalPlaceholders = {};
@@ -282,7 +297,7 @@
                     slideContainer.style.height = `${ slideSize.height }px`;
                     slideViewerContainer.appendChild( slideContainer );
 
-                    const { renderedElements, debugText } = renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles );
+                    const { renderedElements, debugText } = await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap );
                     if ( renderedElements > 0 ) {
                         allSlidesDebugText += `--- SLIDE ${ i + 1 } ---\n${ debugText }\n`;
                         totalElementsFound += renderedElements;
@@ -342,6 +357,93 @@
             return { width: 960, height: 720 }; // Default size
         }
 
+        function getAutoNumberingChar(scheme, number) {
+            switch (scheme) {
+                case 'alphaLcParenBoth': return `(${String.fromCharCode(96 + number)})`;
+                case 'alphaLcParenR': return `${String.fromCharCode(96 + number)})`;
+                case 'alphaLcPeriod': return `${String.fromCharCode(96 + number)}.`;
+                case 'alphaUcParenBoth': return `(${String.fromCharCode(64 + number)})`;
+                case 'alphaUcParenR': return `${String.fromCharCode(64 + number)})`;
+                case 'alphaUcPeriod': return `${String.fromCharCode(64 + number)}.`;
+                case 'arabicParenBoth': return `(${number})`;
+                case 'arabicParenR': return `${number})`;
+                case 'arabicPeriod': return `${number}.`;
+                case 'arabicPlain': return `${number}`;
+                // TODO: Implement Roman numeral conversion
+                case 'romanLcParenBoth': return `(i)`;
+                case 'romanLcParenR': return `i)`;
+                case 'romanLcPeriod': return `i.`;
+                case 'romanUcParenBoth': return `(I)`;
+                case 'romanUcParenR': return `I)`;
+                case 'romanUcPeriod': return `I.`;
+                default: return `${number}.`;
+            }
+        }
+
+        function createImage(url) {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                image.onload = () => resolve(image);
+                image.onerror = reject;
+                image.src = url;
+            });
+        }
+
+        function parseParagraphProperties(pPrNode) {
+            if (!pPrNode) return {};
+
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const properties = { bullet: {} };
+
+            const marL = pPrNode.getAttribute('marL');
+            if (marL) properties.indent = parseInt(marL) / EMU_PER_PIXEL;
+
+            const buNone = pPrNode.getElementsByTagNameNS(DML_NS, 'buNone')[0];
+            if (buNone) properties.bullet.type = 'none';
+
+            const buChar = pPrNode.getElementsByTagNameNS(DML_NS, 'buChar')[0];
+            if (buChar) {
+                properties.bullet.type = 'char';
+                properties.bullet.char = buChar.getAttribute('char');
+            }
+
+            const buAutoNum = pPrNode.getElementsByTagNameNS(DML_NS, 'buAutoNum')[0];
+            if (buAutoNum) {
+                properties.bullet.type = 'auto';
+                properties.bullet.scheme = buAutoNum.getAttribute('type');
+                properties.bullet.startAt = parseInt(buAutoNum.getAttribute('startAt') || '1');
+            }
+
+            const buBlip = pPrNode.getElementsByTagNameNS(DML_NS, 'buBlip')[0];
+            if (buBlip) {
+                const blip = buBlip.getElementsByTagNameNS(DML_NS, 'blip')[0];
+                if (blip) {
+                    properties.bullet.type = 'image';
+                    properties.bullet.relId = blip.getAttribute('r:embed');
+                }
+            }
+
+            const buSzPct = pPrNode.getElementsByTagNameNS(DML_NS, 'buSzPct')[0];
+            if (buSzPct) {
+                properties.bullet.size = `${parseInt(buSzPct.getAttribute('val')) / 1000}%`;
+            }
+
+            const buSzPts = pPrNode.getElementsByTagNameNS(DML_NS, 'buSzPts')[0];
+            if (buSzPts) {
+                properties.bullet.size = `${parseInt(buSzPts.getAttribute('val')) / 100}pt`;
+            }
+
+            const buClr = pPrNode.getElementsByTagNameNS(DML_NS, 'buClr')[0];
+            if (buClr) {
+                const srgbClr = buClr.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+                if (srgbClr) {
+                    properties.bullet.color = `#${srgbClr.getAttribute('val')}`;
+                }
+            }
+
+            return properties;
+        }
+
         function parseMasterOrLayout( xml ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( xml, "application/xml" );
@@ -360,10 +462,7 @@
                     for ( let i = 1; i <= 9; i++ ) {
                         const lvlPr = bodyStyle.getElementsByTagNameNS( DML_NS, `lvl${ i }pPr` )[ 0 ];
                         if ( lvlPr ) {
-                            defaultTextStyles.body[ i - 1 ] = {
-                                indent: parseInt( lvlPr.getAttribute( 'marL' ) || '0' ) / EMU_PER_PIXEL,
-                                bullet: lvlPr.getElementsByTagNameNS( DML_NS, 'buChar' ).length > 0
-                            };
+                            defaultTextStyles.body[ i - 1 ] = parseParagraphProperties(lvlPr);
                         }
                     }
                 }
@@ -404,25 +503,27 @@
             return { placeholders: layoutData, defaultTextStyles };
         }
 
-        function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles ) {
+        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-            const SVG_NS = "http://www.w3.org/2000/svg";
 
             let debugText = '';
             let elementsFound = 0;
             const filledPlaceholders = new Set();
             let slideHasTitle = false;
             let slideHasBodyContent = false;
+            const listCounters = {};
 
-            const svg = document.createElementNS( SVG_NS, "svg" );
-            svg.setAttribute( "viewBox", `0 0 ${ slideSize.width } ${ slideSize.height }` );
-            slideContainer.appendChild( svg );
+            const stage = new Konva.Stage( {
+                container: slideContainer,
+                width: slideSize.width,
+                height: slideSize.height,
+            } );
 
-            const defs = document.createElementNS( SVG_NS, 'defs' );
-            svg.appendChild( defs );
+            const layer = new Konva.Layer();
+            stage.add( layer );
 
             const shapes = xmlDoc.getElementsByTagNameNS( PML_NS, 'sp' );
             for ( const shape of shapes ) {
@@ -485,53 +586,93 @@
                 if ( paragraphs.length > 0 && pos ) {
                     elementsFound++;
 
-                    const clipId = `clip-${ slideNum }-${ elementsFound }`;
-                    const clipPath = document.createElementNS( SVG_NS, 'clipPath' );
-                    clipPath.setAttribute( 'id', clipId );
-                    const clipRect = document.createElementNS( SVG_NS, 'rect' );
-                    clipRect.setAttribute( 'x', pos.x );
-                    clipRect.setAttribute( 'y', pos.y );
-                    clipRect.setAttribute( 'width', pos.width );
-                    clipRect.setAttribute( 'height', pos.height );
-                    clipPath.appendChild( clipRect );
-                    defs.appendChild( clipPath );
-
-                    const textGroup = document.createElementNS( SVG_NS, 'g' );
-                    textGroup.setAttribute( 'clip-path', `url(#${ clipId })` );
-
-                    let fullDebugText = [];
-                    paragraphs.forEach( ( pNode, index ) => {
-                        const pText = pNode.textContent.trim();
-                        if ( pText ) {
-                            const pPr = pNode.getElementsByTagNameNS( DML_NS, 'pPr' )[ 0 ];
-                            const level = pPr ? parseInt( pPr.getAttribute( 'lvl' ) || '0' ) : 0;
-                            const buCharNode = pPr ? pPr.getElementsByTagNameNS( DML_NS, 'buChar' )[ 0 ] : null;
-                            const bulletChar = buCharNode ? buCharNode.getAttribute( 'char' ) : null;
-
-                            let indent = ( defaultTextStyles.body && defaultTextStyles.body[ level ] ) ? defaultTextStyles.body[ level ].indent : 0;
-                            const finalX = pos.x + ( level * INDENTATION_AMOUNT );
-                            const finalY = pos.y + ( index * LINE_HEIGHT ) + 20;
-
-                            if ( bulletChar ) {
-                                const bulletEl = document.createElementNS( SVG_NS, 'text' );
-                                bulletEl.setAttribute( 'x', finalX );
-                                bulletEl.setAttribute( 'y', finalY );
-                                bulletEl.setAttribute( 'font-size', '18' );
-                                bulletEl.textContent = bulletChar;
-                                textGroup.appendChild( bulletEl );
-                            }
-
-                            const textEl = document.createElementNS( SVG_NS, 'text' );
-                            textEl.setAttribute( 'x', finalX + ( bulletChar ? BULLET_OFFSET : 0 ) );
-                            textEl.setAttribute( 'y', finalY );
-                            textEl.setAttribute( 'font-size', '18' );
-                            textEl.textContent = pText;
-                            textGroup.appendChild( textEl );
-                            fullDebugText.push( pText );
-                        }
+                    const textGroup = new Konva.Group( {
+                        clip: {
+                            x: pos.x,
+                            y: pos.y,
+                            width: pos.width,
+                            height: pos.height,
+                        },
                     } );
 
-                    svg.appendChild( textGroup );
+                    let fullDebugText = [];
+                    for (const [index, pNode] of paragraphs.entries()) {
+                        const pText = pNode.textContent.trim();
+                        if ( pText ) {
+                            const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
+                            const slideLevelProps = parseParagraphProperties(pPrNode);
+                            const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
+
+                            const defaultLevelProps = (defaultTextStyles.body && defaultTextStyles.body[level]) ? defaultTextStyles.body[level] : {};
+
+                            // Merge properties: slide-level overrides master-level
+                            const finalProps = {
+                                ...defaultLevelProps,
+                                ...slideLevelProps,
+                                bullet: { ...defaultLevelProps.bullet, ...slideLevelProps.bullet }
+                            };
+
+                            let indent = finalProps.indent || (level * INDENTATION_AMOUNT);
+                            const finalX = pos.x + indent;
+                            const finalY = pos.y + ( index * LINE_HEIGHT ) + 20;
+
+                            if (finalProps.bullet) {
+                                if (finalProps.bullet.type === 'char') {
+                                    const bulletEl = new Konva.Text( {
+                                        x: finalX,
+                                        y: finalY,
+                                        text: finalProps.bullet.char,
+                                        fontSize: 18,
+                                        fontFamily: 'Arial',
+                                        fill: finalProps.bullet.color || '#000',
+                                    } );
+                                    textGroup.add( bulletEl );
+                                } else if (finalProps.bullet.type === 'auto') {
+                                    if (!listCounters[level]) {
+                                        listCounters[level] = finalProps.bullet.startAt;
+                                    }
+                                    const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]);
+                                    listCounters[level]++;
+                                    const bulletEl = new Konva.Text( {
+                                        x: finalX,
+                                        y: finalY,
+                                        text: bulletChar,
+                                        fontSize: 18,
+                                        fontFamily: 'Arial',
+                                        fill: finalProps.bullet.color || '#000',
+                                    } );
+                                    textGroup.add( bulletEl );
+                                } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId) {
+                                    const imageDataUrl = imageMap[finalProps.bullet.relId];
+                                    if (imageDataUrl) {
+                                        const imageObj = await createImage(imageDataUrl);
+                                        const bulletImg = new Konva.Image({
+                                            x: finalX,
+                                            y: finalY,
+                                            image: imageObj,
+                                            width: 16,
+                                            height: 16,
+                                        });
+                                        textGroup.add(bulletImg);
+                                    }
+                                }
+                            }
+
+                            const textEl = new Konva.Text( {
+                                x: finalX + ( finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0 ),
+                                y: finalY,
+                                text: pText,
+                                fontSize: 18,
+                                fontFamily: 'Arial',
+                                fill: '#000',
+                                width: pos.width - indent - ( finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0 ),
+                            } );
+                            textGroup.add( textEl );
+                            fullDebugText.push( pText );
+                        }
+                    }
+
+                    layer.add( textGroup );
                     if ( fullDebugText.length > 0 ) {
                         debugText += `Element ${ elementsFound } (from slide, type: ${ phKey || 'custom' }): "${ fullDebugText.join( '\n' ) }"\n\n`;
                     }
@@ -552,18 +693,20 @@
                         textContent = slideNum;
                     }
 
-                    const paragraphs = String( textContent ).split( '\n' );
-                    paragraphs.forEach( ( pText, index ) => {
-                        if ( pText ) {
-                            const textEl = document.createElementNS( SVG_NS, 'text' );
-                            textEl.setAttribute( 'x', pos.x );
-                            textEl.setAttribute( 'y', pos.y + ( index * LINE_HEIGHT ) + 20 );
-                            textEl.setAttribute( 'font-size', '18' );
-                            textEl.textContent = pText;
-                            svg.appendChild( textEl );
-                        }
+                    const textEl = new Konva.Text( {
+                        x: pos.x,
+                        y: pos.y,
+                        text: textContent,
+                        fontSize: 18,
+                        fontFamily: 'Arial',
+                        fill: '#000',
+                        width: pos.width,
+                        height: pos.height,
+                        padding: 20,
+                        verticalAlign: 'middle',
                     } );
 
+                    layer.add( textEl );
                     debugText += `Element ${ elementsFound } (from layout, type: ${ key }): "${ textContent }"\n\n`;
                 }
             }
