@@ -809,6 +809,7 @@
 
             const spPrNode = shape.getElementsByTagNameNS(PML_NS, 'spPr')[0];
             const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+            let renderedNode = null;
 
             if (txBody) {
                 const lstStyle = txBody.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
@@ -819,6 +820,7 @@
                         clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height },
                     });
                     layer.add(textGroup);
+                    renderedNode = textGroup;
 
                     let currentY = pos.y;
                     for (const pNode of paragraphs) {
@@ -912,14 +914,17 @@
                             konvaShape.strokeWidth(shapeProps.stroke.width || 1);
                         }
                         layer.add(konvaShape);
+                        renderedNode = konvaShape;
                     }
                 }
             }
+            return renderedNode ? renderedNode.getClientRect() : { width: 0, height: 0 };
         }
 
         async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const PADDING = 20; // Padding between sibling elements
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
             let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y };
@@ -937,15 +942,21 @@
             const konvaGroup = new Konva.Group({
                 x: groupXfrm.x,
                 y: groupXfrm.y,
+                draggable: true, // For debugging layout
             });
             layer.add(konvaGroup);
 
+            let offsetX = 0;
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp') {
-                    await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
+                    // We pass a new parent transform with the current offset
+                    const shapeDimensions = await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: offsetX, y: 0 }, defaultTextStyles);
+                    // Update the offset for the next sibling
+                    offsetX += shapeDimensions.width + PADDING;
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, groupXfrm, defaultTextStyles);
+                    // Note: a full implementation would need to get the returned dimensions of the group
+                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: offsetX, y: 0 }, defaultTextStyles);
                 }
             }
         }
@@ -954,11 +965,8 @@
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-            const filledPlaceholders = new Set();
             const listCounters = {};
-
             const stage = new Konva.Stage( {
                 container: slideContainer,
                 width: slideSize.width,
@@ -1011,8 +1019,6 @@
             if (showMasterShapes) {
                 // This logic for master shapes needs re-integration
             }
-
-            return { renderedElements: 1, debugText: "Refactored renderer" };
         }
     </script>
 </body>
