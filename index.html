@@ -102,8 +102,6 @@
             margin: 2rem auto;
             position: relative;
             /* FIX: Width and height are now set dynamically */
-            max-width: 960px;
-            /* Limit max size on large screens */
         }
 
         .slide-viewer svg {
@@ -197,6 +195,7 @@
     <!-- Main application script -->
     <script type="module">
         import JSZip from 'https://cdn.jsdelivr.net/npm/jszip/+esm';
+        import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 
         const EMU_PER_PIXEL = 9525; // Standard conversion for 96 DPI
         const LINE_HEIGHT = 24; // A default line height in pixels for SVG text
@@ -225,6 +224,15 @@
                 const zip = await JSZip.loadAsync( file );
 
                 const presRels = await getRelationships( zip, "ppt/_rels/presentation.xml.rels" );
+
+                let theme = null;
+                const themeRel = Object.values(presRels).find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme');
+                if (themeRel) {
+                    const themePath = new URL(themeRel.target, `file:///ppt/`).pathname.substring(1);
+                    const themeXml = await zip.file(themePath).async("string");
+                    theme = parseTheme(themeXml);
+                }
+
                 const presentationXml = await zip.file( "ppt/presentation.xml" ).async( "string" );
                 const slideIds = getSlideOrder( presentationXml );
 
@@ -245,56 +253,81 @@
 
                     const slidePath = new URL( slideRel.target, `file:///ppt/` ).pathname.substring( 1 );
                     const slideRelsPath = `ppt/slides/_rels/${ slidePath.split( '/' ).pop() }.rels`;
-
                     const slideRels = await getRelationships( zip, slideRelsPath );
+
+                    const imageMap = {};
+                    for (const relId in slideRels) {
+                        const rel = slideRels[relId];
+                        if (rel.type.endsWith('/image')) {
+                            const imagePath = new URL(rel.target, `file:///ppt/slides/`).pathname.substring(1);
+                            const imageFile = zip.file(imagePath);
+                            if (imageFile) {
+                                const imageData = await imageFile.async('base64');
+                                imageMap[relId] = `data:image/png;base64,${imageData}`;
+                            }
+                        }
+                    }
+
+                    const slideContext = {
+                        theme: theme,
+                        colorMap: {},
+                    };
+
                     const layoutRel = Object.values( slideRels ).find( r => r.type.endsWith( '/slideLayout' ) );
 
                     let finalPlaceholders = {};
                     let defaultTextStyles = {};
+                    let masterXml, layoutXml;
+
                     if ( layoutRel ) {
                         const layoutPath = new URL( layoutRel.target, `file:///ppt/slides/` ).pathname.substring( 1 );
                         const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
                         const layoutRels = await getRelationships( zip, layoutRelsPath );
                         const masterRel = Object.values( layoutRels ).find( r => r.type.endsWith( '/slideMaster' ) );
 
-                        let masterPlaceholders = {};
                         if ( masterRel ) {
                             const masterPath = new URL( masterRel.target, `file:///ppt/slideLayouts/` ).pathname.substring( 1 );
-                            const masterXml = await zip.file( masterPath ).async( "string" );
+                            masterXml = await zip.file( masterPath ).async( "string" );
                             const masterData = parseMasterOrLayout( masterXml );
-                            masterPlaceholders = masterData.placeholders;
+                            finalPlaceholders = masterData.placeholders;
                             defaultTextStyles = masterData.defaultTextStyles;
+                            slideContext.colorMap = masterData.colorMap;
                         }
 
-                        const layoutXml = await zip.file( layoutPath ).async( "string" );
-                        const layoutData = parseMasterOrLayout( layoutXml );
-
-                        // Layout placeholders override master placeholders
-                        finalPlaceholders = { ...masterPlaceholders, ...layoutData.placeholders };
+                        layoutXml = await zip.file( layoutPath ).async( "string" );
+                        const layoutData = parseMasterOrLayout( layoutXml, true );
+                        finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
+                        if (layoutData.colorMapOverride) {
+                            slideContext.colorMap = { ...slideContext.colorMap, ...layoutData.colorMapOverride };
+                        }
                     }
 
                     const slideXml = await zip.file( slidePath ).async( "string" );
 
+                    const parser = new DOMParser();
+                    const slideXmlDoc = parser.parseFromString(slideXml, "application/xml");
+                    const layoutXmlDoc = layoutXml ? parser.parseFromString(layoutXml, "application/xml") : null;
+                    const masterXmlDoc = masterXml ? parser.parseFromString(masterXml, "application/xml") : null;
+
+                    const sldNode = slideXmlDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", 'sld')[0];
+                    const showMasterShapes = !sldNode || sldNode.getAttribute('showMasterSp') !== '0';
+
+                    const slideBg = parseBackground(slideXmlDoc, slideContext);
+                    const layoutBg = layoutXmlDoc ? parseBackground(layoutXmlDoc, slideContext) : null;
+                    const masterBg = masterXmlDoc ? parseBackground(masterXmlDoc, slideContext) : null;
+                    const finalBg = slideBg || layoutBg || masterBg;
+
                     const slideContainer = document.createElement( 'div' );
                     slideContainer.className = 'slide-viewer';
                     slideContainer.id = `slide-${ i + 1 }`;
-                    slideContainer.style.width = `${ slideSize.width }px`;
-                    slideContainer.style.height = `${ slideSize.height }px`;
                     slideViewerContainer.appendChild( slideContainer );
 
-                    const { renderedElements, debugText } = renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles );
-                    if ( renderedElements > 0 ) {
-                        allSlidesDebugText += `--- SLIDE ${ i + 1 } ---\n${ debugText }\n`;
-                        totalElementsFound += renderedElements;
-                    }
-                }
+                    const containerWidth = slideContainer.offsetWidth;
+                    const scale = containerWidth / slideSize.width;
+                    slideContainer.style.height = `${slideSize.height * scale}px`;
 
-                if ( totalElementsFound === 0 ) {
-                    allSlidesDebugText += "No text elements found in any slide.";
+                    await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes );
                 }
-
-                debugOutput.innerHTML = allSlidesDebugText;
-                debugOutput.style.display = 'block';
 
             } catch ( error ) {
                 console.error( 'Error parsing the presentation:', error );
@@ -342,7 +375,333 @@
             return { width: 960, height: 720 }; // Default size
         }
 
-        function parseMasterOrLayout( xml ) {
+        function getAutoNumberingChar(scheme, number) {
+            switch (scheme) {
+                case 'alphaLcParenBoth': return `(${String.fromCharCode(96 + number)})`;
+                case 'alphaLcParenR': return `${String.fromCharCode(96 + number)})`;
+                case 'alphaLcPeriod': return `${String.fromCharCode(96 + number)}.`;
+                case 'alphaUcParenBoth': return `(${String.fromCharCode(64 + number)})`;
+                case 'alphaUcParenR': return `${String.fromCharCode(64 + number)})`;
+                case 'alphaUcPeriod': return `${String.fromCharCode(64 + number)}.`;
+                case 'arabicParenBoth': return `(${number})`;
+                case 'arabicParenR': return `${number})`;
+                case 'arabicPeriod': return `${number}.`;
+                case 'arabicPlain': return `${number}`;
+                // TODO: Implement Roman numeral conversion
+                case 'romanLcParenBoth': return `(i)`;
+                case 'romanLcParenR': return `i)`;
+                case 'romanLcPeriod': return `i.`;
+                case 'romanUcParenBoth': return `(I)`;
+                case 'romanUcParenR': return `I)`;
+                case 'romanUcPeriod': return `I.`;
+                default: return `${number}.`;
+            }
+        }
+
+        function createImage(url) {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                image.onload = () => resolve(image);
+                image.onerror = reject;
+                image.src = url;
+            });
+        }
+
+        function parseTheme(themeXml) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(themeXml, "application/xml");
+            const theme = {
+                colorScheme: {},
+                fontScheme: {},
+            };
+
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            const clrSchemeNode = xmlDoc.getElementsByTagNameNS(DML_NS, 'clrScheme')[0];
+            if (clrSchemeNode) {
+                for (const child of clrSchemeNode.children) {
+                    const colorName = child.localName;
+                    const srgbClrNode = child.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+                    if (srgbClrNode) {
+                        theme.colorScheme[colorName] = `#${srgbClrNode.getAttribute('val')}`;
+                    }
+                    const sysClrNode = child.getElementsByTagNameNS(DML_NS, 'sysClr')[0];
+                    if (sysClrNode) {
+                        theme.colorScheme[colorName] = `#${sysClrNode.getAttribute('lastClr')}`;
+                    }
+                }
+            }
+
+            const fontSchemeNode = xmlDoc.getElementsByTagNameNS(DML_NS, 'fontScheme')[0];
+            if (fontSchemeNode) {
+                const majorFontNode = fontSchemeNode.getElementsByTagNameNS(DML_NS, 'majorFont')[0];
+                if (majorFontNode) {
+                    const latinFontNode = majorFontNode.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                    if (latinFontNode) {
+                        theme.fontScheme.major = latinFontNode.getAttribute('typeface');
+                    }
+                }
+                const minorFontNode = fontSchemeNode.getElementsByTagNameNS(DML_NS, 'minorFont')[0];
+                if (minorFontNode) {
+                    const latinFontNode = minorFontNode.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                    if (latinFontNode) {
+                        theme.fontScheme.minor = latinFontNode.getAttribute('typeface');
+                    }
+                }
+            }
+
+            return theme;
+        }
+
+        function parseColorMap(node) {
+            const colorMap = {};
+            if (node) {
+                for (const attr of node.attributes) {
+                    colorMap[attr.name] = attr.value;
+                }
+            }
+            return colorMap;
+        }
+
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : null;
+        }
+
+        function rgbToHex(r, g, b) {
+            return "#" + ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b)).toString(16).slice(1).toUpperCase();
+        }
+
+        function applyTint(hex, tint) {
+            const base = hexToRgb(hex);
+            if (!base) return hex;
+            const amount = tint / 100000; // Tint is provided as e.g. 80000 for 80%
+            const r = base.r * (1 - amount) + 255 * amount;
+            const g = base.g * (1 - amount) + 255 * amount;
+            const b = base.b * (1 - amount) + 255 * amount;
+            return rgbToHex(r, g, b);
+        }
+
+        function applyShade(hex, shade) {
+            const base = hexToRgb(hex);
+            if (!base) return hex;
+            const amount = shade / 100000; // Shade is provided as e.g. 80000 for 80%
+            const r = base.r * (1 - amount);
+            const g = base.g * (1 - amount);
+            const b = base.b * (1 - amount);
+            return rgbToHex(r, g, b);
+        }
+
+        function parseColor(colorNode) {
+            if (!colorNode) return null;
+
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const srgbClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+            if (srgbClrNode) {
+                return { srgb: `#${srgbClrNode.getAttribute('val')}` };
+            }
+
+            const schemeClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+            if (schemeClrNode) {
+                const color = { scheme: schemeClrNode.getAttribute('val') };
+                const tintNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'tint')[0];
+                if (tintNode) color.tint = parseInt(tintNode.getAttribute('val'));
+
+                const shadeNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'shade')[0];
+                if (shadeNode) color.shade = parseInt(shadeNode.getAttribute('val'));
+
+                // TODO: Add other transformations like lumMod, lumOff, etc.
+                return color;
+            }
+
+            return null;
+        }
+
+        function resolveColor(colorObj, slideContext) {
+            if (!colorObj || !slideContext.theme) {
+                return '#000000';
+            }
+
+            if (colorObj.srgb) {
+                return colorObj.srgb;
+            }
+
+            if (colorObj.scheme) {
+                const themeColorName = slideContext.colorMap[colorObj.scheme];
+                if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
+                    let hex = slideContext.theme.colorScheme[themeColorName];
+                    if (colorObj.tint) {
+                        hex = applyTint(hex, colorObj.tint);
+                    }
+                    if (colorObj.shade) {
+                        hex = applyShade(hex, colorObj.shade);
+                    }
+                    return hex;
+                }
+            }
+
+            return '#000000';
+        }
+
+        function parseBackground(xmlDoc, slideContext) {
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            const bgNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'bg')[0];
+            if (!bgNode) return null;
+
+            const bgPrNode = bgNode.getElementsByTagNameNS(PML_NS, 'bgPr')[0];
+            if (bgPrNode) {
+                const solidFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                if (solidFillNode) {
+                    const colorObj = parseColor(solidFillNode);
+                    if (colorObj) {
+                        return { type: 'color', value: resolveColor(colorObj, slideContext) };
+                    }
+                }
+
+                const blipFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'blipFill')[0];
+                if (blipFillNode) {
+                    const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
+                    if (blipNode) {
+                        const relId = blipNode.getAttribute('r:embed');
+                        return { type: 'image', relId: relId };
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        function parseShapeProperties(spPrNode, slideContext) {
+            if (!spPrNode) return null;
+
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const properties = {
+                fill: null,
+                stroke: null,
+                geometry: null,
+            };
+
+            const prstGeomNode = spPrNode.getElementsByTagNameNS(DML_NS, 'prstGeom')[0];
+            if (prstGeomNode) {
+                properties.geometry = prstGeomNode.getAttribute('prst');
+            }
+
+            const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+            if (solidFillNode) {
+                const colorObj = parseColor(solidFillNode);
+                if (colorObj) {
+                    properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                }
+            }
+
+            const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
+            if (lnNode) {
+                properties.stroke = {};
+                properties.stroke.width = parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL;
+                const solidFill = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                if (solidFill) {
+                    const colorObj = parseColor(solidFill);
+                    if (colorObj) {
+                         properties.stroke.color = resolveColor(colorObj, slideContext);
+                    }
+                }
+            }
+
+            return properties;
+        }
+
+        function parseTextStyle(styleNode) {
+            if (!styleNode) return null;
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const styles = {};
+            for (let i = 1; i <= 9; i++) {
+                const lvlPr = styleNode.getElementsByTagNameNS(DML_NS, `lvl${i}pPr`)[0];
+                if (lvlPr) {
+                    styles[i - 1] = parseParagraphProperties(lvlPr);
+                }
+            }
+            return styles;
+        }
+
+        function parseParagraphProperties(pPrNode) {
+            if (!pPrNode) return {};
+
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const properties = { bullet: {}, defRPr: {} };
+
+            const marL = pPrNode.getAttribute('marL');
+            if (marL) properties.indent = parseInt(marL) / EMU_PER_PIXEL;
+
+            const buNone = pPrNode.getElementsByTagNameNS(DML_NS, 'buNone')[0];
+            if (buNone) properties.bullet.type = 'none';
+
+            const buChar = pPrNode.getElementsByTagNameNS(DML_NS, 'buChar')[0];
+            if (buChar) {
+                properties.bullet.type = 'char';
+                properties.bullet.char = buChar.getAttribute('char');
+            }
+
+            const buAutoNum = pPrNode.getElementsByTagNameNS(DML_NS, 'buAutoNum')[0];
+            if (buAutoNum) {
+                properties.bullet.type = 'auto';
+                properties.bullet.scheme = buAutoNum.getAttribute('type');
+                properties.bullet.startAt = parseInt(buAutoNum.getAttribute('startAt') || '1');
+            }
+
+            const buBlip = pPrNode.getElementsByTagNameNS(DML_NS, 'buBlip')[0];
+            if (buBlip) {
+                const blip = buBlip.getElementsByTagNameNS(DML_NS, 'blip')[0];
+                if (blip) {
+                    properties.bullet.type = 'image';
+                    properties.bullet.relId = blip.getAttribute('r:embed');
+                }
+            }
+
+            const buSzPct = pPrNode.getElementsByTagNameNS(DML_NS, 'buSzPct')[0];
+            if (buSzPct) {
+                properties.bullet.size = `${parseInt(buSzPct.getAttribute('val')) / 1000}%`;
+            }
+
+            const buSzPts = pPrNode.getElementsByTagNameNS(DML_NS, 'buSzPts')[0];
+            if (buSzPts) {
+                properties.bullet.size = `${parseInt(buSzPts.getAttribute('val')) / 100}pt`;
+            }
+
+            const buClr = pPrNode.getElementsByTagNameNS(DML_NS, 'buClr')[0];
+            if (buClr) {
+                // Here, the color element is not a solidFill, but a direct child
+                const srgbClr = buClr.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+                if (srgbClr) {
+                    properties.bullet.color = { srgb: `#${srgbClr.getAttribute('val')}` };
+                }
+                const schemeClr = buClr.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+                if (schemeClr) {
+                    properties.bullet.color = parseColor(buClr);
+                }
+            }
+
+            const defRPrNode = pPrNode.getElementsByTagNameNS(DML_NS, 'defRPr')[0];
+            if (defRPrNode) {
+                properties.defRPr.size = parseInt(defRPrNode.getAttribute('sz') || '1800') / 100;
+                properties.defRPr.bold = defRPrNode.getAttribute('b') === '1';
+                properties.defRPr.italic = defRPrNode.getAttribute('i') === '1';
+
+                const solidFillNode = defRPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                if (solidFillNode) {
+                    properties.defRPr.color = parseColor(solidFillNode);
+                }
+            }
+
+            return properties;
+        }
+
+        function parseMasterOrLayout( xml, isLayout = false ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( xml, "application/xml" );
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -350,23 +709,32 @@
             const placeholders = xmlDoc.getElementsByTagNameNS( PML_NS, 'sp' );
             const layoutData = {};
             const defaultTextStyles = {};
+            let colorMap = null;
+            let colorMapOverride = null;
 
-            // Parse default text styles from the master
-            const txStyles = xmlDoc.getElementsByTagNameNS( PML_NS, 'txStyles' )[ 0 ];
-            if ( txStyles ) {
-                const bodyStyle = txStyles.getElementsByTagNameNS( PML_NS, 'bodyStyle' )[ 0 ];
-                if ( bodyStyle ) {
-                    defaultTextStyles.body = {};
-                    for ( let i = 1; i <= 9; i++ ) {
-                        const lvlPr = bodyStyle.getElementsByTagNameNS( DML_NS, `lvl${ i }pPr` )[ 0 ];
-                        if ( lvlPr ) {
-                            defaultTextStyles.body[ i - 1 ] = {
-                                indent: parseInt( lvlPr.getAttribute( 'marL' ) || '0' ) / EMU_PER_PIXEL,
-                                bullet: lvlPr.getElementsByTagNameNS( DML_NS, 'buChar' ).length > 0
-                            };
-                        }
+            if (isLayout) {
+                const clrMapOvrNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'clrMapOvr')[0];
+                if (clrMapOvrNode) {
+                    const overrideNode = clrMapOvrNode.getElementsByTagNameNS(DML_NS, 'overrideClrMapping')[0];
+                    if (overrideNode) {
+                        colorMapOverride = parseColorMap(overrideNode);
                     }
                 }
+            } else {
+                const clrMapNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'clrMap')[0];
+                colorMap = parseColorMap(clrMapNode);
+            }
+
+            const txStyles = xmlDoc.getElementsByTagNameNS(PML_NS, 'txStyles')[0];
+            if (txStyles) {
+                const titleStyleNode = txStyles.getElementsByTagNameNS(PML_NS, 'titleStyle')[0];
+                defaultTextStyles.title = parseTextStyle(titleStyleNode);
+
+                const bodyStyleNode = txStyles.getElementsByTagNameNS(PML_NS, 'bodyStyle')[0];
+                defaultTextStyles.body = parseTextStyle(bodyStyleNode);
+
+                const otherStyleNode = txStyles.getElementsByTagNameNS(PML_NS, 'otherStyle')[0];
+                defaultTextStyles.other = parseTextStyle(otherStyleNode);
             }
 
             for ( const sp of placeholders ) {
@@ -401,174 +769,256 @@
                     layoutData[ key ] = { pos, text: textContent, type: type };
                 }
             }
-            return { placeholders: layoutData, defaultTextStyles };
+            return { placeholders: layoutData, defaultTextStyles, colorMap, colorMapOverride };
         }
 
-        function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles ) {
+        async function processShape(shape, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles) {
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            let pos = null;
+            const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
+            let phKey = null;
+            let phType = null;
+            if (nvPr) {
+                const placeholder = nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0];
+                if (placeholder) {
+                    phType = placeholder.getAttribute('type');
+                    const phIdx = placeholder.getAttribute('idx');
+                    phKey = phType || (phIdx ? `idx_${phIdx}` : null);
+                }
+            }
+
+            const xfrmNode = shape.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
+            if (xfrmNode) {
+                const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+                if (offNode && extNode) {
+                    pos = {
+                        x: (parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL) + parentXfrm.x,
+                        y: (parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL) + parentXfrm.y,
+                        width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
+                        height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
+                    };
+                }
+            } else if (phKey && layoutPlaceholders[phKey]) {
+                pos = { ...layoutPlaceholders[phKey].pos }; // Clone to avoid mutation
+                pos.x += parentXfrm.x;
+                pos.y += parentXfrm.y;
+            }
+
+            const spPrNode = shape.getElementsByTagNameNS(PML_NS, 'spPr')[0];
+            const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+            let renderedNode = null;
+
+            if (txBody) {
+                const lstStyle = txBody.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+                const paragraphs = Array.from(shape.getElementsByTagNameNS(DML_NS, 'p'));
+
+                if (paragraphs.length > 0 && pos) {
+                    const textGroup = new Konva.Group({
+                        clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height },
+                    });
+                    layer.add(textGroup);
+                    renderedNode = textGroup;
+
+                    let currentY = pos.y;
+                    for (const pNode of paragraphs) {
+                        const pText = pNode.textContent.trim();
+                        if (pText) {
+                            const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
+                            let slideLevelProps = parseParagraphProperties(pPrNode);
+                            if (pPrNode && !slideLevelProps.bullet.type) {
+                                slideLevelProps.bullet.type = 'none';
+                            }
+                            const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
+                            let defaultStyle = defaultTextStyles.other;
+                            if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = defaultTextStyles.title;
+                            else if (phType === 'body') defaultStyle = defaultTextStyles.body;
+                            const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
+                            const finalProps = {
+                                ...defaultLevelProps, ...slideLevelProps,
+                                bullet: { ...(defaultLevelProps.bullet || {}), ...(slideLevelProps.bullet || {}) },
+                                defRPr: { ...(defaultLevelProps.defRPr || {}), ...(slideLevelProps.defRPr || {}) }
+                            };
+                            let indent = finalProps.indent || (level * INDENTATION_AMOUNT);
+                            const finalX = pos.x + indent;
+                            let bulletHeight = 0;
+
+                            if (lstStyle && finalProps.bullet && finalProps.bullet.type !== 'none') {
+                                let bulletEl;
+                                const bulletColor = resolveColor(finalProps.bullet.color, slideContext);
+                                const bulletFontSize = finalProps.defRPr.size || 18;
+
+                                if (finalProps.bullet.type === 'char') {
+                                    bulletEl = new Konva.Text({ x: finalX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                                } else if (finalProps.bullet.type === 'auto') {
+                                    if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
+                                    const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
+                                    bulletEl = new Konva.Text({ x: finalX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                                } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
+                                    const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
+                                    bulletEl = new Konva.Image({ x: finalX, y: currentY, image: imageObj, width: 16, height: 16 });
+                                }
+                                if (bulletEl) {
+                                    textGroup.add(bulletEl);
+                                    bulletHeight = bulletEl.height();
+                                }
+                            }
+
+                            const finalRunProps = { ...finalProps.defRPr };
+                            const firstRun = pNode.getElementsByTagNameNS(DML_NS, 'r')[0];
+                            if (firstRun) {
+                                const rPr = firstRun.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                                if (rPr) {
+                                    if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
+                                    if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
+                                    if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
+                                    const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                                    if (solidFill) finalRunProps.color = parseColor(solidFill);
+                                }
+                            }
+                            const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
+                            const fontSize = finalRunProps.size || 18;
+                            const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
+                            let fontFamily = (slideContext.theme?.fontScheme?.minor) || 'Arial';
+                            if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                                fontFamily = (slideContext.theme?.fontScheme?.major) || 'Arial';
+                            }
+                            const textEl = new Konva.Text({
+                                x: finalX + (lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
+                                y: currentY, text: pText, fontSize: fontSize, fontFamily: fontFamily, fontStyle: fontStyle, fill: textColor,
+                                width: pos.width - indent - (lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
+                            });
+                            textGroup.add(textEl);
+                            currentY += textEl.height();
+                        }
+                    }
+                }
+            } else {
+                const shapeProps = parseShapeProperties(spPrNode, slideContext);
+                if (pos && shapeProps && shapeProps.geometry) {
+                    let konvaShape;
+                    switch (shapeProps.geometry) {
+                        case 'rect':
+                            konvaShape = new Konva.Rect({ x: pos.x, y: pos.y, width: pos.width, height: pos.height });
+                            break;
+                        case 'ellipse':
+                            konvaShape = new Konva.Ellipse({ x: pos.x + pos.width / 2, y: pos.y + pos.height / 2, radiusX: pos.width / 2, radiusY: pos.height / 2 });
+                            break;
+                    }
+                    if (konvaShape) {
+                        if (shapeProps.fill) konvaShape.fill(shapeProps.fill.color);
+                        if (shapeProps.stroke) {
+                            konvaShape.stroke(shapeProps.stroke.color);
+                            konvaShape.strokeWidth(shapeProps.stroke.width || 1);
+                        }
+                        layer.add(konvaShape);
+                        renderedNode = konvaShape;
+                    }
+                }
+            }
+            return renderedNode ? renderedNode.getClientRect() : { width: 0, height: 0 };
+        }
+
+        async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles) {
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const PADDING = 20; // Padding between sibling elements
+
+            const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
+            let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y };
+            if (grpSpPrNode) {
+                const xfrmNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
+                if (xfrmNode) {
+                    const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                    if (offNode) {
+                        groupXfrm.x += parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
+                        groupXfrm.y += parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
+                    }
+                }
+            }
+
+            const konvaGroup = new Konva.Group({
+                x: groupXfrm.x,
+                y: groupXfrm.y,
+                draggable: true, // For debugging layout
+            });
+            layer.add(konvaGroup);
+
+            let offsetX = 0;
+            for (const element of group.children) {
+                const tagName = element.localName;
+                if (tagName === 'sp') {
+                    // We pass a new parent transform with the current offset
+                    const shapeDimensions = await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: offsetX, y: 0 }, defaultTextStyles);
+                    // Update the offset for the next sibling
+                    offsetX += shapeDimensions.width + PADDING;
+                } else if (tagName === 'grpSp') {
+                    // Note: a full implementation would need to get the returned dimensions of the group
+                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: offsetX, y: 0 }, defaultTextStyles);
+                }
+            }
+        }
+
+        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-            const SVG_NS = "http://www.w3.org/2000/svg";
 
-            let debugText = '';
-            let elementsFound = 0;
-            const filledPlaceholders = new Set();
-            let slideHasTitle = false;
-            let slideHasBodyContent = false;
+            const listCounters = {};
+            const stage = new Konva.Stage( {
+                container: slideContainer,
+                width: slideSize.width,
+                height: slideSize.height,
+            } );
+            stage.scale({ x: scale, y: scale });
+            stage.width(slideSize.width * scale);
+            stage.height(slideSize.height * scale);
 
-            const svg = document.createElementNS( SVG_NS, "svg" );
-            svg.setAttribute( "viewBox", `0 0 ${ slideSize.width } ${ slideSize.height }` );
-            slideContainer.appendChild( svg );
-
-            const defs = document.createElementNS( SVG_NS, 'defs' );
-            svg.appendChild( defs );
-
-            const shapes = xmlDoc.getElementsByTagNameNS( PML_NS, 'sp' );
-            for ( const shape of shapes ) {
-                const nvPr = shape.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ];
-                if ( nvPr ) {
-                    const placeholder = nvPr.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ];
-                    if ( placeholder ) {
-                        const phType = placeholder.getAttribute( 'type' );
-                        const phIdx = placeholder.getAttribute( 'idx' );
-                        const phKey = phType || ( phIdx ? `idx_${ phIdx }` : null );
-                        if ( phKey ) {
-                            filledPlaceholders.add( phKey );
-                            if ( [ 'title', 'ctrTitle', 'subTitle' ].includes( phType ) ) {
-                                slideHasTitle = true;
-                            }
-                            if ( [ 'body', 'obj' ].includes( phType ) ) {
-                                slideHasBodyContent = true;
-                            }
-                        }
-                    }
-                }
-                const paraNodes = shape.getElementsByTagNameNS( DML_NS, 'p' );
-                if ( Array.from( paraNodes ).some( p => p.textContent.trim() ) ) {
-                    slideHasBodyContent = true;
+            const bgLayer = new Konva.Layer();
+            stage.add(bgLayer);
+            if (finalBg) {
+                if (finalBg.type === 'color') {
+                    const bgRect = new Konva.Rect({
+                        x: 0,
+                        y: 0,
+                        width: slideSize.width,
+                        height: slideSize.height,
+                        fill: finalBg.value,
+                    });
+                    bgLayer.add(bgRect);
+                } else if (finalBg.type === 'image' && finalBg.relId && imageMap[finalBg.relId]) {
+                    const imageObj = await createImage(imageMap[finalBg.relId]);
+                    const bgImage = new Konva.Image({
+                        x: 0,
+                        y: 0,
+                        image: imageObj,
+                        width: slideSize.width,
+                        height: slideSize.height,
+                    });
+                    bgLayer.add(bgImage);
                 }
             }
 
-            for ( const shape of shapes ) {
-                let pos = null;
-                const nvPr = shape.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ];
-                let phKey = null;
-                if ( nvPr ) {
-                    const placeholder = nvPr.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ];
-                    if ( placeholder ) {
-                        const phType = placeholder.getAttribute( 'type' );
-                        const phIdx = placeholder.getAttribute( 'idx' );
-                        phKey = phType || ( phIdx ? `idx_${ phIdx }` : null );
-                    }
-                }
+            const mainLayer = new Konva.Layer();
+            stage.add(mainLayer);
 
-                const xfrmNode = shape.getElementsByTagNameNS( DML_NS, 'xfrm' )[ 0 ];
-                if ( xfrmNode ) {
-                    const offNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
-                    const extNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
-                    if ( offNode && extNode ) {
-                        pos = {
-                            x: parseInt( offNode.getAttribute( "x" ) ) / EMU_PER_PIXEL,
-                            y: parseInt( offNode.getAttribute( "y" ) ) / EMU_PER_PIXEL,
-                            width: parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL,
-                            height: parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL,
-                        };
-                    }
-                } else if ( phKey && layoutPlaceholders[ phKey ] ) {
-                    pos = layoutPlaceholders[ phKey ].pos;
-                }
-
-                const paraNodes = shape.getElementsByTagNameNS( DML_NS, 'p' );
-                const paragraphs = Array.from( paraNodes );
-
-                if ( paragraphs.length > 0 && pos ) {
-                    elementsFound++;
-
-                    const clipId = `clip-${ slideNum }-${ elementsFound }`;
-                    const clipPath = document.createElementNS( SVG_NS, 'clipPath' );
-                    clipPath.setAttribute( 'id', clipId );
-                    const clipRect = document.createElementNS( SVG_NS, 'rect' );
-                    clipRect.setAttribute( 'x', pos.x );
-                    clipRect.setAttribute( 'y', pos.y );
-                    clipRect.setAttribute( 'width', pos.width );
-                    clipRect.setAttribute( 'height', pos.height );
-                    clipPath.appendChild( clipRect );
-                    defs.appendChild( clipPath );
-
-                    const textGroup = document.createElementNS( SVG_NS, 'g' );
-                    textGroup.setAttribute( 'clip-path', `url(#${ clipId })` );
-
-                    let fullDebugText = [];
-                    paragraphs.forEach( ( pNode, index ) => {
-                        const pText = pNode.textContent.trim();
-                        if ( pText ) {
-                            const pPr = pNode.getElementsByTagNameNS( DML_NS, 'pPr' )[ 0 ];
-                            const level = pPr ? parseInt( pPr.getAttribute( 'lvl' ) || '0' ) : 0;
-                            const buCharNode = pPr ? pPr.getElementsByTagNameNS( DML_NS, 'buChar' )[ 0 ] : null;
-                            const bulletChar = buCharNode ? buCharNode.getAttribute( 'char' ) : null;
-
-                            let indent = ( defaultTextStyles.body && defaultTextStyles.body[ level ] ) ? defaultTextStyles.body[ level ].indent : 0;
-                            const finalX = pos.x + ( level * INDENTATION_AMOUNT );
-                            const finalY = pos.y + ( index * LINE_HEIGHT ) + 20;
-
-                            if ( bulletChar ) {
-                                const bulletEl = document.createElementNS( SVG_NS, 'text' );
-                                bulletEl.setAttribute( 'x', finalX );
-                                bulletEl.setAttribute( 'y', finalY );
-                                bulletEl.setAttribute( 'font-size', '18' );
-                                bulletEl.textContent = bulletChar;
-                                textGroup.appendChild( bulletEl );
-                            }
-
-                            const textEl = document.createElementNS( SVG_NS, 'text' );
-                            textEl.setAttribute( 'x', finalX + ( bulletChar ? BULLET_OFFSET : 0 ) );
-                            textEl.setAttribute( 'y', finalY );
-                            textEl.setAttribute( 'font-size', '18' );
-                            textEl.textContent = pText;
-                            textGroup.appendChild( textEl );
-                            fullDebugText.push( pText );
-                        }
-                    } );
-
-                    svg.appendChild( textGroup );
-                    if ( fullDebugText.length > 0 ) {
-                        debugText += `Element ${ elementsFound } (from slide, type: ${ phKey || 'custom' }): "${ fullDebugText.join( '\n' ) }"\n\n`;
+            const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
+            if (spTreeNode) {
+                for (const element of spTreeNode.children) {
+                    const tagName = element.localName;
+                    if (tagName === 'sp') {
+                        await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
+                    } else if (tagName === 'grpSp') {
+                        await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
                     }
                 }
             }
 
-            for ( const [ key, data ] of Object.entries( layoutPlaceholders ) ) {
-                if ( !filledPlaceholders.has( key ) && data.text.trim() ) {
-                    if ( data.type === 'body' ) continue;
-                    if ( ( data.type === 'title' || data.type === 'ctrTitle' ) && slideHasTitle ) continue;
-                    if ( key.startsWith( 'idx_' ) ) continue;
-
-                    elementsFound++;
-                    const pos = data.pos;
-                    let textContent = data.text;
-
-                    if ( data.type === 'sldNum' ) {
-                        textContent = slideNum;
-                    }
-
-                    const paragraphs = String( textContent ).split( '\n' );
-                    paragraphs.forEach( ( pText, index ) => {
-                        if ( pText ) {
-                            const textEl = document.createElementNS( SVG_NS, 'text' );
-                            textEl.setAttribute( 'x', pos.x );
-                            textEl.setAttribute( 'y', pos.y + ( index * LINE_HEIGHT ) + 20 );
-                            textEl.setAttribute( 'font-size', '18' );
-                            textEl.textContent = pText;
-                            svg.appendChild( textEl );
-                        }
-                    } );
-
-                    debugText += `Element ${ elementsFound } (from layout, type: ${ key }): "${ textContent }"\n\n`;
-                }
+            if (showMasterShapes) {
+                // This logic for master shapes needs re-integration
             }
-
-            return { renderedElements: elementsFound, debugText };
         }
     </script>
 </body>
