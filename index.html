@@ -649,9 +649,13 @@
                             const pText = pNode.textContent.trim();
                             if ( pText ) {
                                 const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
-                                const slideLevelProps = parseParagraphProperties(pPrNode);
-                                const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
+                                let slideLevelProps = parseParagraphProperties(pPrNode);
 
+                                if (pPrNode && !slideLevelProps.bullet.type) {
+                                    slideLevelProps.bullet.type = 'none';
+                                }
+
+                                const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
                                 const defaultLevelProps = (defaultTextStyles.body && defaultTextStyles.body[level]) ? defaultTextStyles.body[level] : {};
 
                                 const finalProps = {
