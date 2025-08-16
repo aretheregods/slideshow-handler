@@ -233,6 +233,14 @@
                     theme = parseTheme(themeXml);
                 }
 
+                let tableStyles = {};
+                const tableStylesRel = Object.values(presRels).find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
+                if (tableStylesRel) {
+                    const tableStylesPath = new URL(tableStylesRel.target, `file:///ppt/`).pathname.substring(1);
+                    const tableStylesXml = await zip.file(tableStylesPath).async("string");
+                    tableStyles = parseTableStyles(tableStylesXml);
+                }
+
                 const presentationXml = await zip.file( "ppt/presentation.xml" ).async( "string" );
                 const slideIds = getSlideOrder( presentationXml );
 
@@ -271,6 +279,7 @@
                     const slideContext = {
                         theme: theme,
                         colorMap: {},
+                        tableStyles: tableStyles,
                     };
 
                     const layoutRel = Object.values( slideRels ).find( r => r.type.endsWith( '/slideLayout' ) );
@@ -545,6 +554,84 @@
             }
 
             return '#000000';
+        }
+
+        function parseTableStyles(xmlString) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const styles = {};
+
+            const tblStyleNodes = xmlDoc.getElementsByTagNameNS(DML_NS, 'tblStyle');
+
+            for (const styleNode of tblStyleNodes) {
+                const styleId = styleNode.getAttribute('styleId');
+                const styleDef = {};
+
+                const styleParts = ['wholeTbl', 'band1H', 'band2H', 'band1V', 'band2V', 'firstRow', 'lastRow', 'firstCol', 'lastCol', 'nwCell', 'neCell', 'swCell', 'seCell'];
+
+                for (const partName of styleParts) {
+                    const partNode = styleNode.getElementsByTagNameNS(DML_NS, partName)[0];
+                    if (partNode) {
+                        styleDef[partName] = parseStylePart(partNode);
+                    }
+                }
+                // The ID in the slide is wrapped in braces, but not in the style definition
+                styles[`{${styleId}}`] = styleDef;
+            }
+
+            return styles;
+        }
+
+        function parseStylePart(partNode) {
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const partDef = {
+                tcStyle: {},
+                tcTxStyle: {}
+            };
+
+            const tcStyleNode = partNode.getElementsByTagNameNS(DML_NS, 'tcStyle')[0];
+            if (tcStyleNode) {
+                const fillNode = tcStyleNode.getElementsByTagNameNS(DML_NS, 'fill')[0];
+                if (fillNode) {
+                    const solidFillNode = fillNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                    if (solidFillNode) {
+                        partDef.tcStyle.fill = parseColor(solidFillNode);
+                    }
+                }
+
+                const tcBdrNode = tcStyleNode.getElementsByTagNameNS(DML_NS, 'tcBdr')[0];
+                if (tcBdrNode) {
+                    partDef.tcStyle.borders = {};
+                    const borderTypes = ['left', 'right', 'top', 'bottom'];
+                    for (const type of borderTypes) {
+                        const borderNode = tcBdrNode.getElementsByTagNameNS(DML_NS, type)[0];
+                        if (borderNode) {
+                            const lnNode = borderNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
+                            if (lnNode) {
+                                const width = parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL;
+                                const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                                if (solidFillNode) {
+                                    const colorObj = parseColor(solidFillNode);
+                                    if (colorObj) {
+                                        partDef.tcStyle.borders[type] = {
+                                            width: width,
+                                            color: colorObj
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            const tcTxStyleNode = partNode.getElementsByTagNameNS(DML_NS, 'tcTxStyle')[0];
+            if (tcTxStyleNode) {
+                // TODO: Parse text styles for tables (bold, italic, color, etc.)
+            }
+
+            return partDef;
         }
 
         function parseBackground(xmlDoc, slideContext) {
@@ -980,10 +1067,295 @@
             }
         }
 
+        function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, slideContext) {
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            // Level 1: Direct Formatting
+            const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
+            if (tcPrNode) {
+                const solidFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                if (solidFillNode) {
+                    const colorObj = parseColor(solidFillNode);
+                    if (colorObj) return resolveColor(colorObj, slideContext);
+                }
+            }
+
+            // Levels 2 & 3: Table Styles
+            const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
+            if (!tableStyleIdNode) return null;
+
+            const styleId = tableStyleIdNode.textContent;
+            const tableStyle = slideContext.tableStyles[styleId];
+            if (!tableStyle) return null;
+
+            // Determine which conditional formats apply
+            const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+            const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+            const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+            const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+            const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+            const bandCol = tblPrNode.getAttribute('bandCol') === '1';
+
+            const isFirstRow = r === 0;
+            const isLastRow = r === numRows - 1;
+            const isFirstCol = c === 0;
+            const isLastCol = c === numCols - 1;
+
+            let stylePart = null;
+
+            // Check conditions in order of precedence
+            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) stylePart = tableStyle.nwCell;
+            else if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) stylePart = tableStyle.neCell;
+            else if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) stylePart = tableStyle.swCell;
+            else if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) stylePart = tableStyle.seCell;
+            else if (firstRow && isFirstRow && tableStyle.firstRow) stylePart = tableStyle.firstRow;
+            else if (lastRow && isLastRow && tableStyle.lastRow) stylePart = tableStyle.lastRow;
+            else if (firstCol && isFirstCol && tableStyle.firstCol) stylePart = tableStyle.firstCol;
+            else if (lastCol && isLastCol && tableStyle.lastCol) stylePart = tableStyle.lastCol;
+            else if (bandRow) {
+                // Banding does not typically apply to the header row
+                const isDataRow = !(firstRow && isFirstRow);
+                if (isDataRow) {
+                    if (r % 2 === 1 && tableStyle.band1H) stylePart = tableStyle.band1H;
+                    else if (r % 2 === 0 && tableStyle.band2H) stylePart = tableStyle.band2H;
+                }
+            }
+
+            // Check for vertical banding if no other style has been applied yet
+            if (!stylePart && bandCol) {
+                const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+                if (isDataCol) {
+                    if (c % 2 === 1 && tableStyle.band1V) stylePart = tableStyle.band1V;
+                    else if (c % 2 === 0 && tableStyle.band2V) stylePart = tableStyle.band2V;
+                }
+            }
+
+            if (stylePart && stylePart.tcStyle && stylePart.tcStyle.fill) {
+                return resolveColor(stylePart.tcStyle.fill, slideContext);
+            }
+
+            // Level 3: Whole Table Style
+            const wholeTblStyle = tableStyle.wholeTbl;
+            if (wholeTblStyle && wholeTblStyle.tcStyle && wholeTblStyle.tcStyle.fill) {
+                return resolveColor(wholeTblStyle.tcStyle.fill, slideContext);
+            }
+
+            return null; // No fill found
+        }
+
+        async function processTable(graphicFrame, layer, slideContext) {
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+
+            // 1. Get position and size of the graphic frame
+            const xfrmNode = graphicFrame.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
+            let pos = {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0
+            };
+            if (xfrmNode) {
+                const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+                if (offNode && extNode) {
+                    pos = {
+                        x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
+                        y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
+                        width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
+                        height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
+                    };
+                }
+            }
+
+            const tblNode = graphicFrame.getElementsByTagNameNS(DML_NS, 'tbl')[0];
+            if (!tblNode) return {
+                width: pos.width,
+                height: pos.height
+            };
+
+            const tblPrNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblPr')[0];
+
+            // 2. Parse grid and column widths
+            const tblGridNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblGrid')[0];
+            const gridColNodes = tblGridNode ? tblGridNode.getElementsByTagNameNS(DML_NS, 'gridCol') : [];
+            const colWidths = Array.from(gridColNodes).map(node => parseInt(node.getAttribute('w')) / EMU_PER_PIXEL);
+
+            // 3. Iterate through rows and cells to build a renderable grid
+            const rowNodes = Array.from(tblNode.getElementsByTagNameNS(DML_NS, 'tr'));
+            const numRows = rowNodes.length;
+            const numCols = colWidths.length;
+            if (numRows === 0 || numCols === 0) return {
+                width: pos.width,
+                height: pos.height
+            };
+
+            const renderedGrid = Array(numRows).fill(0).map(() => Array(numCols).fill(false));
+
+            for (let r = 0; r < numRows; r++) {
+                const cellNodes = Array.from(rowNodes[r].getElementsByTagNameNS(DML_NS, 'tc'));
+
+                for (let c = 0; c < numCols; c++) {
+                    if (renderedGrid[r][c]) {
+                        continue; // Already handled by a previous rowspan
+                    }
+
+                    const cellNode = cellNodes[c];
+                    if (!cellNode) continue;
+
+                    const hMerge = cellNode.getAttribute('hMerge') === '1';
+                    const vMerge = cellNode.getAttribute('vMerge') === '1';
+
+                    if (hMerge || vMerge) {
+                        continue; // Handled by the primary cell of the merge
+                    }
+
+                    const gridSpan = parseInt(cellNode.getAttribute('gridSpan') || '1');
+                    const rowSpan = parseInt(cellNode.getAttribute('rowSpan') || '1');
+
+                    // Calculate cell dimensions based on spans
+                    let cellWidth = 0;
+                    for (let i = 0; i < gridSpan; i++) {
+                        if (c + i < numCols) cellWidth += colWidths[c + i];
+                    }
+
+                    let cellHeight = 0;
+                    for (let i = 0; i < rowSpan; i++) {
+                        if (r + i < numRows) {
+                            cellHeight += parseInt(rowNodes[r + i].getAttribute('h')) / EMU_PER_PIXEL;
+                        }
+                    }
+
+                    // Calculate cell position
+                    let cellX = pos.x;
+                    for (let i = 0; i < c; i++) {
+                        cellX += colWidths[i];
+                    }
+
+                    let cellY = pos.y;
+                    for (let i = 0; i < r; i++) {
+                        cellY += parseInt(rowNodes[i].getAttribute('h')) / EMU_PER_PIXEL;
+                    }
+
+                    // Mark grid cells covered by this span as rendered
+                    for (let i = 0; i < rowSpan; i++) {
+                        for (let j = 0; j < gridSpan; j++) {
+                            if (r + i < numRows && c + j < numCols) {
+                                renderedGrid[r + i][c + j] = true;
+                            }
+                        }
+                    }
+
+                    // Step 4: Get cell styling
+                    const fillColor = getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, slideContext);
+
+                    const cellRect = new Konva.Rect({
+                        x: cellX,
+                        y: cellY,
+                        width: cellWidth,
+                        height: cellHeight,
+                        fill: fillColor || 'transparent',
+                    });
+                    layer.add(cellRect);
+
+                    // Draw borders
+                    const tableStyle = slideContext.tableStyles[styleId];
+                    const borders = tableStyle?.wholeTbl?.tcStyle?.borders;
+                    if (borders) {
+                        const borderDefs = {
+                            top: { p: [cellX, cellY, cellX + cellWidth, cellY] },
+                            right: { p: [cellX + cellWidth, cellY, cellX + cellWidth, cellY + cellHeight] },
+                            bottom: { p: [cellX + cellWidth, cellY + cellHeight, cellX, cellY + cellHeight] },
+                            left: { p: [cellX, cellY + cellHeight, cellX, cellY] },
+                        };
+                        for (const side in borderDefs) {
+                            if (borders[side]) {
+                                const borderStyle = borders[side];
+                                const borderColor = resolveColor(borderStyle.color, slideContext);
+                                const border = new Konva.Line({
+                                    points: borderDefs[side].p,
+                                    stroke: borderColor,
+                                    strokeWidth: borderStyle.width,
+                                });
+                                layer.add(border);
+                            }
+                        }
+                    }
+
+                    // Render text content
+                    processCellText(cellNode, layer, cellX, cellY, cellWidth, cellHeight, slideContext);
+                }
+            }
+
+            return {
+                width: pos.width,
+                height: pos.height
+            };
+        }
+
+        function processCellText(cellNode, layer, cellX, cellY, cellWidth, cellHeight, slideContext) {
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const txBodyNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
+            if (!txBodyNode) return;
+
+            // Handle vertical alignment
+            const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
+            const vAlign = tcPrNode ? tcPrNode.getAttribute('anchor') : 't'; // t, ctr, b
+
+            const paragraphs = Array.from(txBodyNode.getElementsByTagNameNS(DML_NS, 'p'));
+            if (paragraphs.length === 0) return;
+
+            const textNodes = [];
+            let totalTextHeight = 0;
+            const PADDING = 5; // 5px padding inside cell
+
+            for (const pNode of paragraphs) {
+                // Simplified text parsing for now. A full implementation would parse
+                // run properties (<rPr>) for detailed styling.
+                const pText = pNode.textContent.trim();
+                if (pText) {
+                    const textEl = new Konva.Text({
+                        text: pText,
+                        fontSize: 14, // TODO: Inherit from style
+                        fontFamily: 'Arial', // TODO: Inherit from style
+                        fill: '#000000', // TODO: Inherit from style
+                        width: cellWidth - (PADDING * 2),
+                        lineHeight: 1.2,
+                    });
+                    textNodes.push(textEl);
+                    totalTextHeight += textEl.height();
+                }
+            }
+
+            let startY;
+            if (vAlign === 'b') {
+                startY = cellHeight - totalTextHeight - PADDING;
+            } else if (vAlign === 'ctr') {
+                startY = (cellHeight - totalTextHeight) / 2;
+            } else { // 't' or default
+                startY = PADDING;
+            }
+
+            const textGroup = new Konva.Group({
+                x: cellX + PADDING,
+                y: cellY, // Y will be handled per-node
+                clip: { x: 0, y: 0, width: cellWidth, height: cellHeight },
+            });
+            layer.add(textGroup);
+
+            let currentY = startY;
+            textNodes.forEach(textNode => {
+                textNode.y(currentY);
+                textGroup.add(textNode);
+                currentY += textNode.height();
+            });
+        }
+
         async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const listCounters = {};
             const stage = new Konva.Stage( {
@@ -1031,6 +1403,11 @@
                         await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
                     } else if (tagName === 'grpSp') {
                         await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
+                    } else if (tagName === 'graphicFrame') {
+                        const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
+                        if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
+                            await processTable(element, mainLayer, slideContext);
+                        }
                     }
                 }
             }
