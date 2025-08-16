@@ -762,11 +762,20 @@
                     }
                 }
 
+                const txBodyNode = sp.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+                let listStyle = null;
+                if (txBodyNode) {
+                    const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+                    if (lstStyleNode) {
+                        listStyle = parseTextStyle(lstStyleNode);
+                    }
+                }
+
                 const paraNodes = sp.getElementsByTagNameNS( DML_NS, 'p' );
                 const textContent = Array.from( paraNodes ).map( p => p.textContent.trim() ).join( '\n' );
 
                 if ( pos ) {
-                    layoutData[ key ] = { pos, text: textContent, type: type };
+                    layoutData[ key ] = { pos, text: textContent, type: type, listStyle };
                 }
             }
             return { placeholders: layoutData, defaultTextStyles, colorMap, colorMapOverride };
@@ -836,10 +845,20 @@
                             if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = defaultTextStyles.title;
                             else if (phType === 'body') defaultStyle = defaultTextStyles.body;
                             const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
+                            const layoutPlaceholder = layoutPlaceholders[phKey];
+                            const layoutListStyle = (layoutPlaceholder && layoutPlaceholder.listStyle && layoutPlaceholder.listStyle[level]) ? layoutPlaceholder.listStyle[level] : {};
+
                             const finalProps = {
-                                ...defaultLevelProps, ...slideLevelProps,
-                                bullet: { ...(defaultLevelProps.bullet || {}), ...(slideLevelProps.bullet || {}) },
-                                defRPr: { ...(defaultLevelProps.defRPr || {}), ...(slideLevelProps.defRPr || {}) }
+                                ...defaultLevelProps,
+                                ...layoutListStyle, ...slideLevelProps,
+                                bullet: { ...(defaultLevelProps.bullet || {}),
+                                    ...(layoutListStyle.bullet || {}),
+                                    ...(slideLevelProps.bullet || {})
+                                },
+                                defRPr: { ...(defaultLevelProps.defRPr || {}),
+                                    ...(layoutListStyle.defRPr || {}),
+                                    ...(slideLevelProps.defRPr || {})
+                                }
                             };
                             let indent = finalProps.indent || (level * INDENTATION_AMOUNT);
                             const finalX = pos.x + indent;
