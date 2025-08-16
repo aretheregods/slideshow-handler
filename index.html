@@ -1176,6 +1176,9 @@
 
             const tblPrNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblPr')[0];
 
+            const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
+            const styleId = tableStyleIdNode ? tableStyleIdNode.textContent : null;
+
             // 2. Parse grid and column widths
             const tblGridNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblGrid')[0];
             const gridColNodes = tblGridNode ? tblGridNode.getElementsByTagNameNS(DML_NS, 'gridCol') : [];
@@ -1259,25 +1262,27 @@
                     layer.add(cellRect);
 
                     // Draw borders
-                    const tableStyle = slideContext.tableStyles[styleId];
-                    const borders = tableStyle?.wholeTbl?.tcStyle?.borders;
-                    if (borders) {
-                        const borderDefs = {
-                            top: { p: [cellX, cellY, cellX + cellWidth, cellY] },
-                            right: { p: [cellX + cellWidth, cellY, cellX + cellWidth, cellY + cellHeight] },
-                            bottom: { p: [cellX + cellWidth, cellY + cellHeight, cellX, cellY + cellHeight] },
-                            left: { p: [cellX, cellY + cellHeight, cellX, cellY] },
-                        };
-                        for (const side in borderDefs) {
-                            if (borders[side]) {
-                                const borderStyle = borders[side];
-                                const borderColor = resolveColor(borderStyle.color, slideContext);
-                                const border = new Konva.Line({
-                                    points: borderDefs[side].p,
-                                    stroke: borderColor,
-                                    strokeWidth: borderStyle.width,
-                                });
-                                layer.add(border);
+                    if (styleId) {
+                        const tableStyle = slideContext.tableStyles[styleId];
+                        const borders = tableStyle?.wholeTbl?.tcStyle?.borders;
+                        if (borders) {
+                            const borderDefs = {
+                                top: { p: [cellX, cellY, cellX + cellWidth, cellY] },
+                                right: { p: [cellX + cellWidth, cellY, cellX + cellWidth, cellY + cellHeight] },
+                                bottom: { p: [cellX + cellWidth, cellY + cellHeight, cellX, cellY + cellHeight] },
+                                left: { p: [cellX, cellY + cellHeight, cellX, cellY] },
+                            };
+                            for (const side in borderDefs) {
+                                if (borders[side]) {
+                                    const borderStyle = borders[side];
+                                    const borderColor = resolveColor(borderStyle.color, slideContext);
+                                    const border = new Konva.Line({
+                                        points: borderDefs[side].p,
+                                        stroke: borderColor,
+                                        strokeWidth: borderStyle.width,
+                                    });
+                                    layer.add(border);
+                                }
                             }
                         }
                     }
