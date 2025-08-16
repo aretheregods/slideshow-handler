@@ -638,6 +638,22 @@
             const marL = pPrNode.getAttribute('marL');
             if (marL) properties.indent = parseInt(marL) / EMU_PER_PIXEL;
 
+            const spcBef = pPrNode.getElementsByTagNameNS(DML_NS, 'spcBef')[0];
+            if (spcBef) {
+                const spcPts = spcBef.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+                if (spcPts) {
+                    properties.spaceBefore = parseInt(spcPts.getAttribute('val')) / 100 * (96 / 72); // Points to pixels
+                }
+            }
+
+            const spcAft = pPrNode.getElementsByTagNameNS(DML_NS, 'spcAft')[0];
+            if (spcAft) {
+                const spcPts = spcAft.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+                if (spcPts) {
+                    properties.spaceAfter = parseInt(spcPts.getAttribute('val')) / 100 * (96 / 72); // Points to pixels
+                }
+            }
+
             const buNone = pPrNode.getElementsByTagNameNS(DML_NS, 'buNone')[0];
             if (buNone) properties.bullet.type = 'none';
 
@@ -885,6 +901,9 @@
                             if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
                                 fontFamily = (slideContext.theme?.fontScheme?.major) || 'Arial';
                             }
+                            if (finalProps.spaceBefore) {
+                                currentY += finalProps.spaceBefore;
+                            }
                             const textEl = new Konva.Text({
                                 x: finalX + (lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
                                 y: currentY, text: pText, fontSize: fontSize, fontFamily: fontFamily, fontStyle: fontStyle, fill: textColor,
@@ -892,6 +911,9 @@
                             });
                             textGroup.add(textEl);
                             currentY += textEl.height();
+                            if (finalProps.spaceAfter) {
+                                currentY += finalProps.spaceAfter;
+                            }
                         }
                     }
                 }
