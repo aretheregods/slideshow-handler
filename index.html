@@ -224,6 +224,15 @@
                 const zip = await JSZip.loadAsync( file );
 
                 const presRels = await getRelationships( zip, "ppt/_rels/presentation.xml.rels" );
+
+                let theme = null;
+                const themeRel = Object.values(presRels).find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme');
+                if (themeRel) {
+                    const themePath = new URL(themeRel.target, `file:///ppt/`).pathname.substring(1);
+                    const themeXml = await zip.file(themePath).async("string");
+                    theme = parseTheme(themeXml);
+                }
+
                 const presentationXml = await zip.file( "ppt/presentation.xml" ).async( "string" );
                 const slideIds = getSlideOrder( presentationXml );
 
@@ -244,7 +253,6 @@
 
                     const slidePath = new URL( slideRel.target, `file:///ppt/` ).pathname.substring( 1 );
                     const slideRelsPath = `ppt/slides/_rels/${ slidePath.split( '/' ).pop() }.rels`;
-
                     const slideRels = await getRelationships( zip, slideRelsPath );
 
                     const imageMap = {};
@@ -260,6 +268,11 @@
                         }
                     }
 
+                    const slideContext = {
+                        theme: theme,
+                        colorMap: {},
+                    };
+
                     const layoutRel = Object.values( slideRels ).find( r => r.type.endsWith( '/slideLayout' ) );
 
                     let finalPlaceholders = {};
@@ -270,20 +283,21 @@
                         const layoutRels = await getRelationships( zip, layoutRelsPath );
                         const masterRel = Object.values( layoutRels ).find( r => r.type.endsWith( '/slideMaster' ) );
 
-                        let masterPlaceholders = {};
                         if ( masterRel ) {
                             const masterPath = new URL( masterRel.target, `file:///ppt/slideLayouts/` ).pathname.substring( 1 );
                             const masterXml = await zip.file( masterPath ).async( "string" );
                             const masterData = parseMasterOrLayout( masterXml );
-                            masterPlaceholders = masterData.placeholders;
+                            finalPlaceholders = masterData.placeholders;
                             defaultTextStyles = masterData.defaultTextStyles;
+                            slideContext.colorMap = masterData.colorMap;
                         }
 
                         const layoutXml = await zip.file( layoutPath ).async( "string" );
-                        const layoutData = parseMasterOrLayout( layoutXml );
-
-                        // Layout placeholders override master placeholders
-                        finalPlaceholders = { ...masterPlaceholders, ...layoutData.placeholders };
+                        const layoutData = parseMasterOrLayout( layoutXml, true );
+                        finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
+                        if (layoutData.colorMapOverride) {
+                            slideContext.colorMap = { ...slideContext.colorMap, ...layoutData.colorMapOverride };
+                        }
                     }
 
                     const slideXml = await zip.file( slidePath ).async( "string" );
@@ -297,7 +311,7 @@
                     const scale = containerWidth / slideSize.width;
                     slideContainer.style.height = `${slideSize.height * scale}px`;
 
-                    const { renderedElements, debugText } = await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale );
+                    const { renderedElements, debugText } = await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext );
                     if ( renderedElements > 0 ) {
                         allSlidesDebugText += `--- SLIDE ${ i + 1 } ---\n${ debugText }\n`;
                         totalElementsFound += renderedElements;
@@ -389,6 +403,81 @@
             });
         }
 
+        function parseTheme(themeXml) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(themeXml, "application/xml");
+            const theme = {
+                colorScheme: {},
+                fontScheme: {},
+            };
+
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            const clrSchemeNode = xmlDoc.getElementsByTagNameNS(DML_NS, 'clrScheme')[0];
+            if (clrSchemeNode) {
+                for (const child of clrSchemeNode.children) {
+                    const colorName = child.localName;
+                    const srgbClrNode = child.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+                    if (srgbClrNode) {
+                        theme.colorScheme[colorName] = `#${srgbClrNode.getAttribute('val')}`;
+                    }
+                    const sysClrNode = child.getElementsByTagNameNS(DML_NS, 'sysClr')[0];
+                    if (sysClrNode) {
+                        theme.colorScheme[colorName] = `#${sysClrNode.getAttribute('lastClr')}`;
+                    }
+                }
+            }
+
+            const fontSchemeNode = xmlDoc.getElementsByTagNameNS(DML_NS, 'fontScheme')[0];
+            if (fontSchemeNode) {
+                const majorFontNode = fontSchemeNode.getElementsByTagNameNS(DML_NS, 'majorFont')[0];
+                if (majorFontNode) {
+                    const latinFontNode = majorFontNode.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                    if (latinFontNode) {
+                        theme.fontScheme.major = latinFontNode.getAttribute('typeface');
+                    }
+                }
+                const minorFontNode = fontSchemeNode.getElementsByTagNameNS(DML_NS, 'minorFont')[0];
+                if (minorFontNode) {
+                    const latinFontNode = minorFontNode.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                    if (latinFontNode) {
+                        theme.fontScheme.minor = latinFontNode.getAttribute('typeface');
+                    }
+                }
+            }
+
+            return theme;
+        }
+
+        function parseColorMap(node) {
+            const colorMap = {};
+            if (node) {
+                for (const attr of node.attributes) {
+                    colorMap[attr.name] = attr.value;
+                }
+            }
+            return colorMap;
+        }
+
+        function resolveColor(colorObj, slideContext) {
+            if (!colorObj || !slideContext.theme) {
+                return '#000000'; // Default color
+            }
+
+            if (colorObj.srgb) {
+                return colorObj.srgb;
+            }
+
+            if (colorObj.scheme) {
+                const themeColorName = slideContext.colorMap[colorObj.scheme];
+                if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
+                    return slideContext.theme.colorScheme[themeColorName];
+                }
+            }
+
+            return '#000000'; // Default color
+        }
+
         function parseParagraphProperties(pPrNode) {
             if (!pPrNode) return {};
 
@@ -435,16 +524,20 @@
 
             const buClr = pPrNode.getElementsByTagNameNS(DML_NS, 'buClr')[0];
             if (buClr) {
+                const schemeClr = buClr.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+                if (schemeClr) {
+                    properties.bullet.color = { scheme: schemeClr.getAttribute('val') };
+                }
                 const srgbClr = buClr.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
                 if (srgbClr) {
-                    properties.bullet.color = `#${srgbClr.getAttribute('val')}`;
+                    properties.bullet.color = { srgb: `#${srgbClr.getAttribute('val')}` };
                 }
             }
 
             return properties;
         }
 
-        function parseMasterOrLayout( xml ) {
+        function parseMasterOrLayout( xml, isLayout = false ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( xml, "application/xml" );
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -452,6 +545,21 @@
             const placeholders = xmlDoc.getElementsByTagNameNS( PML_NS, 'sp' );
             const layoutData = {};
             const defaultTextStyles = {};
+            let colorMap = null;
+            let colorMapOverride = null;
+
+            if (isLayout) {
+                const clrMapOvrNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'clrMapOvr')[0];
+                if (clrMapOvrNode) {
+                    const overrideNode = clrMapOvrNode.getElementsByTagNameNS(DML_NS, 'overrideClrMapping')[0];
+                    if (overrideNode) {
+                        colorMapOverride = parseColorMap(overrideNode);
+                    }
+                }
+            } else {
+                const clrMapNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'clrMap')[0];
+                colorMap = parseColorMap(clrMapNode);
+            }
 
             // Parse default text styles from the master
             const txStyles = xmlDoc.getElementsByTagNameNS( PML_NS, 'txStyles' )[ 0 ];
@@ -500,10 +608,10 @@
                     layoutData[ key ] = { pos, text: textContent, type: type };
                 }
             }
-            return { placeholders: layoutData, defaultTextStyles };
+            return { placeholders: layoutData, defaultTextStyles, colorMap, colorMapOverride };
         }
 
-        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale ) {
+        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -686,12 +794,13 @@
 
                                     if (lstStyle && finalProps.bullet) {
                                         let bulletEl;
+                                        const bulletColor = resolveColor(finalProps.bullet.color, slideContext);
                                         if (finalProps.bullet.type === 'char') {
-                                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: finalProps.bullet.char, fontSize: 18, fontFamily: 'Arial', fill: finalProps.bullet.color || '#000' });
+                                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: finalProps.bullet.char, fontSize: 18, fontFamily: 'Arial', fill: bulletColor });
                                         } else if (finalProps.bullet.type === 'auto') {
                                             if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt;
                                             const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
-                                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: bulletChar, fontSize: 18, fontFamily: 'Arial', fill: finalProps.bullet.color || '#000' });
+                                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: bulletChar, fontSize: 18, fontFamily: 'Arial', fill: bulletColor });
                                         } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId) {
                                             const imageDataUrl = imageMap[finalProps.bullet.relId];
                                             if (imageDataUrl) {
@@ -705,13 +814,32 @@
                                         }
                                     }
 
+                                    const firstRun = pNode.getElementsByTagNameNS(DML_NS, 'r')[0];
+                                    let textColor = '#000000'; // default
+                                    if (firstRun) {
+                                        const rPr = firstRun.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                                        if (rPr) {
+                                            const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                                            if (solidFill) {
+                                                const schemeClr = solidFill.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+                                                if (schemeClr) {
+                                                    textColor = resolveColor({ scheme: schemeClr.getAttribute('val') }, slideContext);
+                                                }
+                                                const srgbClr = solidFill.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+                                                if (srgbClr) {
+                                                    textColor = `#${srgbClr.getAttribute('val')}`;
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     const textEl = new Konva.Text( {
                                         x: finalX + ( lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0 ),
                                         y: currentY,
                                         text: pText,
                                         fontSize: 18,
                                         fontFamily: 'Arial',
-                                        fill: '#000',
+                                        fill: textColor,
                                         width: pos.width - indent - ( lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0 ),
                                     } );
                                     textGroup.add( textEl );
