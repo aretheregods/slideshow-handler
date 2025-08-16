@@ -474,9 +474,67 @@
             return colorMap;
         }
 
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : null;
+        }
+
+        function rgbToHex(r, g, b) {
+            return "#" + ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b)).toString(16).slice(1).toUpperCase();
+        }
+
+        function applyTint(hex, tint) {
+            const base = hexToRgb(hex);
+            if (!base) return hex;
+            const amount = tint / 100000; // Tint is provided as e.g. 80000 for 80%
+            const r = base.r * (1 - amount) + 255 * amount;
+            const g = base.g * (1 - amount) + 255 * amount;
+            const b = base.b * (1 - amount) + 255 * amount;
+            return rgbToHex(r, g, b);
+        }
+
+        function applyShade(hex, shade) {
+            const base = hexToRgb(hex);
+            if (!base) return hex;
+            const amount = shade / 100000; // Shade is provided as e.g. 80000 for 80%
+            const r = base.r * (1 - amount);
+            const g = base.g * (1 - amount);
+            const b = base.b * (1 - amount);
+            return rgbToHex(r, g, b);
+        }
+
+        function parseColor(colorNode) {
+            if (!colorNode) return null;
+
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const srgbClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+            if (srgbClrNode) {
+                return { srgb: `#${srgbClrNode.getAttribute('val')}` };
+            }
+
+            const schemeClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+            if (schemeClrNode) {
+                const color = { scheme: schemeClrNode.getAttribute('val') };
+                const tintNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'tint')[0];
+                if (tintNode) color.tint = parseInt(tintNode.getAttribute('val'));
+
+                const shadeNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'shade')[0];
+                if (shadeNode) color.shade = parseInt(shadeNode.getAttribute('val'));
+
+                // TODO: Add other transformations like lumMod, lumOff, etc.
+                return color;
+            }
+
+            return null;
+        }
+
         function resolveColor(colorObj, slideContext) {
             if (!colorObj || !slideContext.theme) {
-                return '#000000'; // Default color
+                return '#000000';
             }
 
             if (colorObj.srgb) {
@@ -486,11 +544,18 @@
             if (colorObj.scheme) {
                 const themeColorName = slideContext.colorMap[colorObj.scheme];
                 if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
-                    return slideContext.theme.colorScheme[themeColorName];
+                    let hex = slideContext.theme.colorScheme[themeColorName];
+                    if (colorObj.tint) {
+                        hex = applyTint(hex, colorObj.tint);
+                    }
+                    if (colorObj.shade) {
+                        hex = applyShade(hex, colorObj.shade);
+                    }
+                    return hex;
                 }
             }
 
-            return '#000000'; // Default color
+            return '#000000';
         }
 
         function parseBackground(xmlDoc, slideContext) {
@@ -504,14 +569,9 @@
             if (bgPrNode) {
                 const solidFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                 if (solidFillNode) {
-                    const srgbClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
-                    if (srgbClrNode) {
-                        return { type: 'color', value: `#${srgbClrNode.getAttribute('val')}` };
-                    }
-                    const schemeClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
-                    if (schemeClrNode) {
-                        const color = resolveColor({ scheme: schemeClrNode.getAttribute('val') }, slideContext);
-                        return { type: 'color', value: color };
+                    const colorObj = parseColor(solidFillNode);
+                    if (colorObj) {
+                        return { type: 'color', value: resolveColor(colorObj, slideContext) };
                     }
                 }
 
@@ -545,14 +605,9 @@
 
             const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
             if (solidFillNode) {
-                const srgbClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
-                if (srgbClrNode) {
-                    properties.fill = { type: 'solid', color: `#${srgbClrNode.getAttribute('val')}` };
-                }
-                const schemeClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
-                if (schemeClrNode) {
-                    const color = resolveColor({ scheme: schemeClrNode.getAttribute('val') }, slideContext);
-                    properties.fill = { type: 'solid', color: color };
+                const colorObj = parseColor(solidFillNode);
+                if (colorObj) {
+                    properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
                 }
             }
 
@@ -562,13 +617,9 @@
                 properties.stroke.width = parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL;
                 const solidFill = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                 if (solidFill) {
-                     const srgbClr = solidFill.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
-                    if (srgbClr) {
-                        properties.stroke.color = `#${srgbClr.getAttribute('val')}`;
-                    }
-                    const schemeClr = solidFill.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
-                    if (schemeClr) {
-                        properties.stroke.color = resolveColor({ scheme: schemeClr.getAttribute('val') }, slideContext);
+                    const colorObj = parseColor(solidFill);
+                    if (colorObj) {
+                         properties.stroke.color = resolveColor(colorObj, slideContext);
                     }
                 }
             }
@@ -635,13 +686,14 @@
 
             const buClr = pPrNode.getElementsByTagNameNS(DML_NS, 'buClr')[0];
             if (buClr) {
-                const schemeClr = buClr.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
-                if (schemeClr) {
-                    properties.bullet.color = { scheme: schemeClr.getAttribute('val') };
-                }
+                // Here, the color element is not a solidFill, but a direct child
                 const srgbClr = buClr.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
                 if (srgbClr) {
                     properties.bullet.color = { srgb: `#${srgbClr.getAttribute('val')}` };
+                }
+                const schemeClr = buClr.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+                if (schemeClr) {
+                    properties.bullet.color = parseColor(buClr);
                 }
             }
 
@@ -653,14 +705,7 @@
 
                 const solidFillNode = defRPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                 if (solidFillNode) {
-                    const srgbClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
-                    if (srgbClrNode) {
-                        properties.defRPr.color = { srgb: `#${srgbClrNode.getAttribute('val')}` };
-                    }
-                    const schemeClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
-                    if (schemeClrNode) {
-                        properties.defRPr.color = { scheme: schemeClrNode.getAttribute('val') };
-                    }
+                    properties.defRPr.color = parseColor(solidFillNode);
                 }
             }
 
@@ -986,10 +1031,7 @@
 
                                             const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                                             if (solidFill) {
-                                                const schemeClr = solidFill.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
-                                                if (schemeClr) finalRunProps.color = { scheme: schemeClr.getAttribute('val') };
-                                                const srgbClr = solidFill.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
-                                                if (srgbClr) finalRunProps.color = { srgb: `#${srgbClr.getAttribute('val')}` };
+                                                finalRunProps.color = parseColor(solidFill);
                                             }
                                         }
                                     }
