@@ -745,7 +745,7 @@
 
                 const type = ph.getAttribute( 'type' );
                 const idx = ph.getAttribute( 'idx' );
-                const key = type || `idx_${ idx }`;
+                const key = idx ? `idx_${idx}` : type;
 
                 let pos = null;
                 const xfrmNode = sp.getElementsByTagNameNS( DML_NS, 'xfrm' )[ 0 ];
@@ -794,7 +794,7 @@
                 if (placeholder) {
                     phType = placeholder.getAttribute('type');
                     const phIdx = placeholder.getAttribute('idx');
-                    phKey = phType || (phIdx ? `idx_${phIdx}` : null);
+                    phKey = phIdx ? `idx_${phIdx}` : phType;
                 }
             }
 
