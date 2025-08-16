@@ -593,7 +593,7 @@
             if (!pPrNode) return {};
 
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-            const properties = { bullet: {} };
+            const properties = { bullet: {}, defRPr: {} };
 
             const marL = pPrNode.getAttribute('marL');
             if (marL) properties.indent = parseInt(marL) / EMU_PER_PIXEL;
@@ -642,6 +642,25 @@
                 const srgbClr = buClr.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
                 if (srgbClr) {
                     properties.bullet.color = { srgb: `#${srgbClr.getAttribute('val')}` };
+                }
+            }
+
+            const defRPrNode = pPrNode.getElementsByTagNameNS(DML_NS, 'defRPr')[0];
+            if (defRPrNode) {
+                properties.defRPr.size = parseInt(defRPrNode.getAttribute('sz') || '1800') / 100;
+                properties.defRPr.bold = defRPrNode.getAttribute('b') === '1';
+                properties.defRPr.italic = defRPrNode.getAttribute('i') === '1';
+
+                const solidFillNode = defRPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                if (solidFillNode) {
+                    const srgbClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+                    if (srgbClrNode) {
+                        properties.defRPr.color = { srgb: `#${srgbClrNode.getAttribute('val')}` };
+                    }
+                    const schemeClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+                    if (schemeClrNode) {
+                        properties.defRPr.color = { scheme: schemeClrNode.getAttribute('val') };
+                    }
                 }
             }
 
@@ -915,82 +934,89 @@
                                     const finalProps = {
                                         ...defaultLevelProps,
                                         ...slideLevelProps,
-                                        bullet: { ...defaultLevelProps.bullet, ...slideLevelProps.bullet }
+                                        bullet: { ...(defaultLevelProps.bullet || {}), ...(slideLevelProps.bullet || {}) },
+                                        defRPr: { ...(defaultLevelProps.defRPr || {}), ...(slideLevelProps.defRPr || {}) }
                                     };
 
-                                    const isTitle = index === 0 && lstStyle && (!finalProps.bullet || finalProps.bullet.type === 'none');
+                                    let indent = finalProps.indent || (level * INDENTATION_AMOUNT);
+                                    const finalX = pos.x + indent;
+                                    let bulletHeight = 0;
 
-                                    if (isTitle) {
-                                        const titleEl = new Konva.Text({
-                                            x: pos.x,
-                                            y: currentY,
-                                            text: pText,
-                                            fontSize: 24,
-                                            fontFamily: 'Arial',
-                                            fill: '#000',
-                                            width: pos.width,
-                                            padding: 10,
-                                        });
-                                        textGroup.add(titleEl);
-                                        currentY += titleEl.height();
-                                    } else {
-                                        let indent = finalProps.indent || (level * INDENTATION_AMOUNT);
-                                        const finalX = pos.x + indent;
-                                        let bulletHeight = 0;
+                                    if (lstStyle && finalProps.bullet && finalProps.bullet.type !== 'none') {
+                                        let bulletEl;
+                                        const bulletColor = resolveColor(finalProps.bullet.color, slideContext);
+                                        // Use the paragraph's default font size for the bullet, if available
+                                        const bulletFontSize = finalProps.defRPr.size || 18;
 
-                                        if (lstStyle && finalProps.bullet) {
-                                            let bulletEl;
-                                            const bulletColor = resolveColor(finalProps.bullet.color, slideContext);
-                                            if (finalProps.bullet.type === 'char') {
-                                                bulletEl = new Konva.Text({ x: finalX, y: currentY, text: finalProps.bullet.char, fontSize: 18, fontFamily: 'Arial', fill: bulletColor });
-                                            } else if (finalProps.bullet.type === 'auto') {
-                                                if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt;
-                                                const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
-                                                bulletEl = new Konva.Text({ x: finalX, y: currentY, text: bulletChar, fontSize: 18, fontFamily: 'Arial', fill: bulletColor });
-                                            } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId) {
-                                                const imageDataUrl = imageMap[finalProps.bullet.relId];
-                                                if (imageDataUrl) {
-                                                    const imageObj = await createImage(imageDataUrl);
-                                                    bulletEl = new Konva.Image({ x: finalX, y: currentY, image: imageObj, width: 16, height: 16 });
-                                                }
-                                            }
-                                            if (bulletEl) {
-                                                textGroup.add(bulletEl);
-                                                bulletHeight = bulletEl.height();
+                                        if (finalProps.bullet.type === 'char') {
+                                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                                        } else if (finalProps.bullet.type === 'auto') {
+                                            if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
+                                            const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
+                                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                                        } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId) {
+                                            const imageDataUrl = imageMap[finalProps.bullet.relId];
+                                            if (imageDataUrl) {
+                                                const imageObj = await createImage(imageDataUrl);
+                                                // TODO: Use bullet size properties (buSzPct, buSzPts)
+                                                bulletEl = new Konva.Image({ x: finalX, y: currentY, image: imageObj, width: 16, height: 16 });
                                             }
                                         }
-
-                                        const firstRun = pNode.getElementsByTagNameNS(DML_NS, 'r')[0];
-                                        let textColor = '#000000';
-                                        if (firstRun) {
-                                            const rPr = firstRun.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                                            if (rPr) {
-                                                const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                                                if (solidFill) {
-                                                    const schemeClr = solidFill.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
-                                                    if (schemeClr) {
-                                                        textColor = resolveColor({ scheme: schemeClr.getAttribute('val') }, slideContext);
-                                                    }
-                                                    const srgbClr = solidFill.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
-                                                    if (srgbClr) {
-                                                        textColor = `#${srgbClr.getAttribute('val')}`;
-                                                    }
-                                                }
-                                            }
+                                        if (bulletEl) {
+                                            textGroup.add(bulletEl);
+                                            bulletHeight = bulletEl.height();
                                         }
-
-                                        const textEl = new Konva.Text( {
-                                            x: finalX + ( lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0 ),
-                                            y: currentY,
-                                            text: pText,
-                                            fontSize: 18,
-                                            fontFamily: 'Arial',
-                                            fill: textColor,
-                                            width: pos.width - indent - ( lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0 ),
-                                        } );
-                                        textGroup.add( textEl );
-                                        currentY += Math.max(bulletHeight, textEl.height());
                                     }
+
+                                    // Start with paragraph-level default run properties
+                                    const finalRunProps = { ...finalProps.defRPr };
+
+                                    // Override with run-specific properties from the first run
+                                    // Note: A more complete implementation would handle multiple runs per paragraph.
+                                    const firstRun = pNode.getElementsByTagNameNS(DML_NS, 'r')[0];
+                                    if (firstRun) {
+                                        const rPr = firstRun.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                                        if (rPr) {
+                                            const sz = rPr.getAttribute('sz');
+                                            if (sz) finalRunProps.size = parseInt(sz) / 100;
+                                            if (rPr.getAttribute('b') === '1') finalRunProps.bold = true;
+                                            else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
+                                            if (rPr.getAttribute('i') === '1') finalRunProps.italic = true;
+                                            else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
+
+                                            const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                                            if (solidFill) {
+                                                const schemeClr = solidFill.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+                                                if (schemeClr) finalRunProps.color = { scheme: schemeClr.getAttribute('val') };
+                                                const srgbClr = solidFill.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+                                                if (srgbClr) finalRunProps.color = { srgb: `#${srgbClr.getAttribute('val')}` };
+                                            }
+                                        }
+                                    }
+
+                                    const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
+                                    const fontSize = finalRunProps.size || 18;
+                                    const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' :
+                                                      finalRunProps.bold ? 'bold' :
+                                                      finalRunProps.italic ? 'italic' : 'normal';
+
+                                    let fontFamily = (slideContext.theme && slideContext.theme.fontScheme && slideContext.theme.fontScheme.minor) || 'Arial';
+                                    if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                                        fontFamily = (slideContext.theme && slideContext.theme.fontScheme && slideContext.theme.fontScheme.major) || 'Arial';
+                                    }
+
+                                    const textEl = new Konva.Text( {
+                                        x: finalX + ( lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0 ),
+                                        y: currentY,
+                                        text: pText,
+                                        fontSize: fontSize,
+                                        fontFamily: fontFamily,
+                                        fontStyle: fontStyle,
+                                        fill: textColor,
+                                        width: pos.width - indent - ( lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0 ),
+                                    } );
+                                    textGroup.add( textEl );
+                                    currentY += Math.max(bulletHeight, textEl.height());
                                     fullDebugText.push( pText );
                                 }
                             }
