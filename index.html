@@ -277,6 +277,8 @@
 
                     let finalPlaceholders = {};
                     let defaultTextStyles = {};
+                    let masterXml, layoutXml;
+
                     if ( layoutRel ) {
                         const layoutPath = new URL( layoutRel.target, `file:///ppt/slides/` ).pathname.substring( 1 );
                         const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
@@ -285,14 +287,14 @@
 
                         if ( masterRel ) {
                             const masterPath = new URL( masterRel.target, `file:///ppt/slideLayouts/` ).pathname.substring( 1 );
-                            const masterXml = await zip.file( masterPath ).async( "string" );
+                            masterXml = await zip.file( masterPath ).async( "string" );
                             const masterData = parseMasterOrLayout( masterXml );
                             finalPlaceholders = masterData.placeholders;
                             defaultTextStyles = masterData.defaultTextStyles;
                             slideContext.colorMap = masterData.colorMap;
                         }
 
-                        const layoutXml = await zip.file( layoutPath ).async( "string" );
+                        layoutXml = await zip.file( layoutPath ).async( "string" );
                         const layoutData = parseMasterOrLayout( layoutXml, true );
                         finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
                         if (layoutData.colorMapOverride) {
@@ -301,6 +303,16 @@
                     }
 
                     const slideXml = await zip.file( slidePath ).async( "string" );
+
+                    const parser = new DOMParser();
+                    const slideXmlDoc = parser.parseFromString(slideXml, "application/xml");
+                    const layoutXmlDoc = layoutXml ? parser.parseFromString(layoutXml, "application/xml") : null;
+                    const masterXmlDoc = masterXml ? parser.parseFromString(masterXml, "application/xml") : null;
+
+                    const slideBg = parseBackground(slideXmlDoc, slideContext);
+                    const layoutBg = layoutXmlDoc ? parseBackground(layoutXmlDoc, slideContext) : null;
+                    const masterBg = masterXmlDoc ? parseBackground(masterXmlDoc, slideContext) : null;
+                    const finalBg = slideBg || layoutBg || masterBg;
 
                     const slideContainer = document.createElement( 'div' );
                     slideContainer.className = 'slide-viewer';
@@ -311,7 +323,7 @@
                     const scale = containerWidth / slideSize.width;
                     slideContainer.style.height = `${slideSize.height * scale}px`;
 
-                    const { renderedElements, debugText } = await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext );
+                    const { renderedElements, debugText } = await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg );
                     if ( renderedElements > 0 ) {
                         allSlidesDebugText += `--- SLIDE ${ i + 1 } ---\n${ debugText }\n`;
                         totalElementsFound += renderedElements;
@@ -478,6 +490,41 @@
             return '#000000'; // Default color
         }
 
+        function parseBackground(xmlDoc, slideContext) {
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            const bgNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'bg')[0];
+            if (!bgNode) return null;
+
+            const bgPrNode = bgNode.getElementsByTagNameNS(PML_NS, 'bgPr')[0];
+            if (bgPrNode) {
+                const solidFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                if (solidFillNode) {
+                    const srgbClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+                    if (srgbClrNode) {
+                        return { type: 'color', value: `#${srgbClrNode.getAttribute('val')}` };
+                    }
+                    const schemeClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+                    if (schemeClrNode) {
+                        const color = resolveColor({ scheme: schemeClrNode.getAttribute('val') }, slideContext);
+                        return { type: 'color', value: color };
+                    }
+                }
+
+                const blipFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'blipFill')[0];
+                if (blipFillNode) {
+                    const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
+                    if (blipNode) {
+                        const relId = blipNode.getAttribute('r:embed');
+                        return { type: 'image', relId: relId };
+                    }
+                }
+            }
+
+            return null;
+        }
+
         function parseParagraphProperties(pPrNode) {
             if (!pPrNode) return {};
 
@@ -611,7 +658,7 @@
             return { placeholders: layoutData, defaultTextStyles, colorMap, colorMapOverride };
         }
 
-        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext ) {
+        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -633,8 +680,37 @@
             stage.width(slideSize.width * scale);
             stage.height(slideSize.height * scale);
 
+            const bgLayer = new Konva.Layer();
+            stage.add(bgLayer);
+
             const layer = new Konva.Layer();
             stage.add( layer );
+
+            if (finalBg) {
+                if (finalBg.type === 'color') {
+                    const bgRect = new Konva.Rect({
+                        x: 0,
+                        y: 0,
+                        width: slideSize.width,
+                        height: slideSize.height,
+                        fill: finalBg.value,
+                    });
+                    bgLayer.add(bgRect);
+                } else if (finalBg.type === 'image') {
+                    const imageDataUrl = imageMap[finalBg.relId];
+                    if (imageDataUrl) {
+                        const imageObj = await createImage(imageDataUrl);
+                        const bgImage = new Konva.Image({
+                            x: 0,
+                            y: 0,
+                            image: imageObj,
+                            width: slideSize.width,
+                            height: slideSize.height,
+                        });
+                        bgLayer.add(bgImage);
+                    }
+                }
+            }
 
             const shapes = xmlDoc.getElementsByTagNameNS( PML_NS, 'sp' );
             for ( const shape of shapes ) {
