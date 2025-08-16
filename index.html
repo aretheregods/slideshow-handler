@@ -1007,7 +1007,7 @@
             }
 
             for ( const [ key, data ] of Object.entries( layoutPlaceholders ) ) {
-                if ( !filledPlaceholders.has( key ) ) continue;
+                if ( filledPlaceholders.has( key ) ) continue;
 
                 const isHeaderFooter = ['hdr', 'ftr', 'dt', 'sldNum'].includes(data.type);
                 if (isHeaderFooter) {
