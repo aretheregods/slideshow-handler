@@ -102,8 +102,6 @@
             margin: 2rem auto;
             position: relative;
             /* FIX: Width and height are now set dynamically */
-            max-width: 960px;
-            /* Limit max size on large screens */
         }
 
         .slide-viewer svg {
@@ -293,11 +291,13 @@
                     const slideContainer = document.createElement( 'div' );
                     slideContainer.className = 'slide-viewer';
                     slideContainer.id = `slide-${ i + 1 }`;
-                    slideContainer.style.width = `${ slideSize.width }px`;
-                    slideContainer.style.height = `${ slideSize.height }px`;
                     slideViewerContainer.appendChild( slideContainer );
 
-                    const { renderedElements, debugText } = await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap );
+                    const containerWidth = slideContainer.offsetWidth;
+                    const scale = containerWidth / slideSize.width;
+                    slideContainer.style.height = `${slideSize.height * scale}px`;
+
+                    const { renderedElements, debugText } = await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale );
                     if ( renderedElements > 0 ) {
                         allSlidesDebugText += `--- SLIDE ${ i + 1 } ---\n${ debugText }\n`;
                         totalElementsFound += renderedElements;
@@ -503,7 +503,7 @@
             return { placeholders: layoutData, defaultTextStyles };
         }
 
-        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap ) {
+        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -521,6 +521,9 @@
                 width: slideSize.width,
                 height: slideSize.height,
             } );
+            stage.scale({ x: scale, y: scale });
+            stage.width(slideSize.width * scale);
+            stage.height(slideSize.height * scale);
 
             const layer = new Konva.Layer();
             stage.add( layer );
