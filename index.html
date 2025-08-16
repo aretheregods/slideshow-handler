@@ -309,6 +309,9 @@
                     const layoutXmlDoc = layoutXml ? parser.parseFromString(layoutXml, "application/xml") : null;
                     const masterXmlDoc = masterXml ? parser.parseFromString(masterXml, "application/xml") : null;
 
+                    const sldNode = slideXmlDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", 'sld')[0];
+                    const showMasterShapes = !sldNode || sldNode.getAttribute('showMasterSp') !== '0';
+
                     const slideBg = parseBackground(slideXmlDoc, slideContext);
                     const layoutBg = layoutXmlDoc ? parseBackground(layoutXmlDoc, slideContext) : null;
                     const masterBg = masterXmlDoc ? parseBackground(masterXmlDoc, slideContext) : null;
@@ -323,7 +326,7 @@
                     const scale = containerWidth / slideSize.width;
                     slideContainer.style.height = `${slideSize.height * scale}px`;
 
-                    const { renderedElements, debugText } = await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg );
+                    const { renderedElements, debugText } = await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes );
                     if ( renderedElements > 0 ) {
                         allSlidesDebugText += `--- SLIDE ${ i + 1 } ---\n${ debugText }\n`;
                         totalElementsFound += renderedElements;
@@ -573,6 +576,19 @@
             return properties;
         }
 
+        function parseTextStyle(styleNode) {
+            if (!styleNode) return null;
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const styles = {};
+            for (let i = 1; i <= 9; i++) {
+                const lvlPr = styleNode.getElementsByTagNameNS(DML_NS, `lvl${i}pPr`)[0];
+                if (lvlPr) {
+                    styles[i - 1] = parseParagraphProperties(lvlPr);
+                }
+            }
+            return styles;
+        }
+
         function parseParagraphProperties(pPrNode) {
             if (!pPrNode) return {};
 
@@ -656,19 +672,16 @@
                 colorMap = parseColorMap(clrMapNode);
             }
 
-            // Parse default text styles from the master
-            const txStyles = xmlDoc.getElementsByTagNameNS( PML_NS, 'txStyles' )[ 0 ];
-            if ( txStyles ) {
-                const bodyStyle = txStyles.getElementsByTagNameNS( PML_NS, 'bodyStyle' )[ 0 ];
-                if ( bodyStyle ) {
-                    defaultTextStyles.body = {};
-                    for ( let i = 1; i <= 9; i++ ) {
-                        const lvlPr = bodyStyle.getElementsByTagNameNS( DML_NS, `lvl${ i }pPr` )[ 0 ];
-                        if ( lvlPr ) {
-                            defaultTextStyles.body[ i - 1 ] = parseParagraphProperties(lvlPr);
-                        }
-                    }
-                }
+            const txStyles = xmlDoc.getElementsByTagNameNS(PML_NS, 'txStyles')[0];
+            if (txStyles) {
+                const titleStyleNode = txStyles.getElementsByTagNameNS(PML_NS, 'titleStyle')[0];
+                defaultTextStyles.title = parseTextStyle(titleStyleNode);
+
+                const bodyStyleNode = txStyles.getElementsByTagNameNS(PML_NS, 'bodyStyle')[0];
+                defaultTextStyles.body = parseTextStyle(bodyStyleNode);
+
+                const otherStyleNode = txStyles.getElementsByTagNameNS(PML_NS, 'otherStyle')[0];
+                defaultTextStyles.other = parseTextStyle(otherStyleNode);
             }
 
             for ( const sp of placeholders ) {
@@ -706,7 +719,7 @@
             return { placeholders: layoutData, defaultTextStyles, colorMap, colorMapOverride };
         }
 
-        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg ) {
+        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -790,10 +803,11 @@
                 let pos = null;
                 const nvPr = shape.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ];
                 let phKey = null;
+                let phType = null;
                 if ( nvPr ) {
                     const placeholder = nvPr.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ];
                     if ( placeholder ) {
-                        const phType = placeholder.getAttribute( 'type' );
+                        phType = placeholder.getAttribute( 'type' );
                         const phIdx = placeholder.getAttribute( 'idx' );
                         phKey = phType || ( phIdx ? `idx_${ phIdx }` : null );
                     }
@@ -887,7 +901,16 @@
                                     }
 
                                     const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
-                                    const defaultLevelProps = (defaultTextStyles.body && defaultTextStyles.body[level]) ? defaultTextStyles.body[level] : {};
+
+                                    let defaultStyle;
+                                    if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                                        defaultStyle = defaultTextStyles.title;
+                                    } else if (phType === 'body') {
+                                        defaultStyle = defaultTextStyles.body;
+                                    } else {
+                                        defaultStyle = defaultTextStyles.other;
+                                    }
+                                    const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
 
                                     const finalProps = {
                                         ...defaultLevelProps,
@@ -1006,34 +1029,36 @@
                 }
             }
 
-            for ( const [ key, data ] of Object.entries( layoutPlaceholders ) ) {
-                if ( filledPlaceholders.has( key ) ) continue;
+            if (showMasterShapes) {
+                for ( const [ key, data ] of Object.entries( layoutPlaceholders ) ) {
+                    if ( filledPlaceholders.has( key ) ) continue;
 
-                const isHeaderFooter = ['hdr', 'ftr', 'dt', 'sldNum'].includes(data.type);
-                if (isHeaderFooter) {
-                    let textContent = data.text;
-                    if ( data.type === 'dt' ) {
-                        textContent = new Date().toLocaleDateString();
-                    } else if ( data.type === 'sldNum' ) {
-                        textContent = slideNum;
-                    }
+                    const isHeaderFooter = ['hdr', 'ftr', 'dt', 'sldNum'].includes(data.type);
+                    if (isHeaderFooter) {
+                        let textContent = data.text;
+                        if ( data.type === 'dt' ) {
+                            textContent = new Date().toLocaleDateString();
+                        } else if ( data.type === 'sldNum' ) {
+                            textContent = slideNum;
+                        }
 
-                    if (textContent) {
-                        const pos = data.pos;
-                        const textColor = resolveColor({ scheme: 'tx1' }, slideContext);
-                        const textEl = new Konva.Text( {
-                            x: pos.x,
-                            y: pos.y,
-                            text: textContent,
-                            fontSize: 12,
-                            fontFamily: 'Arial',
-                            fill: textColor,
-                            width: pos.width,
-                            height: pos.height,
-                            verticalAlign: 'middle',
-                            align: 'center',
-                        } );
-                        layer.add( textEl );
+                        if (textContent) {
+                            const pos = data.pos;
+                            const textColor = resolveColor({ scheme: 'tx1' }, slideContext);
+                            const textEl = new Konva.Text( {
+                                x: pos.x,
+                                y: pos.y,
+                                text: textContent,
+                                fontSize: 12,
+                                fontFamily: 'Arial',
+                                fill: textColor,
+                                width: pos.width,
+                                height: pos.height,
+                                verticalAlign: 'middle',
+                                align: 'center',
+                            } );
+                            layer.add( textEl );
+                        }
                     }
                 }
             }
