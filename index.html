@@ -994,8 +994,6 @@
                             } else if (themeFill.type === 'gradient') {
                                 // TODO: Handle gradient fills from themes
                             }
-                        } else {
-                             properties.fill = 'none';
                         }
                     }
                 }
@@ -1027,15 +1025,13 @@
 
                                 properties.stroke = strokeProps;
                              }
-                        } else {
-                            properties.stroke = 'none';
                         }
                     }
                 }
             }
 
             // If no fill is defined, apply the default from the theme
-            if (!properties.fill) {
+            if (properties.fill === null) {
                 if (slideContext.theme?.formatScheme?.fills?.[0]?.type === 'solid') {
                      const themeFill = slideContext.theme.formatScheme.fills[0];
                      properties.fill = { type: 'solid', color: resolveColor(themeFill.color, slideContext) };
@@ -1043,7 +1039,7 @@
             }
 
             // If no stroke is defined, apply the default from the theme
-            if (!properties.stroke) {
+            if (properties.stroke === null) {
                 if (slideContext.theme?.formatScheme?.lines?.[0]?.type === 'solid') {
                     const themeLine = slideContext.theme.formatScheme.lines[0];
                     const strokeProps = { ...themeLine };
