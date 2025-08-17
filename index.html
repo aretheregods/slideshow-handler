@@ -96,12 +96,13 @@
 
         /* --- Slide Viewer & Debug Styling --- */
         .slide-viewer {
+            width: 100%;
+            height: auto;
             border: 1px solid #e5e7eb;
             background-color: #fff;
             box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
             margin: 2rem auto;
             position: relative;
-            /* FIX: Width and height are now set dynamically */
         }
 
         .slide-viewer svg {
@@ -193,8 +194,16 @@
     </div>
 
     <!-- Main application script -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.2.0/dist/chart.umd.js"></script>
     <script type="module">
-        import JSZip from 'https://cdn.jsdelivr.net/npm/jszip/+esm';
+        import {
+            BlobReader,
+            BlobWriter,
+            TextReader,
+            TextWriter,
+            ZipReader,
+            ZipWriter,
+        } from "https://deno.land/x/zipjs/index.js";
         import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 
         const EMU_PER_PIXEL = 9525; // Standard conversion for 96 DPI
@@ -205,9 +214,59 @@
         const fileInput = document.getElementById( 'pptx-file' );
         const fileInfo = document.getElementById( 'file-info' );
         const outputContainer = document.getElementById( 'output-container' );
+        let activeCharts = [];
         const slideViewerContainer = document.getElementById( 'slide-viewer-container' );
         const loadingIndicator = document.getElementById( 'loading-indicator' );
         const debugOutput = document.getElementById( 'debug-output' );
+
+        function resolvePath(baseDir, target) {
+            // Normalize backslashes to forward slashes for cross-platform compatibility.
+            const normalizedTarget = target.replace(/\\/g, '/');
+
+            // If target is an absolute path (starts with '/'), it's relative to the zip root.
+            if (normalizedTarget.startsWith('/')) {
+                // Just remove the leading slash and return.
+                return normalizedTarget.substring(1);
+            }
+            // Otherwise, resolve it relative to the baseDir.
+            const path = baseDir + '/' + normalizedTarget;
+            const parts = path.split('/');
+            const resolved = [];
+            for (const part of parts) {
+                if (part === '..') {
+                    resolved.pop();
+                } else if (part !== '.' && part !== '') {
+                    resolved.push(part);
+                }
+            }
+            return resolved.join('/');
+        }
+        function parseXmlString(xmlString, identifier) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+            const errorNode = xmlDoc.querySelector("parsererror");
+            if (errorNode) {
+                console.error(`XML Parsing Error in ${identifier}:`, errorNode.innerHTML);
+                console.log(`Problematic XML for ${identifier}:`, xmlString);
+            }
+            return xmlDoc;
+        }
+
+        async function getNormalizedXmlString(entriesMap, path) {
+            const entry = entriesMap.get(path);
+            if (!entry) return null;
+
+            const writer = new TextWriter();
+            let xmlString = await entry.getData(writer);
+
+            // Strip BOM if present, as it can interfere with XML parsing on some platforms.
+            if (xmlString.charCodeAt(0) === 0xFEFF) {
+                xmlString = xmlString.substring(1);
+            }
+
+            // Normalize line endings to prevent cross-platform parsing issues.
+            return xmlString.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        }
 
         fileInput.addEventListener( 'change', async ( event ) => {
             const file = event.target.files[ 0 ];
@@ -220,28 +279,31 @@
             loadingIndicator.style.display = 'block';
             debugOutput.innerHTML = '';
 
+            const zipReader = new ZipReader(new BlobReader(file));
             try {
-                const zip = await JSZip.loadAsync( file );
+                const entries = await zipReader.getEntries();
+                const entriesMap = new Map(entries.map(entry => [entry.filename, entry]));
 
-                const presRels = await getRelationships( zip, "ppt/_rels/presentation.xml.rels" );
+                const presRels = await getRelationships( entriesMap, "ppt/_rels/presentation.xml.rels" );
+                const sortedPresRels = Object.values(presRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
                 let theme = null;
-                const themeRel = Object.values(presRels).find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme');
+                const themeRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme');
                 if (themeRel) {
-                    const themePath = new URL(themeRel.target, `file:///ppt/`).pathname.substring(1);
-                    const themeXml = await zip.file(themePath).async("string");
-                    theme = parseTheme(themeXml);
+                    const themePath = resolvePath('ppt', themeRel.target);
+                    const themeXml = await getNormalizedXmlString(entriesMap, themePath);
+                    if (themeXml) theme = parseTheme(themeXml);
                 }
 
                 let tableStyles = {};
-                const tableStylesRel = Object.values(presRels).find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
+                const tableStylesRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
                 if (tableStylesRel) {
-                    const tableStylesPath = new URL(tableStylesRel.target, `file:///ppt/`).pathname.substring(1);
-                    const tableStylesXml = await zip.file(tableStylesPath).async("string");
-                    tableStyles = parseTableStyles(tableStylesXml);
+                    const tableStylesPath = resolvePath('ppt', tableStylesRel.target);
+                    const tableStylesXml = await getNormalizedXmlString(entriesMap, tableStylesPath);
+                    if (tableStylesXml) tableStyles = parseTableStyles(tableStylesXml);
                 }
 
-                const presentationXml = await zip.file( "ppt/presentation.xml" ).async( "string" );
+                const presentationXml = await getNormalizedXmlString(entriesMap, "ppt/presentation.xml");
                 const slideIds = getSlideOrder( presentationXml );
 
                 const slideSize = getSlideSize( presentationXml );
@@ -259,19 +321,26 @@
                     const slideRel = presRels[ slideId ];
                     if ( !slideRel ) continue;
 
-                    const slidePath = new URL( slideRel.target, `file:///ppt/` ).pathname.substring( 1 );
+                    const slidePath = resolvePath( 'ppt', slideRel.target );
                     const slideRelsPath = `ppt/slides/_rels/${ slidePath.split( '/' ).pop() }.rels`;
-                    const slideRels = await getRelationships( zip, slideRelsPath );
+                    const slideRels = await getRelationships( entriesMap, slideRelsPath );
+                    const sortedSlideRels = Object.values(slideRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
                     const imageMap = {};
-                    for (const relId in slideRels) {
-                        const rel = slideRels[relId];
+                    for (const rel of sortedSlideRels) {
                         if (rel.type.endsWith('/image')) {
-                            const imagePath = new URL(rel.target, `file:///ppt/slides/`).pathname.substring(1);
-                            const imageFile = zip.file(imagePath);
-                            if (imageFile) {
-                                const imageData = await imageFile.async('base64');
-                                imageMap[relId] = `data:image/png;base64,${imageData}`;
+                            const imagePath = resolvePath('ppt/slides', rel.target);
+                            const imageEntry = entriesMap.get(imagePath);
+                            if (imageEntry) {
+                                const writer = new BlobWriter();
+                                const imageBlob = await imageEntry.getData(writer);
+                                const reader = new FileReader();
+                                const imageData = await new Promise((resolve, reject) => {
+                                    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                                    reader.onerror = reject;
+                                    reader.readAsDataURL(imageBlob);
+                                });
+                                imageMap[rel.id] = `data:image/png;base64,${imageData}`;
                             }
                         }
                     }
@@ -282,7 +351,7 @@
                         tableStyles: tableStyles,
                     };
 
-                    const layoutRel = Object.values( slideRels ).find( r => r.type.endsWith( '/slideLayout' ) );
+                    const layoutRel = sortedSlideRels.find( r => r.type.endsWith( '/slideLayout' ) );
 
                     let finalPlaceholders = {};
                     let defaultTextStyles = {};
@@ -290,23 +359,30 @@
 
                     let masterStaticShapes = [], layoutStaticShapes = [];
                     if ( layoutRel ) {
-                        const layoutPath = new URL( layoutRel.target, `file:///ppt/slides/` ).pathname.substring( 1 );
+                        const layoutPath = resolvePath('ppt/slides', layoutRel.target);
                         const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
-                        const layoutRels = await getRelationships( zip, layoutRelsPath );
-                        const masterRel = Object.values( layoutRels ).find( r => r.type.endsWith( '/slideMaster' ) );
+                        const layoutRels = await getRelationships( entriesMap, layoutRelsPath );
+                        const sortedLayoutRels = Object.values(layoutRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+                        const masterRel = sortedLayoutRels.find( r => r.type.endsWith( '/slideMaster' ) );
 
+                        let masterData;
                         if ( masterRel ) {
-                            const masterPath = new URL( masterRel.target, `file:///ppt/slideLayouts/` ).pathname.substring( 1 );
-                            masterXml = await zip.file( masterPath ).async( "string" );
-                            const masterData = parseMasterOrLayout( masterXml );
+                            const masterPath = resolvePath('ppt/slideLayouts', masterRel.target);
+                            masterXml = await getNormalizedXmlString(entriesMap, masterPath);
+                            if (masterXml) {
+                                masterData = parseMasterOrLayout( masterXml );
+                            }
                             finalPlaceholders = masterData.placeholders;
                             masterStaticShapes = masterData.staticShapes;
                             defaultTextStyles = masterData.defaultTextStyles;
                             slideContext.colorMap = masterData.colorMap;
                         }
 
-                        layoutXml = await zip.file( layoutPath ).async( "string" );
-                        const layoutData = parseMasterOrLayout( layoutXml, true );
+                        let layoutData;
+                        layoutXml = await getNormalizedXmlString(entriesMap, layoutPath);
+                        if (layoutXml) {
+                            layoutData = parseMasterOrLayout( layoutXml, true );
+                        }
                         finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
                         layoutStaticShapes = layoutData.staticShapes;
                         if (layoutData.colorMapOverride) {
@@ -314,12 +390,11 @@
                         }
                     }
 
-                    const slideXml = await zip.file( slidePath ).async( "string" );
+                    const slideXml = await getNormalizedXmlString(entriesMap, slidePath);
 
-                    const parser = new DOMParser();
-                    const slideXmlDoc = parser.parseFromString(slideXml, "application/xml");
-                    const layoutXmlDoc = layoutXml ? parser.parseFromString(layoutXml, "application/xml") : null;
-                    const masterXmlDoc = masterXml ? parser.parseFromString(masterXml, "application/xml") : null;
+                    const slideXmlDoc = parseXmlString(slideXml, `slide ${slideId}`);
+                    const layoutXmlDoc = layoutXml ? parseXmlString(layoutXml, `layout for slide ${slideId}`) : null;
+                    const masterXmlDoc = masterXml ? parseXmlString(masterXml, `master for slide ${slideId}`) : null;
 
                     const sldNode = slideXmlDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", 'sld')[0];
                     const showMasterShapes = !sldNode || sldNode.getAttribute('showMasterSp') !== '0';
@@ -332,57 +407,72 @@
                     const slideContainer = document.createElement( 'div' );
                     slideContainer.className = 'slide-viewer';
                     slideContainer.id = `slide-${ i + 1 }`;
+                    slideContainer.style.aspectRatio = `${slideSize.width} / ${slideSize.height}`;
                     slideViewerContainer.appendChild( slideContainer );
 
-                    const containerWidth = slideContainer.offsetWidth;
-                    const scale = containerWidth / slideSize.width;
-                    slideContainer.style.height = `${slideSize.height * scale}px`;
-
-                    await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes );
+                    // The renderSlide function now handles its own scaling.
+                    await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap );
                 }
 
             } catch ( error ) {
                 console.error( 'Error parsing the presentation:', error );
                 fileInfo.textContent = `Error: Could not parse presentation. ${ error.message }`;
             } finally {
+                await zipReader.close();
                 loadingIndicator.style.display = 'none';
             }
         } );
 
-        async function getRelationships( zip, path ) {
-            const relsFile = zip.file( path );
-            if ( !relsFile ) return {};
-            const xmlString = await relsFile.async( "string" );
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString( xmlString, "application/xml" );
-            const relationships = xmlDoc.getElementsByTagName( "Relationship" );
+        async function getRelationships(entriesMap, path) {
+            let xmlString = await getNormalizedXmlString(entriesMap, path);
+            if (!xmlString) return {};
+
             const rels = {};
-            for ( const rel of relationships ) {
-                rels[ rel.getAttribute( "Id" ) ] = {
-                    type: rel.getAttribute( "Type" ),
-                    target: rel.getAttribute( "Target" )
-                };
+            // Use regex to parse relationships to be resilient to XML parsing errors.
+            const relRegex = /<Relationship\s+([^>]+)\/?>/g;
+            const attrRegex = /(\w+)="([^"]+)"/g;
+
+            let match;
+            while ((match = relRegex.exec(xmlString)) !== null) {
+                const attrs = {};
+                const attributesString = match[1];
+                for (const attrMatch of attributesString.matchAll(attrRegex)) {
+                    attrs[attrMatch[1]] = attrMatch[2];
+                }
+
+                if (attrs.Id && attrs.Type && attrs.Target) {
+                    rels[attrs.Id] = {
+                        id: attrs.Id,
+                        type: attrs.Type,
+                        target: attrs.Target
+                    };
+                }
             }
             return rels;
         }
 
-        function getSlideOrder( xmlString ) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString( xmlString, "application/xml" );
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const slideIdNodes = xmlDoc.getElementsByTagNameNS( PML_NS, "sldId" );
-            return Array.from( slideIdNodes ).map( node => node.getAttribute( "r:id" ) );
+        function getSlideOrder(xmlString) {
+            const ids = [];
+            const regex = /<[^>:]*:sldId[^>]+r:id="([^"]+)"/g;
+            let match;
+            while ((match = regex.exec(xmlString)) !== null) {
+                ids.push(match[1]);
+            }
+            return ids;
         }
 
-        function getSlideSize( xmlString ) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString( xmlString, "application/xml" );
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const sldSzNode = xmlDoc.getElementsByTagNameNS( PML_NS, "sldSz" )[ 0 ];
-            if ( sldSzNode ) {
-                const cx = parseInt( sldSzNode.getAttribute( "cx" ) );
-                const cy = parseInt( sldSzNode.getAttribute( "cy" ) );
-                return { width: cx / EMU_PER_PIXEL, height: cy / EMU_PER_PIXEL };
+        function getSlideSize(xmlString) {
+            // Two-step regex for robustness: first find the tag, then find the attributes within it.
+            const sldSzTagMatch = xmlString.match(/<[^>:]*:sldSz\s+([^>]+)\/?>/);
+            if (sldSzTagMatch) {
+                const attrs = sldSzTagMatch[1];
+                const cxMatch = attrs.match(/cx="([^"]+)"/);
+                const cyMatch = attrs.match(/cy="([^"]+)"/);
+                if (cxMatch && cyMatch) {
+                    const cx = parseInt(cxMatch[1]);
+                    const cy = parseInt(cyMatch[1]);
+                    return { width: cx / EMU_PER_PIXEL, height: cy / EMU_PER_PIXEL };
+                }
             }
             return { width: 960, height: 720 }; // Default size
         }
@@ -420,8 +510,7 @@
         }
 
         function parseTheme(themeXml) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(themeXml, "application/xml");
+            const xmlDoc = parseXmlString(themeXml, "theme");
             const theme = {
                 colorScheme: {},
                 fontScheme: {},
@@ -444,8 +533,12 @@
                     }
                     const sysClrNode = child.getElementsByTagNameNS(DML_NS, 'sysClr')[0];
                     if (sysClrNode) {
-                        // Use lastClr as a fallback, it's often more reliable
-                        theme.colorScheme[colorName] = `#${sysClrNode.getAttribute('lastClr')}`;
+                        const lastColor = sysClrNode.getAttribute('lastClr');
+                        if (lastColor) {
+                            // Use lastClr as a fallback, it's often more reliable
+                            theme.colorScheme[colorName] = `#${lastColor}`;
+                        }
+                        // If no lastClr, we don't set a color, letting it fall back to default.
                     }
                 }
             }
@@ -558,7 +651,10 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const srgbClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
             if (srgbClrNode) {
-                return { srgb: `#${srgbClrNode.getAttribute('val')}` };
+                const color = { srgb: `#${srgbClrNode.getAttribute('val')}` };
+                const alphaNode = srgbClrNode.getElementsByTagNameNS(DML_NS, 'alpha')[0];
+                if (alphaNode) color.alpha = parseInt(alphaNode.getAttribute('val'));
+                return color;
             }
 
             const schemeClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
@@ -569,6 +665,9 @@
 
                 const shadeNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'shade')[0];
                 if (shadeNode) color.shade = parseInt(shadeNode.getAttribute('val'));
+
+                const alphaNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'alpha')[0];
+                if (alphaNode) color.alpha = parseInt(alphaNode.getAttribute('val'));
 
                 // TODO: Add other transformations like lumMod, lumOff, etc.
                 return color;
@@ -582,37 +681,33 @@
                 return null;
             }
 
+            let hex;
             if (colorObj.srgb) {
-                return colorObj.srgb;
+                hex = colorObj.srgb;
+            } else if (colorObj.scheme) {
+                let themeColorName = slideContext.colorMap[colorObj.scheme] || colorObj.scheme;
+                if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
+                    hex = slideContext.theme.colorScheme[themeColorName];
+                    if (colorObj.tint) hex = applyTint(hex, colorObj.tint);
+                    if (colorObj.shade) hex = applyShade(hex, colorObj.shade);
+                }
             }
 
-            if (colorObj.scheme) {
-                // First, try to resolve the scheme color through the color map (e.g., 'tx1' -> 'dk1')
-                let themeColorName = slideContext.colorMap[colorObj.scheme];
-
-                // If not in colorMap, the scheme value might be the color name itself (e.g., 'accent1')
-                if (!themeColorName) {
-                    themeColorName = colorObj.scheme;
-                }
-
-                if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
-                    let hex = slideContext.theme.colorScheme[themeColorName];
-                    if (colorObj.tint) {
-                        hex = applyTint(hex, colorObj.tint);
+            if (hex) {
+                if (colorObj.alpha) {
+                    const rgb = hexToRgb(hex);
+                    if (rgb) {
+                        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${colorObj.alpha / 100000})`;
                     }
-                    if (colorObj.shade) {
-                        hex = applyShade(hex, colorObj.shade);
-                    }
-                    return hex;
                 }
+                return hex;
             }
 
             return null; // Return null if color can't be resolved
         }
 
         function parseTableStyles(xmlString) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+            const xmlDoc = parseXmlString(xmlString, "tableStyles");
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const styles = {};
 
@@ -733,26 +828,49 @@
 
             const noFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
             const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+            const gradFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
 
             if (noFillNode) {
                 properties.fill = 'none';
             } else if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+            } else if (gradFillNode) {
+                const gsLstNode = gradFillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
+                const stops = [];
+                if (gsLstNode) {
+                    for (const gsNode of gsLstNode.children) {
+                        const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
+                        const colorObj = parseColor(gsNode);
+                        if (colorObj) {
+                            stops.push({ pos, color: resolveColor(colorObj, slideContext) });
+                        }
+                    }
+                }
+                let angle = 0;
+                const linNode = gradFillNode.getElementsByTagNameNS(DML_NS, 'lin')[0];
+                if (linNode) {
+                    angle = parseInt(linNode.getAttribute('ang')) / 60000;
+                }
+                properties.fill = { type: 'gradient', stops, angle };
             } else {
                 const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
                 if (styleNode) {
                     const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
                     if (fillRefNode) {
                         const idx = parseInt(fillRefNode.getAttribute('idx'));
-                        if (idx === 0) {
-                            properties.fill = 'none';
-                        } else if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
+                        if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
                             const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
+                            // The fillRef can have its own color definitions that override the theme
+                            let colorObj = parseColor(fillRefNode) || themeFill.color;
+
                             if (themeFill.type === 'solid') {
-                                let colorObj = parseColor(fillRefNode) || themeFill.color;
                                 properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                            } else if (themeFill.type === 'gradient') {
+                                // TODO: Handle gradient fills from themes
                             }
+                        } else {
+                             properties.fill = 'none';
                         }
                     }
                 }
@@ -778,9 +896,7 @@
                     const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
                     if (lnRefNode) {
                         const idx = parseInt(lnRefNode.getAttribute('idx'));
-                        if (idx === 0) {
-                            properties.stroke = 'none';
-                        } else if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
+                        if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
                              const themeLine = slideContext.theme.formatScheme.lines[idx - 1];
                              if (themeLine.type === 'solid') {
                                 let colorObj = parseColor(lnRefNode) || themeLine.color;
@@ -789,6 +905,8 @@
                                     color: resolveColor(colorObj, slideContext)
                                 };
                              }
+                        } else {
+                            properties.stroke = 'none';
                         }
                     }
                 }
@@ -882,8 +1000,7 @@
         }
 
         function parseMasterOrLayout(xml, isLayout = false) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(xml, "application/xml");
+            const xmlDoc = parseXmlString(xml, isLayout ? "slideLayout" : "slideMaster");
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -987,6 +1104,9 @@
                         y: (parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL) + parentXfrm.y,
                         width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
                         height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
+                        rotation: parseInt(xfrmNode.getAttribute('rot') || '0') / 60000,
+                        flipH: xfrmNode.getAttribute('flipH') === '1',
+                        flipV: xfrmNode.getAttribute('flipV') === '1',
                     };
                 }
             } else if (phKey && layoutPlaceholders[phKey]) {
@@ -1015,7 +1135,16 @@
 
                 if (konvaShape) {
                     if (shapeProps.fill && shapeProps.fill !== 'none') {
-                        konvaShape.fill(shapeProps.fill.color);
+                        if (shapeProps.fill.type === 'solid') {
+                            konvaShape.fill(shapeProps.fill.color);
+                        } else if (shapeProps.fill.type === 'gradient') {
+                            const angleRad = shapeProps.fill.angle * Math.PI / 180;
+                            const x = pos.width / 2;
+                            const y = pos.height / 2;
+                            konvaShape.fillLinearGradientStartPoint({ x: x - Math.cos(angleRad) * x, y: y - Math.sin(angleRad) * y });
+                            konvaShape.fillLinearGradientEndPoint({ x: x + Math.cos(angleRad) * x, y: y + Math.sin(angleRad) * y });
+                            konvaShape.fillLinearGradientColorStops(shapeProps.fill.stops.flatMap(stop => [stop.pos, stop.color]));
+                        }
                     } else {
                         konvaShape.fillEnabled(false);
                     }
@@ -1026,6 +1155,11 @@
                     } else {
                         konvaShape.strokeEnabled(false);
                     }
+
+                    konvaShape.rotation(pos.rotation || 0);
+                    if (pos.flipH) konvaShape.scaleX(-1);
+                    if (pos.flipV) konvaShape.scaleY(-1);
+
                     layer.add(konvaShape);
                 }
             }
@@ -1033,15 +1167,14 @@
             const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
             if (txBody) {
                 const lstStyle = txBody.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
-                const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height }});
+                const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height } });
                 layer.add(textGroup);
                 let currentY = pos.y;
+                let paragraphMaxHeight = 0;
+
                 const paragraphs = Array.from(shape.getElementsByTagNameNS(DML_NS, 'p'));
 
                 for (const pNode of paragraphs) {
-                    const pText = pNode.textContent.trim();
-                    if (!pText) continue;
-
                     const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
                     const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
                     let defaultStyle = defaultTextStyles.other;
@@ -1059,7 +1192,11 @@
                     };
 
                     const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
-                    const finalX = pos.x + indent;
+                    let currentX = pos.x + indent;
+                    let bulletOffset = 0;
+
+                    currentY += paragraphMaxHeight;
+                    paragraphMaxHeight = 0;
 
                     if (lstStyle && finalProps.bullet.type && finalProps.bullet.type !== 'none') {
                         let bulletEl;
@@ -1067,48 +1204,65 @@
                         const bulletFontSize = finalProps.defRPr.size || 18;
 
                         if (finalProps.bullet.type === 'char') {
-                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                            bulletEl = new Konva.Text({ x: currentX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
                         } else if (finalProps.bullet.type === 'auto') {
                             if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
                             const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
-                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                            bulletEl = new Konva.Text({ x: currentX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
                         } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
                             const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
-                            bulletEl = new Konva.Image({ x: finalX, y: currentY, image: imageObj, width: 16, height: 16 });
+                            bulletEl = new Konva.Image({ x: currentX, y: currentY, image: imageObj, width: 16, height: 16 });
                         }
+
                         if (bulletEl) {
                             textGroup.add(bulletEl);
+                            bulletOffset = BULLET_OFFSET;
+                            currentX += bulletOffset;
                         }
                     }
 
-                    const finalRunProps = { ...finalProps.defRPr };
-                    const firstRun = pNode.getElementsByTagNameNS(DML_NS, 'r')[0];
-                    if (firstRun) {
-                        const rPr = firstRun.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                        if (rPr) {
-                            if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
-                            if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
-                            if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
-                            const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                            if (solidFill) finalRunProps.color = parseColor(solidFill);
+                    for (const childNode of pNode.childNodes) {
+                        if (childNode.localName === 'r' || childNode.localName === 'fld') {
+                            const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                            const text = childNode.textContent.trim();
+                            if (!text) continue;
+
+                            const finalRunProps = { ...finalProps.defRPr };
+                            if (rPr) {
+                                if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
+                                if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
+                                if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
+                                const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                                if (solidFill) finalRunProps.color = parseColor(solidFill);
+                            }
+
+                            const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
+                            const fontSize = finalRunProps.size || 18;
+                            const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
+                            let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
+                            if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                                fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                            }
+
+                            const textEl = new Konva.Text({
+                                x: currentX,
+                                y: currentY,
+                                text: text,
+                                fontSize: fontSize,
+                                fontFamily: fontFamily,
+                                fontStyle: fontStyle,
+                                fill: textColor,
+                                width: pos.width - (currentX - pos.x),
+                            });
+                            textGroup.add(textEl);
+                            currentX += textEl.width();
+                            paragraphMaxHeight = Math.max(paragraphMaxHeight, textEl.height());
+                        } else if (childNode.localName === 'br') {
+                            currentY += paragraphMaxHeight || LINE_HEIGHT;
+                            currentX = pos.x + indent + bulletOffset;
+                            paragraphMaxHeight = 0;
                         }
                     }
-
-                    const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
-                    const fontSize = finalRunProps.size || 18;
-                    const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
-                    let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
-                    if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
-                        fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
-                    }
-
-                    const textEl = new Konva.Text({
-                        x: finalX + (lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
-                        y: currentY, text: pText, fontSize: fontSize, fontFamily: fontFamily, fontStyle: fontStyle, fill: textColor,
-                        width: pos.width - indent - (lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
-                    });
-                    textGroup.add(textEl);
-                    currentY += textEl.height();
                 }
             }
             return konvaShape ? konvaShape.getClientRect() : { width: 0, height: 0 };
@@ -1145,7 +1299,7 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
-            let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y };
+            let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y, rot: 0, flipH: false, flipV: false };
             let groupProps = null;
 
             if (grpSpPrNode) {
@@ -1157,6 +1311,9 @@
                         groupXfrm.x += parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
                         groupXfrm.y += parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
                     }
+                    groupXfrm.rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
+                    groupXfrm.flipH = xfrmNode.getAttribute('flipH') === '1';
+                    groupXfrm.flipV = xfrmNode.getAttribute('flipV') === '1';
                 }
             }
 
@@ -1175,6 +1332,9 @@
                 x: groupXfrm.x,
                 y: groupXfrm.y,
             });
+            konvaGroup.rotation(groupXfrm.rot);
+            if (groupXfrm.flipH) konvaGroup.scaleX(-1);
+            if (groupXfrm.flipV) konvaGroup.scaleY(-1);
             layer.add(konvaGroup);
 
             for (const element of group.children) {
@@ -1586,21 +1746,18 @@
             return { width: pos.width, height: pos.height };
         }
 
-        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes ) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
+        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
+            activeCharts = []; // Clear previously rendered charts
+            const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const listCounters = {};
-            const stage = new Konva.Stage( {
+            const stage = new Konva.Stage({
                 container: slideContainer,
                 width: slideSize.width,
                 height: slideSize.height,
-            } );
-            stage.scale({ x: scale, y: scale });
-            stage.width(slideSize.width * scale);
-            stage.height(slideSize.height * scale);
+            });
 
             const bgLayer = new Konva.Layer();
             stage.add(bgLayer);
@@ -1655,12 +1812,174 @@
                         const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                         if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
                             await processTable(element, mainLayer, slideContext);
+                        } else if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/chart') {
+                            const chartRelId = graphicData.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/chart", "chart")[0].getAttribute("r:id");
+                            if (chartRelId && slideRels[chartRelId]) {
+                                const chartPath = resolvePath('ppt/slides', slideRels[chartRelId].target);
+                                console.log(`Found chart with relId ${chartRelId}, path: ${chartPath}`);
+                                const chartXml = await getNormalizedXmlString(entriesMap, chartPath);
+                                if (chartXml) {
+                                    const chartData = parseChart(chartXml);
+                                    await renderChart(element, mainLayer, chartData);
+                                }
+                            }
                         }
                     } else if (tagName === 'pic') {
                         await processPicture(element, mainLayer, imageMap, { x: 0, y: 0 }, layoutPlaceholders);
                     }
                 }
             }
+
+            const resizeStage = () => {
+                const containerWidth = slideContainer.offsetWidth;
+                if (containerWidth > 0) {
+                    const scale = containerWidth / slideSize.width;
+                    stage.scale({ x: scale, y: scale });
+                    stage.width(slideSize.width * scale);
+                    stage.height(slideSize.height * scale);
+
+                    for (const chart of activeCharts) {
+                        chart.container.style.left = `${chart.pos.x * scale}px`;
+                        chart.container.style.top = `${chart.pos.y * scale}px`;
+                        chart.container.style.width = `${chart.pos.width * scale}px`;
+                        chart.container.style.height = `${chart.pos.height * scale}px`;
+                    }
+                }
+            };
+
+            resizeStage();
+
+            const observer = new ResizeObserver(resizeStage);
+            observer.observe(slideContainer);
+        }
+
+        function parseChart(chartXml) {
+            const xmlDoc = parseXmlString(chartXml, "chart");
+            const C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart";
+
+            const chartData = {
+                type: null,
+                title: null,
+                labels: [],
+                datasets: []
+            };
+
+            const titleNode = xmlDoc.getElementsByTagNameNS(C_NS, 'title')[0];
+            if (titleNode) {
+                chartData.title = titleNode.textContent.trim();
+            }
+
+            const plotAreaNode = xmlDoc.getElementsByTagNameNS(C_NS, 'plotArea')[0];
+            if (!plotAreaNode) return null;
+
+            const chartTypeMap = {
+                'barChart': 'bar',
+                'lineChart': 'line',
+                'pieChart': 'pie',
+                // TODO: Add other chart types
+            };
+
+            let chartTypeNode;
+            for (const type in chartTypeMap) {
+                chartTypeNode = plotAreaNode.getElementsByTagNameNS(C_NS, type)[0];
+                if (chartTypeNode) {
+                    chartData.type = chartTypeMap[type];
+                    break;
+                }
+            }
+
+            if (!chartTypeNode) return null;
+
+            const serNodes = chartTypeNode.getElementsByTagNameNS(C_NS, 'ser');
+            for (const serNode of serNodes) {
+                const dataset = {
+                    label: '',
+                    data: []
+                };
+
+                const txValNode = serNode.getElementsByTagNameNS(C_NS, 'tx')[0]?.getElementsByTagNameNS(C_NS, 'v')[0];
+                if (txValNode) {
+                    dataset.label = txValNode.textContent.trim();
+                }
+
+                const catNode = serNode.getElementsByTagNameNS(C_NS, 'cat')[0];
+                if (catNode) {
+                    const strRefNode = catNode.getElementsByTagNameNS(C_NS, 'strRef')[0];
+                    if (strRefNode) {
+                        const ptNodes = strRefNode.getElementsByTagNameNS(C_NS, 'pt');
+                        chartData.labels = Array.from(ptNodes).map(pt => pt.textContent.trim());
+                    }
+                }
+
+                const valNode = serNode.getElementsByTagNameNS(C_NS, 'val')[0];
+                if (valNode) {
+                    const numRefNode = valNode.getElementsByTagNameNS(C_NS, 'numRef')[0];
+                    if (numRefNode) {
+                        const ptNodes = numRefNode.getElementsByTagNameNS(C_NS, 'pt');
+                        dataset.data = Array.from(ptNodes).map(pt => parseFloat(pt.textContent.trim()));
+                    }
+                }
+
+                chartData.datasets.push(dataset);
+            }
+
+            return chartData;
+        }
+
+        async function renderChart(graphicFrame, layer, chartData) {
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            const xfrmNode = graphicFrame.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
+            if (!xfrmNode) return;
+
+            const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+            const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+            if (!offNode || !extNode) return;
+
+            const pos = {
+                x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
+                y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
+                width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
+                height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
+            };
+
+            // Since Konva doesn't directly support embedding charts, we create an
+            // HTML overlay for the chart canvas.
+            const chartContainer = document.createElement('div');
+            chartContainer.style.position = 'absolute';
+            // Defer positioning to the resizeStage function to handle scaling
+
+            const canvas = document.createElement('canvas');
+            chartContainer.appendChild(canvas);
+
+            // The slide container is the Konva stage's parent. We need to append
+            // our chart overlay to the same parent to make it appear on top.
+            layer.getStage().container().appendChild(chartContainer);
+
+            activeCharts.push({
+                container: chartContainer,
+                pos: pos
+            });
+
+            const ctx = canvas.getContext('2d');
+            new Chart(ctx, {
+                type: chartData.type,
+                data: {
+                    labels: chartData.labels,
+                    datasets: chartData.datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: !!chartData.title,
+                            text: chartData.title
+                        }
+                    }
+                }
+            });
         }
     </script>
 </body>
