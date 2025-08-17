@@ -1073,13 +1073,19 @@
             // Level 1: Direct Formatting
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
             if (tcPrNode) {
-                const solidFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                // Find the solidFill that is a direct child of tcPr, not nested in lnL, etc.
+                let solidFillNode = null;
+                for (const child of tcPrNode.children) {
+                    if (child.localName === 'solidFill') {
+                        solidFillNode = child;
+                        break;
+                    }
+                }
+
                 if (solidFillNode) {
                     const colorObj = parseColor(solidFillNode);
                     if (colorObj) {
-                        const finalColor = resolveColor(colorObj, slideContext);
-                        console.log(`DEBUG: Cell[${r},${c}] fill from Direct Formatting. Original color:`, colorObj, `Resolved: ${finalColor}`);
-                        return finalColor;
+                        return resolveColor(colorObj, slideContext);
                     }
                 }
             }
@@ -1093,7 +1099,6 @@
             const styleId = tableStyleIdNode.textContent;
             const tableStyle = slideContext.tableStyles[styleId];
             if (!tableStyle) {
-                console.log(`DEBUG: Cell[${r},${c}] no style found for ID '${styleId}'.`);
                 return null;
             }
 
@@ -1110,46 +1115,40 @@
             const isLastCol = c === numCols - 1;
 
             let stylePart = null;
-            let stylePartName = 'N/A';
 
-            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { stylePart = tableStyle.nwCell; stylePartName = 'nwCell'; }
-            else if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { stylePart = tableStyle.neCell; stylePartName = 'neCell'; }
-            else if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { stylePart = tableStyle.swCell; stylePartName = 'swCell'; }
-            else if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { stylePart = tableStyle.seCell; stylePartName = 'seCell'; }
-            else if (firstRow && isFirstRow && tableStyle.firstRow) { stylePart = tableStyle.firstRow; stylePartName = 'firstRow'; }
-            else if (lastRow && isLastRow && tableStyle.lastRow) { stylePart = tableStyle.lastRow; stylePartName = 'lastRow'; }
-            else if (firstCol && isFirstCol && tableStyle.firstCol) { stylePart = tableStyle.firstCol; stylePartName = 'firstCol'; }
-            else if (lastCol && isLastCol && tableStyle.lastCol) { stylePart = tableStyle.lastCol; stylePartName = 'lastCol'; }
+            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { stylePart = tableStyle.nwCell; }
+            else if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { stylePart = tableStyle.neCell; }
+            else if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { stylePart = tableStyle.swCell; }
+            else if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { stylePart = tableStyle.seCell; }
+            else if (firstRow && isFirstRow && tableStyle.firstRow) { stylePart = tableStyle.firstRow; }
+            else if (lastRow && isLastRow && tableStyle.lastRow) { stylePart = tableStyle.lastRow; }
+            else if (firstCol && isFirstCol && tableStyle.firstCol) { stylePart = tableStyle.firstCol; }
+            else if (lastCol && isLastCol && tableStyle.lastCol) { stylePart = tableStyle.lastCol; }
             else if (bandRow) {
                 const isDataRow = !(firstRow && isFirstRow);
                 if (isDataRow) {
-                    if (r % 2 === 1 && tableStyle.band1H) { stylePart = tableStyle.band1H; stylePartName = 'band1H'; }
-                    else if (r % 2 === 0 && tableStyle.band2H) { stylePart = tableStyle.band2H; stylePartName = 'band2H'; }
+                    if (r % 2 === 1 && tableStyle.band1H) { stylePart = tableStyle.band1H; }
+                    else if (r % 2 === 0 && tableStyle.band2H) { stylePart = tableStyle.band2H; }
                 }
             }
 
             if (!stylePart && bandCol) {
                 const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
                 if (isDataCol) {
-                    if (c % 2 === 1 && tableStyle.band1V) { stylePart = tableStyle.band1V; stylePartName = 'band1V'; }
-                    else if (c % 2 === 0 && tableStyle.band2V) { stylePart = tableStyle.band2V; stylePartName = 'band2V'; }
+                    if (c % 2 === 1 && tableStyle.band1V) { stylePart = tableStyle.band1V; }
+                    else if (c % 2 === 0 && tableStyle.band2V) { stylePart = tableStyle.band2V; }
                 }
             }
 
             if (stylePart && stylePart.tcStyle && stylePart.tcStyle.fill) {
-                const finalColor = resolveColor(stylePart.tcStyle.fill, slideContext);
-                console.log(`DEBUG: Cell[${r},${c}] fill from Table Style '${styleId}', part: '${stylePartName}'. Original color:`, stylePart.tcStyle.fill, `Resolved: ${finalColor}`);
-                return finalColor;
+                return resolveColor(stylePart.tcStyle.fill, slideContext);
             }
 
             const wholeTblStyle = tableStyle.wholeTbl;
             if (wholeTblStyle && wholeTblStyle.tcStyle && wholeTblStyle.tcStyle.fill) {
-                const finalColor = resolveColor(wholeTblStyle.tcStyle.fill, slideContext);
-                console.log(`DEBUG: Cell[${r},${c}] fill from Table Style '${styleId}', part: 'wholeTbl'. Original color:`, wholeTblStyle.tcStyle.fill, `Resolved: ${finalColor}`);
-                return finalColor;
+                return resolveColor(wholeTblStyle.tcStyle.fill, slideContext);
             }
 
-            console.log(`DEBUG: Cell[${r},${c}] using no specific fill from style '${styleId}'.`);
             return null;
         }
 
