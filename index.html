@@ -244,6 +244,11 @@
         }
 
         fileInput.addEventListener( 'change', async ( event ) => {
+            const zipFile = (zip, path) => {
+                console.log(`Accessing file: ${path}`);
+                return zip.file(path);
+            };
+
             const file = event.target.files[ 0 ];
             if ( !file ) return;
 
@@ -264,7 +269,8 @@
                 const themeRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme');
                 if (themeRel) {
                     const themePath = resolvePath('ppt', themeRel.target);
-                    const themeXml = await zip.file(themePath).async("string");
+                    const themeFile = zipFile(zip, themePath);
+                    const themeXml = await themeFile.async("string");
                     theme = parseTheme(themeXml);
                 }
 
@@ -272,11 +278,13 @@
                 const tableStylesRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
                 if (tableStylesRel) {
                     const tableStylesPath = resolvePath('ppt', tableStylesRel.target);
-                    const tableStylesXml = await zip.file(tableStylesPath).async("string");
+                    const tableStylesFile = zipFile(zip, tableStylesPath);
+                    const tableStylesXml = await tableStylesFile.async("string");
                     tableStyles = parseTableStyles(tableStylesXml);
                 }
 
-                const presentationXml = await zip.file( "ppt/presentation.xml" ).async( "string" );
+                const presentationFile = zipFile(zip, "ppt/presentation.xml");
+                const presentationXml = await presentationFile.async( "string" );
                 const slideIds = getSlideOrder( presentationXml );
 
                 const slideSize = getSlideSize( presentationXml );
@@ -303,7 +311,7 @@
                     for (const rel of sortedSlideRels) {
                         if (rel.type.endsWith('/image')) {
                             const imagePath = resolvePath('ppt/slides', rel.target);
-                            const imageFile = zip.file(imagePath);
+                            const imageFile = zipFile(zip, imagePath);
                             if (imageFile) {
                                 const imageData = await imageFile.async('base64');
                                 imageMap[rel.id] = `data:image/png;base64,${imageData}`;
@@ -333,7 +341,8 @@
 
                         if ( masterRel ) {
                             const masterPath = resolvePath('ppt/slideLayouts', masterRel.target);
-                            masterXml = await zip.file( masterPath ).async( "string" );
+                            const masterFile = zipFile(zip, masterPath);
+                            masterXml = await masterFile.async( "string" );
                             const masterData = parseMasterOrLayout( masterXml );
                             finalPlaceholders = masterData.placeholders;
                             masterStaticShapes = masterData.staticShapes;
@@ -341,7 +350,8 @@
                             slideContext.colorMap = masterData.colorMap;
                         }
 
-                        layoutXml = await zip.file( layoutPath ).async( "string" );
+                        const layoutFile = zipFile(zip, layoutPath);
+                        layoutXml = await layoutFile.async( "string" );
                         const layoutData = parseMasterOrLayout( layoutXml, true );
                         finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
                         layoutStaticShapes = layoutData.staticShapes;
@@ -350,7 +360,8 @@
                         }
                     }
 
-                    const slideXml = await zip.file( slidePath ).async( "string" );
+                    const slideFile = zipFile(zip, slidePath);
+                    const slideXml = await slideFile.async( "string" );
 
                     const slideXmlDoc = parseXmlString(slideXml, `slide ${slideId}`);
                     const layoutXmlDoc = layoutXml ? parseXmlString(layoutXml, `layout for slide ${slideId}`) : null;
@@ -383,9 +394,14 @@
         } );
 
         async function getRelationships(zip, path) {
+            console.log(`Getting relationships from: ${path}`);
             const relsFile = zip.file(path);
-            if (!relsFile) return {};
+            if (!relsFile) {
+                console.log(`Relationship file not found: ${path}`);
+                return {};
+            }
             const xmlString = await relsFile.async("string");
+            console.log(`Raw XML for ${path}:`, xmlString);
 
             const rels = {};
             // Use regex to parse relationships to be resilient to XML parsing errors.
