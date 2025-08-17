@@ -214,6 +214,7 @@
         const fileInput = document.getElementById( 'pptx-file' );
         const fileInfo = document.getElementById( 'file-info' );
         const outputContainer = document.getElementById( 'output-container' );
+        let activeCharts = [];
         const slideViewerContainer = document.getElementById( 'slide-viewer-container' );
         const loadingIndicator = document.getElementById( 'loading-indicator' );
         const debugOutput = document.getElementById( 'debug-output' );
@@ -1746,6 +1747,7 @@
         }
 
         async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
+            activeCharts = []; // Clear previously rendered charts
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -1835,6 +1837,13 @@
                     stage.scale({ x: scale, y: scale });
                     stage.width(slideSize.width * scale);
                     stage.height(slideSize.height * scale);
+
+                    for (const chart of activeCharts) {
+                        chart.container.style.left = `${chart.pos.x * scale}px`;
+                        chart.container.style.top = `${chart.pos.y * scale}px`;
+                        chart.container.style.width = `${chart.pos.width * scale}px`;
+                        chart.container.style.height = `${chart.pos.height * scale}px`;
+                    }
                 }
             };
 
@@ -1939,10 +1948,7 @@
             // HTML overlay for the chart canvas.
             const chartContainer = document.createElement('div');
             chartContainer.style.position = 'absolute';
-            chartContainer.style.left = `${pos.x}px`;
-            chartContainer.style.top = `${pos.y}px`;
-            chartContainer.style.width = `${pos.width}px`;
-            chartContainer.style.height = `${pos.height}px`;
+            // Defer positioning to the resizeStage function to handle scaling
 
             const canvas = document.createElement('canvas');
             chartContainer.appendChild(canvas);
@@ -1950,6 +1956,11 @@
             // The slide container is the Konva stage's parent. We need to append
             // our chart overlay to the same parent to make it appear on top.
             layer.getStage().container().appendChild(chartContainer);
+
+            activeCharts.push({
+                container: chartContainer,
+                pos: pos
+            });
 
             const ctx = canvas.getContext('2d');
             new Chart(ctx, {
