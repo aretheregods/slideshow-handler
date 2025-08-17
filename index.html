@@ -1056,18 +1056,18 @@
                 }
             }
 
-            const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-            if (txBody) {
+            const txBodyNodes = shape.getElementsByTagNameNS(PML_NS, 'txBody');
+            for (const txBody of txBodyNodes) {
                 const lstStyle = txBody.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
-                const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height }});
-                layer.add(textGroup);
-                let currentY = pos.y;
-                const paragraphs = Array.from(shape.getElementsByTagNameNS(DML_NS, 'p'));
+                const textGroup = new Konva.Group({ clip: { x: 0, y: 0, width: pos.width, height: pos.height }});
+                const textGroupWrapper = new Konva.Group({ x: pos.x, y: pos.y });
+                textGroupWrapper.add(textGroup);
+                layer.add(textGroupWrapper);
+
+                let currentY = 0;
+                const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
 
                 for (const pNode of paragraphs) {
-                    const pText = pNode.textContent.trim();
-                    if (!pText) continue;
-
                     const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
                     const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
                     let defaultStyle = defaultTextStyles.other;
@@ -1085,7 +1085,13 @@
                     };
 
                     const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
-                    const finalX = pos.x + indent;
+                    const finalX = indent;
+
+                    let paraHeight = 0;
+                    const paraGroup = new Konva.Group({ x: finalX, y: currentY });
+                    textGroup.add(paraGroup);
+
+                    let currentX = 0;
 
                     if (lstStyle && finalProps.bullet.type && finalProps.bullet.type !== 'none') {
                         let bulletEl;
@@ -1093,48 +1099,60 @@
                         const bulletFontSize = finalProps.defRPr.size || 18;
 
                         if (finalProps.bullet.type === 'char') {
-                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                            bulletEl = new Konva.Text({ x: 0, y: 0, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
                         } else if (finalProps.bullet.type === 'auto') {
                             if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
                             const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
-                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                            bulletEl = new Konva.Text({ x: 0, y: 0, text: bulletChar, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
                         } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
                             const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
-                            bulletEl = new Konva.Image({ x: finalX, y: currentY, image: imageObj, width: 16, height: 16 });
+                            bulletEl = new Konva.Image({ x: 0, y: 0, image: imageObj, width: 16, height: 16 });
                         }
+
                         if (bulletEl) {
-                            textGroup.add(bulletEl);
+                            paraGroup.add(bulletEl);
+                            currentX = bulletEl.width() > 0 ? bulletEl.width() + (BULLET_OFFSET - bulletEl.width()) : BULLET_OFFSET; // Simplified positioning
+                            paraHeight = Math.max(paraHeight, bulletEl.height());
                         }
                     }
 
-                    const finalRunProps = { ...finalProps.defRPr };
-                    const firstRun = pNode.getElementsByTagNameNS(DML_NS, 'r')[0];
-                    if (firstRun) {
-                        const rPr = firstRun.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                        if (rPr) {
-                            if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
-                            if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
-                            if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
-                            const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                            if (solidFill) finalRunProps.color = parseColor(solidFill);
+                    const runNodes = pNode.getElementsByTagNameNS(DML_NS, 'r');
+                    for (const rNode of runNodes) {
+                        const textContent = rNode.getElementsByTagNameNS(DML_NS, 't')[0]?.textContent.replace(/\s+/g, ' ') || '';
+                        if (!textContent) continue;
+
+                        const rPrNode = rNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                        const runProps = { ...finalProps.defRPr };
+                        if (rPrNode) {
+                            if (rPrNode.getAttribute('sz')) runProps.size = parseInt(rPrNode.getAttribute('sz')) / 100;
+                            if (rPrNode.getAttribute('b') === '1') runProps.bold = true; else if (rPrNode.getAttribute('b') === '0') runProps.bold = false;
+                            if (rPrNode.getAttribute('i') === '1') runProps.italic = true; else if (rPrNode.getAttribute('i') === '0') runProps.italic = false;
+                            const solidFill = rPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                            if (solidFill) runProps.color = parseColor(solidFill);
                         }
-                    }
 
-                    const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
-                    const fontSize = finalRunProps.size || 18;
-                    const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
-                    let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
-                    if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
-                        fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
-                    }
+                        const textColor = resolveColor(runProps.color, slideContext) || '#000000';
+                        const fontSize = runProps.size || 18;
+                        const fontStyle = runProps.bold && runProps.italic ? 'bold italic' : runProps.bold ? 'bold' : runProps.italic ? 'italic' : 'normal';
+                        let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
+                        if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                            fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                        }
 
-                    const textEl = new Konva.Text({
-                        x: finalX + (lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
-                        y: currentY, text: pText, fontSize: fontSize, fontFamily: fontFamily, fontStyle: fontStyle, fill: textColor,
-                        width: pos.width - indent - (lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
-                    });
-                    textGroup.add(textEl);
-                    currentY += textEl.height();
+                        const textEl = new Konva.Text({
+                            x: currentX,
+                            y: 0,
+                            text: textContent,
+                            fontSize: fontSize,
+                            fontFamily: fontFamily,
+                            fontStyle: fontStyle,
+                            fill: textColor,
+                        });
+                        paraGroup.add(textEl);
+                        currentX += textEl.width();
+                        paraHeight = Math.max(paraHeight, textEl.height());
+                    }
+                     currentY += paraHeight > 0 ? paraHeight : (finalProps.defRPr.size || 18) * 1.2;
                 }
             }
             return konvaShape ? konvaShape.getClientRect() : { width: 0, height: 0 };
