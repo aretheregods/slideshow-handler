@@ -490,8 +490,12 @@
                     }
                     const sysClrNode = child.getElementsByTagNameNS(DML_NS, 'sysClr')[0];
                     if (sysClrNode) {
-                        // Use lastClr as a fallback, it's often more reliable
-                        theme.colorScheme[colorName] = `#${sysClrNode.getAttribute('lastClr')}`;
+                        const lastColor = sysClrNode.getAttribute('lastClr');
+                        if (lastColor) {
+                            // Use lastClr as a fallback, it's often more reliable
+                            theme.colorScheme[colorName] = `#${lastColor}`;
+                        }
+                        // If no lastClr, we don't set a color, letting it fall back to default.
                     }
                 }
             }
@@ -1074,17 +1078,18 @@
                 }
             }
 
-            const txBodyNodes = shape.getElementsByTagNameNS(PML_NS, 'txBody');
-            for (const txBody of txBodyNodes) {
-                const textGroup = new Konva.Group({ clip: { x: 0, y: 0, width: pos.width, height: pos.height }});
-                const textGroupWrapper = new Konva.Group({ x: pos.x, y: pos.y });
-                textGroupWrapper.add(textGroup);
-                layer.add(textGroupWrapper);
-
-                let totalY = 0;
-                const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
+            const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+            if (txBody) {
+                const lstStyle = txBody.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+                const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height }});
+                layer.add(textGroup);
+                let currentY = pos.y;
+                const paragraphs = Array.from(shape.getElementsByTagNameNS(DML_NS, 'p'));
 
                 for (const pNode of paragraphs) {
+                    const pText = pNode.textContent.trim();
+                    if (!pText) continue;
+
                     const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
                     const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
                     let defaultStyle = defaultTextStyles.other;
@@ -1102,65 +1107,63 @@
                     };
 
                     const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
-                    const paraGroup = new Konva.Group({ x: indent, y: totalY });
-                    textGroup.add(paraGroup);
+                    const finalX = pos.x + indent;
+                    let bulletOffset = 0;
 
-                    let currentX = 0;
-                    let currentY = 0;
-                    let lineHeight = 0;
-                    const availableWidth = pos.width - indent;
+                    if (lstStyle && finalProps.bullet.type && finalProps.bullet.type !== 'none') {
+                        let bulletEl;
+                        const bulletColor = resolveColor(finalProps.bullet.color, slideContext);
+                        const bulletFontSize = finalProps.defRPr.size || 18;
 
-                    const runNodes = pNode.getElementsByTagNameNS(DML_NS, 'r');
-                    for (const rNode of runNodes) {
-                        const textContent = rNode.getElementsByTagNameNS(DML_NS, 't')[0]?.textContent || '';
-                        if (!textContent) continue;
-
-                        const rPrNode = rNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                        const runProps = { ...finalProps.defRPr };
-                        if (rPrNode) {
-                            if (rPrNode.getAttribute('sz')) runProps.size = parseInt(rPrNode.getAttribute('sz')) / 100;
-                            if (rPrNode.getAttribute('b') === '1') runProps.bold = true; else if (rPrNode.getAttribute('b') === '0') runProps.bold = false;
-                            if (rPrNode.getAttribute('i') === '1') runProps.italic = true; else if (rPrNode.getAttribute('i') === '0') runProps.italic = false;
-                            const solidFill = rPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                            if (solidFill) runProps.color = parseColor(solidFill);
+                        if (finalProps.bullet.type === 'char') {
+                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                        } else if (finalProps.bullet.type === 'auto') {
+                            if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
+                            const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
+                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                        } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
+                            const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
+                            bulletEl = new Konva.Image({ x: finalX, y: currentY, image: imageObj, width: 16, height: 16 });
                         }
-
-                        const textColor = resolveColor(runProps.color, slideContext) || '#000000';
-                        const fontSize = runProps.size || 18;
-                        const fontStyle = runProps.bold && runProps.italic ? 'bold italic' : runProps.bold ? 'bold' : runProps.italic ? 'italic' : 'normal';
-                        let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
-                        if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
-                            fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
-                        }
-
-                        const words = textContent.split(' ');
-                        for (let i = 0; i < words.length; i++) {
-                            const word = words[i];
-                            const wordWithSpace = i < words.length - 1 ? word + ' ' : word;
-                             const tempText = new Konva.Text({ text: wordWithSpace, fontSize, fontFamily, fontStyle });
-                             const wordWidth = tempText.width();
-
-                             if (currentX > 0 && currentX + wordWidth > availableWidth) {
-                                currentX = 0;
-                                currentY += lineHeight;
-                                lineHeight = 0;
-                             }
-
-                             const textEl = new Konva.Text({
-                                x: currentX,
-                                y: currentY,
-                                text: wordWithSpace,
-                                fontSize,
-                                fontFamily,
-                                fontStyle,
-                                fill: textColor,
-                            });
-                            paraGroup.add(textEl);
-                            currentX += textEl.width();
-                            lineHeight = Math.max(lineHeight, tempText.height());
+                        if (bulletEl) {
+                            textGroup.add(bulletEl);
+                            bulletOffset = BULLET_OFFSET;
                         }
                     }
-                    totalY += currentY + lineHeight;
+
+                    const finalRunProps = { ...finalProps.defRPr };
+                    const firstRun = pNode.getElementsByTagNameNS(DML_NS, 'r')[0];
+                    if (firstRun) {
+                        const rPr = firstRun.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                        if (rPr) {
+                            if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
+                            if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
+                            if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
+                            const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                            if (solidFill) finalRunProps.color = parseColor(solidFill);
+                        }
+                    }
+
+                    const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
+                    const fontSize = finalRunProps.size || 18;
+                    const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
+                    let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
+                    if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                        fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                    }
+
+                    const textEl = new Konva.Text({
+                        x: finalX + bulletOffset,
+                        y: currentY,
+                        text: pText,
+                        fontSize: fontSize,
+                        fontFamily: fontFamily,
+                        fontStyle: fontStyle,
+                        fill: textColor,
+                        width: pos.width - indent - bulletOffset,
+                    });
+                    textGroup.add(textEl);
+                    currentY += textEl.height();
                 }
             }
             return konvaShape ? konvaShape.getClientRect() : { width: 0, height: 0 };
