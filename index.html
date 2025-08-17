@@ -195,7 +195,7 @@
 
     <!-- Main application script -->
     <script type="module">
-        import * as zip from 'https://unpkg.com/@zip.js/zip.js/index.js';
+        import zipJs from 'https://cdn.jsdelivr.net/npm/zip-js/+esm';
         import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 
         const EMU_PER_PIXEL = 9525; // Standard conversion for 96 DPI
@@ -247,7 +247,7 @@
             const entry = entriesMap.get(path);
             if (!entry) return null;
 
-            const writer = new zip.TextWriter();
+            const writer = new zipJs.TextWriter();
             let xmlString = await entry.getData(writer);
 
             // Strip BOM if present, as it can interfere with XML parsing on some platforms.
@@ -270,7 +270,7 @@
             loadingIndicator.style.display = 'block';
             debugOutput.innerHTML = '';
 
-            const zipReader = new zip.ZipReader(new zip.BlobReader(file));
+            const zipReader = new zipJs.ZipReader(new zipJs.BlobReader(file));
             try {
                 const entries = await zipReader.getEntries();
                 const entriesMap = new Map(entries.map(entry => [entry.filename, entry]));
@@ -323,7 +323,7 @@
                             const imagePath = resolvePath('ppt/slides', rel.target);
                             const imageEntry = entriesMap.get(imagePath);
                             if (imageEntry) {
-                                const writer = new zip.BlobWriter();
+                                const writer = new zipJs.BlobWriter();
                                 const imageBlob = await imageEntry.getData(writer);
                                 const reader = new FileReader();
                                 const imageData = await new Promise((resolve, reject) => {
