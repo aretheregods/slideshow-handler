@@ -928,8 +928,6 @@
                 props.color = resolveColor(parseColor(solidFillNode), slideContext);
             }
 
-            if (!props.color) return 'none';
-
             return props;
         }
 
@@ -937,7 +935,7 @@
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const spPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
-            if (!spPrNode) return { fill: 'none', stroke: 'none', geometry: null };
+            if (!spPrNode) return { fill: null, stroke: null, geometry: null };
 
             const properties = { fill: null, stroke: null, geometry: null };
 
