@@ -288,7 +288,6 @@
                     let defaultTextStyles = {};
                     let masterXml, layoutXml;
 
-                    let masterStaticShapes = [], layoutStaticShapes = [];
                     if ( layoutRel ) {
                         const layoutPath = new URL( layoutRel.target, `file:///ppt/slides/` ).pathname.substring( 1 );
                         const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
@@ -300,7 +299,6 @@
                             masterXml = await zip.file( masterPath ).async( "string" );
                             const masterData = parseMasterOrLayout( masterXml );
                             finalPlaceholders = masterData.placeholders;
-                            masterStaticShapes = masterData.staticShapes;
                             defaultTextStyles = masterData.defaultTextStyles;
                             slideContext.colorMap = masterData.colorMap;
                         }
@@ -308,7 +306,6 @@
                         layoutXml = await zip.file( layoutPath ).async( "string" );
                         const layoutData = parseMasterOrLayout( layoutXml, true );
                         finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
-                        layoutStaticShapes = layoutData.staticShapes;
                         if (layoutData.colorMapOverride) {
                             slideContext.colorMap = { ...slideContext.colorMap, ...layoutData.colorMapOverride };
                         }
@@ -338,7 +335,7 @@
                     const scale = containerWidth / slideSize.width;
                     slideContainer.style.height = `${slideSize.height * scale}px`;
 
-                    await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes );
+                    await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes );
                 }
 
             } catch ( error ) {
@@ -425,6 +422,11 @@
             const theme = {
                 colorScheme: {},
                 fontScheme: {},
+                formatScheme: {
+                    fills: [],
+                    lines: [],
+                    effects: [],
+                },
             };
 
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -439,6 +441,7 @@
                     }
                     const sysClrNode = child.getElementsByTagNameNS(DML_NS, 'sysClr')[0];
                     if (sysClrNode) {
+                        // Use lastClr as a fallback, it's often more reliable
                         theme.colorScheme[colorName] = `#${sysClrNode.getAttribute('lastClr')}`;
                     }
                 }
@@ -460,6 +463,44 @@
                         theme.fontScheme.minor = latinFontNode.getAttribute('typeface');
                     }
                 }
+            }
+
+            const fmtSchemeNode = xmlDoc.getElementsByTagNameNS(DML_NS, 'fmtScheme')[0];
+            if (fmtSchemeNode) {
+                const fillStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'fillStyleLst')[0];
+                if (fillStyleLstNode) {
+                    for (const fillNode of fillStyleLstNode.children) {
+                        if (fillNode.localName === 'solidFill') {
+                            const colorObj = parseColor(fillNode);
+                            theme.formatScheme.fills.push({ type: 'solid', color: colorObj });
+                        } else {
+                            // TODO: Handle other fill types like gradFill, etc.
+                            theme.formatScheme.fills.push({ type: 'unsupported' });
+                        }
+                    }
+                }
+
+                const lnStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'lnStyleLst')[0];
+                if (lnStyleLstNode) {
+                    for (const lineNode of lnStyleLstNode.children) {
+                        const width = parseInt(lineNode.getAttribute('w') || '9525');
+                        const cap = lineNode.getAttribute('cap');
+                        const cmpd = lineNode.getAttribute('cmpd');
+
+                        const solidFillNode = lineNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                        if (solidFillNode) {
+                            const colorObj = parseColor(solidFillNode);
+                            theme.formatScheme.lines.push({ type: 'solid', color: colorObj, width: width / EMU_PER_PIXEL, cap, cmpd });
+                        } else {
+                            theme.formatScheme.lines.push({ type: 'unsupported' });
+                        }
+                    }
+                }
+
+                 const effectStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'effectStyleLst')[0];
+                 if (effectStyleLstNode) {
+                    // TODO: Implement effect parsing if needed
+                 }
             }
 
             return theme;
@@ -543,7 +584,14 @@
             }
 
             if (colorObj.scheme) {
-                const themeColorName = slideContext.colorMap[colorObj.scheme];
+                // First, try to resolve the scheme color through the color map (e.g., 'tx1' -> 'dk1')
+                let themeColorName = slideContext.colorMap[colorObj.scheme];
+
+                // If not in colorMap, the scheme value might be the color name itself (e.g., 'accent1')
+                if (!themeColorName) {
+                    themeColorName = colorObj.scheme;
+                }
+
                 if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
                     let hex = slideContext.theme.colorScheme[themeColorName];
                     if (colorObj.tint) {
@@ -556,7 +604,7 @@
                 }
             }
 
-            return null;
+            return null; // Return null if color can't be resolved
         }
 
         function parseTableStyles(xmlString) {
@@ -981,6 +1029,7 @@
 
             const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
             if (txBody) {
+                const lstStyle = txBody.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
                 const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height }});
                 layer.add(textGroup);
                 let currentY = pos.y;
@@ -1009,8 +1058,24 @@
                     const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
                     const finalX = pos.x + indent;
 
-                    if (finalProps.bullet.type && finalProps.bullet.type !== 'none') {
-                        // Bullet rendering logic (simplified)
+                    if (lstStyle && finalProps.bullet.type && finalProps.bullet.type !== 'none') {
+                        let bulletEl;
+                        const bulletColor = resolveColor(finalProps.bullet.color, slideContext);
+                        const bulletFontSize = finalProps.defRPr.size || 18;
+
+                        if (finalProps.bullet.type === 'char') {
+                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                        } else if (finalProps.bullet.type === 'auto') {
+                            if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
+                            const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
+                            bulletEl = new Konva.Text({ x: finalX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                        } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
+                            const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
+                            bulletEl = new Konva.Image({ x: finalX, y: currentY, image: imageObj, width: 16, height: 16 });
+                        }
+                        if (bulletEl) {
+                            textGroup.add(bulletEl);
+                        }
                     }
 
                     const finalRunProps = { ...finalProps.defRPr };
@@ -1035,9 +1100,9 @@
                     }
 
                     const textEl = new Konva.Text({
-                        x: finalX + (finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
+                        x: finalX + (lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
                         y: currentY, text: pText, fontSize: fontSize, fontFamily: fontFamily, fontStyle: fontStyle, fill: textColor,
-                        width: pos.width - indent - (finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
+                        width: pos.width - indent - (lstStyle && finalProps.bullet.type !== 'none' ? BULLET_OFFSET : 0),
                     });
                     textGroup.add(textEl);
                     currentY += textEl.height();
@@ -1046,14 +1111,43 @@
             return konvaShape ? konvaShape.getClientRect() : { width: 0, height: 0 };
         }
 
+        function parseGroupShapeProperties(grpSpPrNode, slideContext) {
+            if (!grpSpPrNode) return null;
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const properties = { fill: null, ext: null };
+
+            const xfrmNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
+            if (xfrmNode) {
+                const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chExt')[0];
+                if (extNode) {
+                    properties.ext = {
+                        width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
+                        height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
+                    };
+                }
+            }
+
+            const solidFillNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+            if (solidFillNode) {
+                const colorObj = parseColor(solidFillNode);
+                if (colorObj) {
+                    properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                }
+            }
+            return properties;
+        }
+
         async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-            const PADDING = 20; // Padding between sibling elements
+            const PADDING = 20;
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
             let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y };
+            let groupProps = null;
+
             if (grpSpPrNode) {
+                groupProps = parseGroupShapeProperties(grpSpPrNode, slideContext);
                 const xfrmNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                 if (xfrmNode) {
                     const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
@@ -1064,23 +1158,30 @@
                 }
             }
 
+            if (groupProps && groupProps.fill && groupProps.ext) {
+                const bgRect = new Konva.Rect({
+                    x: groupXfrm.x,
+                    y: groupXfrm.y,
+                    width: groupProps.ext.width,
+                    height: groupProps.ext.height,
+                    fill: groupProps.fill.color,
+                });
+                layer.add(bgRect);
+            }
+
             const konvaGroup = new Konva.Group({
                 x: groupXfrm.x,
                 y: groupXfrm.y,
-                draggable: true, // For debugging layout
             });
             layer.add(konvaGroup);
 
             let offsetX = 0;
             for (const element of group.children) {
                 const tagName = element.localName;
-                if (tagName === 'sp') {
-                    // We pass a new parent transform with the current offset
+                if (tagName === 'sp' || tagName === 'cxnSp') {
                     const shapeDimensions = await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: offsetX, y: 0 }, defaultTextStyles);
-                    // Update the offset for the next sibling
                     offsetX += shapeDimensions.width + PADDING;
                 } else if (tagName === 'grpSp') {
-                    // Note: a full implementation would need to get the returned dimensions of the group
                     await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: offsetX, y: 0 }, defaultTextStyles);
                 } else if (tagName === 'pic') {
                     const picDimensions = await processPicture(element, konvaGroup, imageMap, { x: offsetX, y: 0 }, layoutPlaceholders);
@@ -1547,7 +1648,7 @@
             if (spTreeNode) {
                 for (const element of spTreeNode.children) {
                     const tagName = element.localName;
-                    if (tagName === 'sp') {
+                    if (tagName === 'sp' || tagName === 'cxnSp') {
                         await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
                     } else if (tagName === 'grpSp') {
                         await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
