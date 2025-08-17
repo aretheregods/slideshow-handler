@@ -346,11 +346,12 @@
                         const sortedLayoutRels = Object.values(layoutRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
                         const masterRel = sortedLayoutRels.find( r => r.type.endsWith( '/slideMaster' ) );
 
+                        let masterData;
                         if ( masterRel ) {
                             const masterPath = resolvePath('ppt/slideLayouts', masterRel.target);
                             masterXml = await getNormalizedXmlString(zip, masterPath);
                             if (masterXml) {
-                                const masterData = parseMasterOrLayout( masterXml );
+                                masterData = parseMasterOrLayout( masterXml );
                             }
                             finalPlaceholders = masterData.placeholders;
                             masterStaticShapes = masterData.staticShapes;
@@ -358,9 +359,10 @@
                             slideContext.colorMap = masterData.colorMap;
                         }
 
+                        let layoutData;
                         layoutXml = await getNormalizedXmlString(zip, layoutPath);
                         if (layoutXml) {
-                            const layoutData = parseMasterOrLayout( layoutXml, true );
+                            layoutData = parseMasterOrLayout( layoutXml, true );
                         }
                         finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
                         layoutStaticShapes = layoutData.staticShapes;
