@@ -210,13 +210,16 @@
         const debugOutput = document.getElementById( 'debug-output' );
 
         function resolvePath(baseDir, target) {
+            // Normalize backslashes to forward slashes for cross-platform compatibility.
+            const normalizedTarget = target.replace(/\\/g, '/');
+
             // If target is an absolute path (starts with '/'), it's relative to the zip root.
-            if (target.startsWith('/')) {
+            if (normalizedTarget.startsWith('/')) {
                 // Just remove the leading slash and return.
-                return target.substring(1);
+                return normalizedTarget.substring(1);
             }
             // Otherwise, resolve it relative to the baseDir.
-            const path = baseDir + '/' + target;
+            const path = baseDir + '/' + normalizedTarget;
             const parts = path.split('/');
             const resolved = [];
             for (const part of parts) {
