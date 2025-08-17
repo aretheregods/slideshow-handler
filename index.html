@@ -209,6 +209,21 @@
         const loadingIndicator = document.getElementById( 'loading-indicator' );
         const debugOutput = document.getElementById( 'debug-output' );
 
+        function resolvePath(baseDir, target) {
+            const baseParts = baseDir.split('/').filter(p => p && p !== '.');
+            const targetParts = target.split('/');
+
+            for (const part of targetParts) {
+                if (part === '..') {
+                    if (baseParts.length > 0) {
+                        baseParts.pop();
+                    }
+                } else if (part !== '.' && part !== '') {
+                    baseParts.push(part);
+                }
+            }
+            return baseParts.join('/');
+        }
         fileInput.addEventListener( 'change', async ( event ) => {
             const file = event.target.files[ 0 ];
             if ( !file ) return;
@@ -228,7 +243,7 @@
                 let theme = null;
                 const themeRel = Object.values(presRels).find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme');
                 if (themeRel) {
-                    const themePath = new URL(themeRel.target, `file:///ppt/`).pathname.substring(1);
+                    const themePath = resolvePath('ppt', themeRel.target);
                     const themeXml = await zip.file(themePath).async("string");
                     theme = parseTheme(themeXml);
                 }
@@ -236,7 +251,7 @@
                 let tableStyles = {};
                 const tableStylesRel = Object.values(presRels).find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
                 if (tableStylesRel) {
-                    const tableStylesPath = new URL(tableStylesRel.target, `file:///ppt/`).pathname.substring(1);
+                    const tableStylesPath = resolvePath('ppt', tableStylesRel.target);
                     const tableStylesXml = await zip.file(tableStylesPath).async("string");
                     tableStyles = parseTableStyles(tableStylesXml);
                 }
@@ -259,7 +274,7 @@
                     const slideRel = presRels[ slideId ];
                     if ( !slideRel ) continue;
 
-                    const slidePath = new URL( slideRel.target, `file:///ppt/` ).pathname.substring( 1 );
+                    const slidePath = resolvePath( 'ppt', slideRel.target );
                     const slideRelsPath = `ppt/slides/_rels/${ slidePath.split( '/' ).pop() }.rels`;
                     const slideRels = await getRelationships( zip, slideRelsPath );
 
@@ -267,7 +282,7 @@
                     for (const relId in slideRels) {
                         const rel = slideRels[relId];
                         if (rel.type.endsWith('/image')) {
-                            const imagePath = new URL(rel.target, `file:///ppt/slides/`).pathname.substring(1);
+                            const imagePath = resolvePath('ppt/slides', rel.target);
                             const imageFile = zip.file(imagePath);
                             if (imageFile) {
                                 const imageData = await imageFile.async('base64');
@@ -290,13 +305,13 @@
 
                     let masterStaticShapes = [], layoutStaticShapes = [];
                     if ( layoutRel ) {
-                        const layoutPath = new URL( layoutRel.target, `file:///ppt/slides/` ).pathname.substring( 1 );
+                        const layoutPath = resolvePath('ppt/slides', layoutRel.target);
                         const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
                         const layoutRels = await getRelationships( zip, layoutRelsPath );
                         const masterRel = Object.values( layoutRels ).find( r => r.type.endsWith( '/slideMaster' ) );
 
                         if ( masterRel ) {
-                            const masterPath = new URL( masterRel.target, `file:///ppt/slideLayouts/` ).pathname.substring( 1 );
+                            const masterPath = resolvePath('ppt/slideLayouts', masterRel.target);
                             masterXml = await zip.file( masterPath ).async( "string" );
                             const masterData = parseMasterOrLayout( masterXml );
                             finalPlaceholders = masterData.placeholders;
