@@ -1076,19 +1076,27 @@
                 const solidFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                 if (solidFillNode) {
                     const colorObj = parseColor(solidFillNode);
-                    if (colorObj) return resolveColor(colorObj, slideContext);
+                    if (colorObj) {
+                        const finalColor = resolveColor(colorObj, slideContext);
+                        console.log(`DEBUG: Cell[${r},${c}] fill from Direct Formatting. Original color:`, colorObj, `Resolved: ${finalColor}`);
+                        return finalColor;
+                    }
                 }
             }
 
             // Levels 2 & 3: Table Styles
             const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
-            if (!tableStyleIdNode) return null;
+            if (!tableStyleIdNode) {
+                return null;
+            }
 
             const styleId = tableStyleIdNode.textContent;
             const tableStyle = slideContext.tableStyles[styleId];
-            if (!tableStyle) return null;
+            if (!tableStyle) {
+                console.log(`DEBUG: Cell[${r},${c}] no style found for ID '${styleId}'.`);
+                return null;
+            }
 
-            // Determine which conditional formats apply
             const firstRow = tblPrNode.getAttribute('firstRow') === '1';
             const lastRow = tblPrNode.getAttribute('lastRow') === '1';
             const firstCol = tblPrNode.getAttribute('firstCol') === '1';
@@ -1102,45 +1110,47 @@
             const isLastCol = c === numCols - 1;
 
             let stylePart = null;
+            let stylePartName = 'N/A';
 
-            // Check conditions in order of precedence
-            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) stylePart = tableStyle.nwCell;
-            else if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) stylePart = tableStyle.neCell;
-            else if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) stylePart = tableStyle.swCell;
-            else if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) stylePart = tableStyle.seCell;
-            else if (firstRow && isFirstRow && tableStyle.firstRow) stylePart = tableStyle.firstRow;
-            else if (lastRow && isLastRow && tableStyle.lastRow) stylePart = tableStyle.lastRow;
-            else if (firstCol && isFirstCol && tableStyle.firstCol) stylePart = tableStyle.firstCol;
-            else if (lastCol && isLastCol && tableStyle.lastCol) stylePart = tableStyle.lastCol;
+            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { stylePart = tableStyle.nwCell; stylePartName = 'nwCell'; }
+            else if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { stylePart = tableStyle.neCell; stylePartName = 'neCell'; }
+            else if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { stylePart = tableStyle.swCell; stylePartName = 'swCell'; }
+            else if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { stylePart = tableStyle.seCell; stylePartName = 'seCell'; }
+            else if (firstRow && isFirstRow && tableStyle.firstRow) { stylePart = tableStyle.firstRow; stylePartName = 'firstRow'; }
+            else if (lastRow && isLastRow && tableStyle.lastRow) { stylePart = tableStyle.lastRow; stylePartName = 'lastRow'; }
+            else if (firstCol && isFirstCol && tableStyle.firstCol) { stylePart = tableStyle.firstCol; stylePartName = 'firstCol'; }
+            else if (lastCol && isLastCol && tableStyle.lastCol) { stylePart = tableStyle.lastCol; stylePartName = 'lastCol'; }
             else if (bandRow) {
-                // Banding does not typically apply to the header row
                 const isDataRow = !(firstRow && isFirstRow);
                 if (isDataRow) {
-                    if (r % 2 === 1 && tableStyle.band1H) stylePart = tableStyle.band1H;
-                    else if (r % 2 === 0 && tableStyle.band2H) stylePart = tableStyle.band2H;
+                    if (r % 2 === 1 && tableStyle.band1H) { stylePart = tableStyle.band1H; stylePartName = 'band1H'; }
+                    else if (r % 2 === 0 && tableStyle.band2H) { stylePart = tableStyle.band2H; stylePartName = 'band2H'; }
                 }
             }
 
-            // Check for vertical banding if no other style has been applied yet
             if (!stylePart && bandCol) {
                 const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
                 if (isDataCol) {
-                    if (c % 2 === 1 && tableStyle.band1V) stylePart = tableStyle.band1V;
-                    else if (c % 2 === 0 && tableStyle.band2V) stylePart = tableStyle.band2V;
+                    if (c % 2 === 1 && tableStyle.band1V) { stylePart = tableStyle.band1V; stylePartName = 'band1V'; }
+                    else if (c % 2 === 0 && tableStyle.band2V) { stylePart = tableStyle.band2V; stylePartName = 'band2V'; }
                 }
             }
 
             if (stylePart && stylePart.tcStyle && stylePart.tcStyle.fill) {
-                return resolveColor(stylePart.tcStyle.fill, slideContext);
+                const finalColor = resolveColor(stylePart.tcStyle.fill, slideContext);
+                console.log(`DEBUG: Cell[${r},${c}] fill from Table Style '${styleId}', part: '${stylePartName}'. Original color:`, stylePart.tcStyle.fill, `Resolved: ${finalColor}`);
+                return finalColor;
             }
 
-            // Level 3: Whole Table Style
             const wholeTblStyle = tableStyle.wholeTbl;
             if (wholeTblStyle && wholeTblStyle.tcStyle && wholeTblStyle.tcStyle.fill) {
-                return resolveColor(wholeTblStyle.tcStyle.fill, slideContext);
+                const finalColor = resolveColor(wholeTblStyle.tcStyle.fill, slideContext);
+                console.log(`DEBUG: Cell[${r},${c}] fill from Table Style '${styleId}', part: 'wholeTbl'. Original color:`, wholeTblStyle.tcStyle.fill, `Resolved: ${finalColor}`);
+                return finalColor;
             }
 
-            return null; // No fill found
+            console.log(`DEBUG: Cell[${r},${c}] using no specific fill from style '${styleId}'.`);
+            return null;
         }
 
         async function processTable(graphicFrame, layer, slideContext) {
