@@ -905,6 +905,9 @@
             if (!lnNode) return null;
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
+            const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+            if (noFillNode) return null;
+
             const props = {
                 width: parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL,
                 cap: lnNode.getAttribute('cap'), // rnd, sq, flat
@@ -1035,7 +1038,10 @@
                 if (slideContext.theme?.formatScheme?.lines?.[0]?.type === 'solid') {
                     const themeLine = slideContext.theme.formatScheme.lines[0];
                     const strokeProps = { ...themeLine };
-                    strokeProps.color = resolveColor(themeLine.color, slideContext);
+                    // The default theme line color is often 'phClr', which can be the same as the
+                    // default fill. To ensure visibility, we'll override the default stroke
+                    // color with the main text color from the theme ('tx1').
+                    strokeProps.color = resolveColor({ scheme: 'tx1' }, slideContext);
                     properties.stroke = strokeProps;
                 }
             }
