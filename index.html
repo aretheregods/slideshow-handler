@@ -1063,6 +1063,9 @@
                 } else if (tagName === 'grpSp') {
                     // Note: a full implementation would need to get the returned dimensions of the group
                     await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: offsetX, y: 0 }, defaultTextStyles);
+                } else if (tagName === 'pic') {
+                    const picDimensions = await processPicture(element, konvaGroup, imageMap, { x: offsetX, y: 0 });
+                    offsetX += picDimensions.width + PADDING;
                 }
             }
         }
@@ -1394,6 +1397,59 @@
             });
         }
 
+        async function processPicture(picNode, layer, imageMap, parentXfrm) {
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            // 1. Get position and size from spPr -> xfrm
+            let pos = null;
+            const spPrNode = picNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
+            if (spPrNode) {
+                const xfrmNode = spPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
+                if (xfrmNode) {
+                    const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                    const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+                    if (offNode && extNode) {
+                        pos = {
+                            x: (parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL) + parentXfrm.x,
+                            y: (parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL) + parentXfrm.y,
+                            width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
+                            height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
+                        };
+                    }
+                }
+            }
+            if (!pos) return { width: 0, height: 0 };
+
+            // 2. Get image relationship ID from blipFill -> blip
+            const blipFillNode = picNode.getElementsByTagNameNS(PML_NS, 'blipFill')[0];
+            if (!blipFillNode) return { width: 0, height: 0 };
+
+            const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
+            if (!blipNode) return { width: 0, height: 0 };
+
+            const relId = blipNode.getAttribute('r:embed');
+            if (!relId || !imageMap[relId]) return { width: 0, height: 0 };
+
+            // 3. Create Konva Image
+            try {
+                const imageObj = await createImage(imageMap[relId]);
+                const konvaImage = new Konva.Image({
+                    x: pos.x,
+                    y: pos.y,
+                    image: imageObj,
+                    width: pos.width,
+                    height: pos.height,
+                });
+                layer.add(konvaImage);
+            } catch (e) {
+                console.error("Error creating image", e);
+            }
+
+
+            return { width: pos.width, height: pos.height };
+        }
+
         async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes ) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
@@ -1451,6 +1507,8 @@
                         if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
                             await processTable(element, mainLayer, slideContext);
                         }
+                    } else if (tagName === 'pic') {
+                        await processPicture(element, mainLayer, imageMap, { x: 0, y: 0 });
                     }
                 }
             }
