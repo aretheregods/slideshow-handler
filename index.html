@@ -231,6 +231,17 @@
             }
             return resolved.join('/');
         }
+        function parseXmlString(xmlString, identifier) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+            const errorNode = xmlDoc.querySelector("parsererror");
+            if (errorNode) {
+                console.error(`XML Parsing Error in ${identifier}:`, errorNode.innerHTML);
+                console.log(`Problematic XML for ${identifier}:`, xmlString);
+            }
+            return xmlDoc;
+        }
+
         fileInput.addEventListener( 'change', async ( event ) => {
             const file = event.target.files[ 0 ];
             if ( !file ) return;
@@ -340,10 +351,9 @@
 
                     const slideXml = await zip.file( slidePath ).async( "string" );
 
-                    const parser = new DOMParser();
-                    const slideXmlDoc = parser.parseFromString(slideXml, "application/xml");
-                    const layoutXmlDoc = layoutXml ? parser.parseFromString(layoutXml, "application/xml") : null;
-                    const masterXmlDoc = masterXml ? parser.parseFromString(masterXml, "application/xml") : null;
+                    const slideXmlDoc = parseXmlString(slideXml, `slide ${slideId}`);
+                    const layoutXmlDoc = layoutXml ? parseXmlString(layoutXml, `layout for slide ${slideId}`) : null;
+                    const masterXmlDoc = masterXml ? parseXmlString(masterXml, `master for slide ${slideId}`) : null;
 
                     const sldNode = slideXmlDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", 'sld')[0];
                     const showMasterShapes = !sldNode || sldNode.getAttribute('showMasterSp') !== '0';
@@ -373,41 +383,52 @@
             }
         } );
 
-        async function getRelationships( zip, path ) {
-            const relsFile = zip.file( path );
-            if ( !relsFile ) return {};
-            const xmlString = await relsFile.async( "string" );
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString( xmlString, "application/xml" );
-            const relationships = xmlDoc.getElementsByTagName( "Relationship" );
+        async function getRelationships(zip, path) {
+            const relsFile = zip.file(path);
+            if (!relsFile) return {};
+            const xmlString = await relsFile.async("string");
+
             const rels = {};
-            for ( const rel of relationships ) {
-                const relId = rel.getAttribute("Id");
-                rels[relId] = {
-                    id: relId,
-                    type: rel.getAttribute( "Type" ),
-                    target: rel.getAttribute( "Target" )
-                };
+            // Use regex to parse relationships to be resilient to XML parsing errors.
+            const relRegex = /<Relationship\s+([^>]+)\/?>/g;
+            const attrRegex = /(\w+)="([^"]+)"/g;
+
+            let match;
+            while ((match = relRegex.exec(xmlString)) !== null) {
+                const attrs = {};
+                let attrMatch;
+                const attributesString = match[1];
+                while ((attrMatch = attrRegex.exec(attributesString)) !== null) {
+                    attrs[attrMatch[1]] = attrMatch[2];
+                }
+
+                if (attrs.Id && attrs.Type && attrs.Target) {
+                    rels[attrs.Id] = {
+                        id: attrs.Id,
+                        type: attrs.Type,
+                        target: attrs.Target
+                    };
+                }
             }
             return rels;
         }
 
-        function getSlideOrder( xmlString ) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString( xmlString, "application/xml" );
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const slideIdNodes = xmlDoc.getElementsByTagNameNS( PML_NS, "sldId" );
-            return Array.from( slideIdNodes ).map( node => node.getAttribute( "r:id" ) );
+        function getSlideOrder(xmlString) {
+            const ids = [];
+            const regex = /<[^>:]*:sldId[^>]+r:id="([^"]+)"/g;
+            let match;
+            while ((match = regex.exec(xmlString)) !== null) {
+                ids.push(match[1]);
+            }
+            return ids;
         }
 
-        function getSlideSize( xmlString ) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString( xmlString, "application/xml" );
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const sldSzNode = xmlDoc.getElementsByTagNameNS( PML_NS, "sldSz" )[ 0 ];
-            if ( sldSzNode ) {
-                const cx = parseInt( sldSzNode.getAttribute( "cx" ) );
-                const cy = parseInt( sldSzNode.getAttribute( "cy" ) );
+        function getSlideSize(xmlString) {
+            const regex = /<[^>:]*:sldSz[^>]+cx="([^"]+)"[^>]+cy="([^"]+)"/;
+            const match = xmlString.match(regex);
+            if (match) {
+                const cx = parseInt(match[1]);
+                const cy = parseInt(match[2]);
                 return { width: cx / EMU_PER_PIXEL, height: cy / EMU_PER_PIXEL };
             }
             return { width: 960, height: 720 }; // Default size
@@ -446,8 +467,7 @@
         }
 
         function parseTheme(themeXml) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(themeXml, "application/xml");
+            const xmlDoc = parseXmlString(themeXml, "theme");
             const theme = {
                 colorScheme: {},
                 fontScheme: {},
@@ -637,8 +657,7 @@
         }
 
         function parseTableStyles(xmlString) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+            const xmlDoc = parseXmlString(xmlString, "tableStyles");
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const styles = {};
 
@@ -908,8 +927,7 @@
         }
 
         function parseMasterOrLayout(xml, isLayout = false) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(xml, "application/xml");
+            const xmlDoc = parseXmlString(xml, isLayout ? "slideLayout" : "slideMaster");
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -1058,13 +1076,12 @@
 
             const txBodyNodes = shape.getElementsByTagNameNS(PML_NS, 'txBody');
             for (const txBody of txBodyNodes) {
-                const lstStyle = txBody.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
                 const textGroup = new Konva.Group({ clip: { x: 0, y: 0, width: pos.width, height: pos.height }});
                 const textGroupWrapper = new Konva.Group({ x: pos.x, y: pos.y });
                 textGroupWrapper.add(textGroup);
                 layer.add(textGroupWrapper);
 
-                let currentY = 0;
+                let totalY = 0;
                 const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
 
                 for (const pNode of paragraphs) {
@@ -1085,40 +1102,17 @@
                     };
 
                     const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
-                    const finalX = indent;
-
-                    let paraHeight = 0;
-                    const paraGroup = new Konva.Group({ x: finalX, y: currentY });
+                    const paraGroup = new Konva.Group({ x: indent, y: totalY });
                     textGroup.add(paraGroup);
 
                     let currentX = 0;
-
-                    if (lstStyle && finalProps.bullet.type && finalProps.bullet.type !== 'none') {
-                        let bulletEl;
-                        const bulletColor = resolveColor(finalProps.bullet.color, slideContext);
-                        const bulletFontSize = finalProps.defRPr.size || 18;
-
-                        if (finalProps.bullet.type === 'char') {
-                            bulletEl = new Konva.Text({ x: 0, y: 0, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
-                        } else if (finalProps.bullet.type === 'auto') {
-                            if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
-                            const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
-                            bulletEl = new Konva.Text({ x: 0, y: 0, text: bulletChar, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
-                        } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
-                            const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
-                            bulletEl = new Konva.Image({ x: 0, y: 0, image: imageObj, width: 16, height: 16 });
-                        }
-
-                        if (bulletEl) {
-                            paraGroup.add(bulletEl);
-                            currentX = bulletEl.width() > 0 ? bulletEl.width() + (BULLET_OFFSET - bulletEl.width()) : BULLET_OFFSET; // Simplified positioning
-                            paraHeight = Math.max(paraHeight, bulletEl.height());
-                        }
-                    }
+                    let currentY = 0;
+                    let lineHeight = 0;
+                    const availableWidth = pos.width - indent;
 
                     const runNodes = pNode.getElementsByTagNameNS(DML_NS, 'r');
                     for (const rNode of runNodes) {
-                        const textContent = rNode.getElementsByTagNameNS(DML_NS, 't')[0]?.textContent.replace(/\s+/g, ' ') || '';
+                        const textContent = rNode.getElementsByTagNameNS(DML_NS, 't')[0]?.textContent || '';
                         if (!textContent) continue;
 
                         const rPrNode = rNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
@@ -1139,20 +1133,34 @@
                             fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
                         }
 
-                        const textEl = new Konva.Text({
-                            x: currentX,
-                            y: 0,
-                            text: textContent,
-                            fontSize: fontSize,
-                            fontFamily: fontFamily,
-                            fontStyle: fontStyle,
-                            fill: textColor,
-                        });
-                        paraGroup.add(textEl);
-                        currentX += textEl.width();
-                        paraHeight = Math.max(paraHeight, textEl.height());
+                        const words = textContent.split(' ');
+                        for (let i = 0; i < words.length; i++) {
+                            const word = words[i];
+                            const wordWithSpace = i < words.length - 1 ? word + ' ' : word;
+                             const tempText = new Konva.Text({ text: wordWithSpace, fontSize, fontFamily, fontStyle });
+                             const wordWidth = tempText.width();
+
+                             if (currentX > 0 && currentX + wordWidth > availableWidth) {
+                                currentX = 0;
+                                currentY += lineHeight;
+                                lineHeight = 0;
+                             }
+
+                             const textEl = new Konva.Text({
+                                x: currentX,
+                                y: currentY,
+                                text: wordWithSpace,
+                                fontSize,
+                                fontFamily,
+                                fontStyle,
+                                fill: textColor,
+                            });
+                            paraGroup.add(textEl);
+                            currentX += textEl.width();
+                            lineHeight = Math.max(lineHeight, tempText.height());
+                        }
                     }
-                     currentY += paraHeight > 0 ? paraHeight : (finalProps.defRPr.size || 18) * 1.2;
+                    totalY += currentY + lineHeight;
                 }
             }
             return konvaShape ? konvaShape.getClientRect() : { width: 0, height: 0 };
@@ -1631,8 +1639,7 @@
         }
 
         async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes ) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString( slideXml, "application/xml" );
+            const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
