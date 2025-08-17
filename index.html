@@ -1154,41 +1154,48 @@
                 const nvPr = sp.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
                 const ph = nvPr ? nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
 
+                let isStaticShape = false;
+
                 if (ph) {
-                    // It's a placeholder
+                    // This shape is a placeholder, so create an entry for it.
                     const type = ph.getAttribute('type');
                     const idx = ph.getAttribute('idx');
                     const key = idx ? `idx_${idx}` : type;
 
-                    let pos = null;
                     const xfrmNode = sp.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                     if (xfrmNode) {
                         const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
                         const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                         if (offNode && extNode) {
-                            pos = {
+                            const pos = {
                                 x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
                                 y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
                                 width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
                                 height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                             };
+                            let listStyle = null;
+                            const txBodyNode = sp.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+                            if (txBodyNode) {
+                                const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+                                if (lstStyleNode) {
+                                    listStyle = parseTextStyle(lstStyleNode);
+                                }
+                            }
+                            placeholders[key] = { pos, type, listStyle };
                         }
                     }
 
-                    let listStyle = null;
-                    const txBodyNode = sp.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-                    if (txBodyNode) {
-                        const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
-                        if (lstStyleNode) {
-                            listStyle = parseTextStyle(lstStyleNode);
-                        }
-                    }
-
-                    if (pos) {
-                        placeholders[key] = { pos, type, listStyle };
+                    // Decide if the placeholder's own geometry should be rendered.
+                    // Picture placeholders often have a visible shape.
+                    if (type === 'pic') {
+                        isStaticShape = true;
                     }
                 } else {
-                    // It's a static shape (not a placeholder)
+                    // This shape is not a placeholder, so it must be a static shape.
+                    isStaticShape = true;
+                }
+
+                if (isStaticShape) {
                     staticShapes.push(sp);
                 }
             }
@@ -1230,6 +1237,12 @@
                 pos = { ...layoutPlaceholders[phKey].pos };
                 pos.x += parentXfrm.x;
                 pos.y += parentXfrm.y;
+            } else if (phType === 'ctrTitle' && layoutPlaceholders['title']) {
+                // Fallback for centered titles, which often use the standard 'title' placeholder
+                pos = { ...layoutPlaceholders['title'].pos };
+                pos.x += parentXfrm.x;
+                pos.y += parentXfrm.y;
+                phKey = 'title'; // Remap key for style inheritance
             }
 
             if (!pos) return { width: 0, height: 0 };
