@@ -649,7 +649,10 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const srgbClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
             if (srgbClrNode) {
-                return { srgb: `#${srgbClrNode.getAttribute('val')}` };
+                const color = { srgb: `#${srgbClrNode.getAttribute('val')}` };
+                const alphaNode = srgbClrNode.getElementsByTagNameNS(DML_NS, 'alpha')[0];
+                if (alphaNode) color.alpha = parseInt(alphaNode.getAttribute('val'));
+                return color;
             }
 
             const schemeClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
@@ -660,6 +663,9 @@
 
                 const shadeNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'shade')[0];
                 if (shadeNode) color.shade = parseInt(shadeNode.getAttribute('val'));
+
+                const alphaNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'alpha')[0];
+                if (alphaNode) color.alpha = parseInt(alphaNode.getAttribute('val'));
 
                 // TODO: Add other transformations like lumMod, lumOff, etc.
                 return color;
@@ -673,29 +679,26 @@
                 return null;
             }
 
+            let hex;
             if (colorObj.srgb) {
-                return colorObj.srgb;
+                hex = colorObj.srgb;
+            } else if (colorObj.scheme) {
+                let themeColorName = slideContext.colorMap[colorObj.scheme] || colorObj.scheme;
+                if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
+                    hex = slideContext.theme.colorScheme[themeColorName];
+                    if (colorObj.tint) hex = applyTint(hex, colorObj.tint);
+                    if (colorObj.shade) hex = applyShade(hex, colorObj.shade);
+                }
             }
 
-            if (colorObj.scheme) {
-                // First, try to resolve the scheme color through the color map (e.g., 'tx1' -> 'dk1')
-                let themeColorName = slideContext.colorMap[colorObj.scheme];
-
-                // If not in colorMap, the scheme value might be the color name itself (e.g., 'accent1')
-                if (!themeColorName) {
-                    themeColorName = colorObj.scheme;
-                }
-
-                if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
-                    let hex = slideContext.theme.colorScheme[themeColorName];
-                    if (colorObj.tint) {
-                        hex = applyTint(hex, colorObj.tint);
+            if (hex) {
+                if (colorObj.alpha) {
+                    const rgb = hexToRgb(hex);
+                    if (rgb) {
+                        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${colorObj.alpha / 100000})`;
                     }
-                    if (colorObj.shade) {
-                        hex = applyShade(hex, colorObj.shade);
-                    }
-                    return hex;
                 }
+                return hex;
             }
 
             return null; // Return null if color can't be resolved
@@ -823,26 +826,49 @@
 
             const noFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
             const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+            const gradFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
 
             if (noFillNode) {
                 properties.fill = 'none';
             } else if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+            } else if (gradFillNode) {
+                const gsLstNode = gradFillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
+                const stops = [];
+                if (gsLstNode) {
+                    for (const gsNode of gsLstNode.children) {
+                        const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
+                        const colorObj = parseColor(gsNode);
+                        if (colorObj) {
+                            stops.push({ pos, color: resolveColor(colorObj, slideContext) });
+                        }
+                    }
+                }
+                let angle = 0;
+                const linNode = gradFillNode.getElementsByTagNameNS(DML_NS, 'lin')[0];
+                if (linNode) {
+                    angle = parseInt(linNode.getAttribute('ang')) / 60000;
+                }
+                properties.fill = { type: 'gradient', stops, angle };
             } else {
                 const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
                 if (styleNode) {
                     const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
                     if (fillRefNode) {
                         const idx = parseInt(fillRefNode.getAttribute('idx'));
-                        if (idx === 0) {
-                            properties.fill = 'none';
-                        } else if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
+                        if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
                             const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
+                            // The fillRef can have its own color definitions that override the theme
+                            let colorObj = parseColor(fillRefNode) || themeFill.color;
+
                             if (themeFill.type === 'solid') {
-                                let colorObj = parseColor(fillRefNode) || themeFill.color;
                                 properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                            } else if (themeFill.type === 'gradient') {
+                                // TODO: Handle gradient fills from themes
                             }
+                        } else {
+                             properties.fill = 'none';
                         }
                     }
                 }
@@ -868,9 +894,7 @@
                     const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
                     if (lnRefNode) {
                         const idx = parseInt(lnRefNode.getAttribute('idx'));
-                        if (idx === 0) {
-                            properties.stroke = 'none';
-                        } else if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
+                        if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
                              const themeLine = slideContext.theme.formatScheme.lines[idx - 1];
                              if (themeLine.type === 'solid') {
                                 let colorObj = parseColor(lnRefNode) || themeLine.color;
@@ -879,6 +903,8 @@
                                     color: resolveColor(colorObj, slideContext)
                                 };
                              }
+                        } else {
+                            properties.stroke = 'none';
                         }
                     }
                 }
@@ -1076,6 +1102,9 @@
                         y: (parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL) + parentXfrm.y,
                         width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
                         height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
+                        rotation: parseInt(xfrmNode.getAttribute('rot') || '0') / 60000,
+                        flipH: xfrmNode.getAttribute('flipH') === '1',
+                        flipV: xfrmNode.getAttribute('flipV') === '1',
                     };
                 }
             } else if (phKey && layoutPlaceholders[phKey]) {
@@ -1104,7 +1133,16 @@
 
                 if (konvaShape) {
                     if (shapeProps.fill && shapeProps.fill !== 'none') {
-                        konvaShape.fill(shapeProps.fill.color);
+                        if (shapeProps.fill.type === 'solid') {
+                            konvaShape.fill(shapeProps.fill.color);
+                        } else if (shapeProps.fill.type === 'gradient') {
+                            const angleRad = shapeProps.fill.angle * Math.PI / 180;
+                            const x = pos.width / 2;
+                            const y = pos.height / 2;
+                            konvaShape.fillLinearGradientStartPoint({ x: x - Math.cos(angleRad) * x, y: y - Math.sin(angleRad) * y });
+                            konvaShape.fillLinearGradientEndPoint({ x: x + Math.cos(angleRad) * x, y: y + Math.sin(angleRad) * y });
+                            konvaShape.fillLinearGradientColorStops(shapeProps.fill.stops.flatMap(stop => [stop.pos, stop.color]));
+                        }
                     } else {
                         konvaShape.fillEnabled(false);
                     }
@@ -1115,6 +1153,11 @@
                     } else {
                         konvaShape.strokeEnabled(false);
                     }
+
+                    konvaShape.rotation(pos.rotation || 0);
+                    if (pos.flipH) konvaShape.scaleX(-1);
+                    if (pos.flipV) konvaShape.scaleY(-1);
+
                     layer.add(konvaShape);
                 }
             }
@@ -1254,7 +1297,7 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
-            let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y };
+            let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y, rot: 0, flipH: false, flipV: false };
             let groupProps = null;
 
             if (grpSpPrNode) {
@@ -1266,6 +1309,9 @@
                         groupXfrm.x += parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
                         groupXfrm.y += parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
                     }
+                    groupXfrm.rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
+                    groupXfrm.flipH = xfrmNode.getAttribute('flipH') === '1';
+                    groupXfrm.flipV = xfrmNode.getAttribute('flipV') === '1';
                 }
             }
 
@@ -1284,6 +1330,9 @@
                 x: groupXfrm.x,
                 y: groupXfrm.y,
             });
+            konvaGroup.rotation(groupXfrm.rot);
+            if (groupXfrm.flipH) konvaGroup.scaleX(-1);
+            if (groupXfrm.flipV) konvaGroup.scaleY(-1);
             layer.add(konvaGroup);
 
             for (const element of group.children) {
