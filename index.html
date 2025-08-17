@@ -733,25 +733,28 @@
                 properties.geometry = prstGeomNode.getAttribute('prst');
             }
 
-            // Fill Logic
+            // --- Fill Logic ---
+            const noFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
             const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-            if (solidFillNode) {
+
+            if (noFillNode) {
+                properties.fill = 'none';
+            } else if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) {
                     properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
                 }
             } else {
-                // If no direct fill, check the style reference
                 const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
                 if (styleNode) {
                     const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
                     if (fillRefNode) {
                         const idx = parseInt(fillRefNode.getAttribute('idx'));
-                        // idx=0 means no fill, idx > 0 are 1-based indices
-                        if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
+                        if (idx === 0) {
+                             properties.fill = 'none';
+                        } else if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
                             const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
                             if (themeFill.type === 'solid') {
-                                // A color inside fillRef tag overrides the theme color
                                 let colorObj = parseColor(fillRefNode);
                                 if (!colorObj) {
                                     colorObj = themeFill.color;
@@ -763,31 +766,32 @@
                 }
             }
 
-            // Stroke (Line) Logic
+            // --- Stroke (Line) Logic ---
             const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
             if (lnNode) {
-                // Direct line properties are present
-                const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
-                if (!noFillNode) {
-                    properties.stroke = {};
-                    properties.stroke.width = parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL;
-                    const solidFill = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                    if (solidFill) {
-                        const colorObj = parseColor(solidFill);
+                const lnNoFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+                if (lnNoFillNode) {
+                    properties.stroke = 'none';
+                } else {
+                    const lnSolidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                    if (lnSolidFillNode) {
+                        properties.stroke = {};
+                        properties.stroke.width = parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL;
+                        const colorObj = parseColor(lnSolidFillNode);
                         if (colorObj) {
                              properties.stroke.color = resolveColor(colorObj, slideContext);
                         }
                     }
                 }
             } else {
-                // If no direct line, check the style reference
                 const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
                 if (styleNode) {
                     const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
                     if (lnRefNode) {
                         const idx = parseInt(lnRefNode.getAttribute('idx'));
-                         // idx=0 means no line, idx > 0 are 1-based indices
-                        if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
+                        if (idx === 0) {
+                            properties.stroke = 'none';
+                        } else if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
                              const themeLine = slideContext.theme.formatScheme.lines[idx - 1];
                              if (themeLine.type === 'solid') {
                                  properties.stroke = {};
@@ -1105,7 +1109,7 @@
                     }
                 }
             } else {
-                const shapeProps = parseShapeProperties(shape, slideContext);
+                const shapeProps = parseShapeProperties(spPrNode, slideContext);
                 if (pos && shapeProps && shapeProps.geometry) {
                     let konvaShape;
                     switch (shapeProps.geometry) {
