@@ -1067,6 +1067,39 @@
             }
         }
 
+        function getCellBorders(cellNode, slideContext) {
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const borders = {};
+            const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
+
+            if (tcPrNode) {
+                const borderMap = { 'lnL': 'left', 'lnR': 'right', 'lnT': 'top', 'lnB': 'bottom' };
+                for (const child of tcPrNode.children) {
+                    const side = borderMap[child.localName];
+                    if (side) {
+                        const lnNode = child;
+                        const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+                        const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+
+                        if (noFillNode) {
+                            borders[side] = 'none';
+                        } else if (solidFillNode) {
+                            const colorObj = parseColor(solidFillNode);
+                            const width = parseInt(lnNode.getAttribute('w') || '0') / EMU_PER_PIXEL;
+                            if (colorObj && width > 0) {
+                                borders[side] = {
+                                    color: resolveColor(colorObj, slideContext),
+                                    width: width
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+            // TODO: Fallback to table style for borders
+            return borders;
+        }
+
         function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, slideContext) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -1270,29 +1303,25 @@
                     });
                     layer.add(cellRect);
 
-                    // Draw borders
-                    if (styleId) {
-                        const tableStyle = slideContext.tableStyles[styleId];
-                        const borders = tableStyle?.wholeTbl?.tcStyle?.borders;
-                        if (borders) {
-                            const borderDefs = {
-                                top: { p: [cellX, cellY, cellX + cellWidth, cellY] },
-                                right: { p: [cellX + cellWidth, cellY, cellX + cellWidth, cellY + cellHeight] },
-                                bottom: { p: [cellX + cellWidth, cellY + cellHeight, cellX, cellY + cellHeight] },
-                                left: { p: [cellX, cellY + cellHeight, cellX, cellY] },
-                            };
-                            for (const side in borderDefs) {
-                                if (borders[side]) {
-                                    const borderStyle = borders[side];
-                                    const borderColor = resolveColor(borderStyle.color, slideContext);
-                                    const border = new Konva.Line({
-                                        points: borderDefs[side].p,
-                                        stroke: borderColor,
-                                        strokeWidth: borderStyle.width,
-                                    });
-                                    layer.add(border);
-                                }
-                            }
+                    // Draw borders using a strategy to avoid double-drawing
+                    const borders = getCellBorders(cellNode, slideContext);
+                    const borderDefs = {
+                        top: { p: [cellX, cellY, cellX + cellWidth, cellY], draw: (r === 0) },
+                        right: { p: [cellX + cellWidth, cellY, cellX + cellWidth, cellY + cellHeight], draw: true },
+                        bottom: { p: [cellX + cellWidth, cellY + cellHeight, cellX, cellY + cellHeight], draw: true },
+                        left: { p: [cellX, cellY + cellHeight, cellX, cellY], draw: (c === 0) },
+                    };
+
+                    for (const side in borderDefs) {
+                        const borderStyle = borders[side];
+                        if (borderStyle && borderStyle !== 'none' && borderDefs[side].draw) {
+                            const border = new Konva.Line({
+                                points: borderDefs[side].p,
+                                stroke: borderStyle.color,
+                                strokeWidth: borderStyle.width,
+                                listening: false, // Make lines non-interactive
+                            });
+                            layer.add(border);
                         }
                     }
 
