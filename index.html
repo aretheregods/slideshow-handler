@@ -905,9 +905,6 @@
             if (!lnNode) return null;
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-            const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
-            if (noFillNode) return 'none';
-
             const props = {
                 width: parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL,
                 cap: lnNode.getAttribute('cap'), // rnd, sq, flat
@@ -949,13 +946,10 @@
                 properties.geometry = { type: 'custom', path: parseCustomGeometry(custGeomNode) };
             }
 
-            const noFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
             const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
             const gradFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
 
-            if (noFillNode) {
-                properties.fill = 'none';
-            } else if (solidFillNode) {
+            if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
             } else if (gradFillNode) {
