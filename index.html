@@ -288,6 +288,7 @@
                     let defaultTextStyles = {};
                     let masterXml, layoutXml;
 
+                    let masterStaticShapes = [], layoutStaticShapes = [];
                     if ( layoutRel ) {
                         const layoutPath = new URL( layoutRel.target, `file:///ppt/slides/` ).pathname.substring( 1 );
                         const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
@@ -299,6 +300,7 @@
                             masterXml = await zip.file( masterPath ).async( "string" );
                             const masterData = parseMasterOrLayout( masterXml );
                             finalPlaceholders = masterData.placeholders;
+                            masterStaticShapes = masterData.staticShapes;
                             defaultTextStyles = masterData.defaultTextStyles;
                             slideContext.colorMap = masterData.colorMap;
                         }
@@ -306,6 +308,7 @@
                         layoutXml = await zip.file( layoutPath ).async( "string" );
                         const layoutData = parseMasterOrLayout( layoutXml, true );
                         finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
+                        layoutStaticShapes = layoutData.staticShapes;
                         if (layoutData.colorMapOverride) {
                             slideContext.colorMap = { ...slideContext.colorMap, ...layoutData.colorMapOverride };
                         }
@@ -335,7 +338,7 @@
                     const scale = containerWidth / slideSize.width;
                     slideContainer.style.height = `${slideSize.height * scale}px`;
 
-                    await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes );
+                    await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes );
                 }
 
             } catch ( error ) {
@@ -1140,7 +1143,6 @@
         async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-            const PADDING = 20;
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
             let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y };
@@ -1175,17 +1177,14 @@
             });
             layer.add(konvaGroup);
 
-            let offsetX = 0;
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    const shapeDimensions = await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: offsetX, y: 0 }, defaultTextStyles);
-                    offsetX += shapeDimensions.width + PADDING;
+                    await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: offsetX, y: 0 }, defaultTextStyles);
+                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
                 } else if (tagName === 'pic') {
-                    const picDimensions = await processPicture(element, konvaGroup, imageMap, { x: offsetX, y: 0 }, layoutPlaceholders);
-                    offsetX += picDimensions.width + PADDING;
+                    await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, layoutPlaceholders);
                 }
             }
         }
