@@ -422,6 +422,11 @@
             const theme = {
                 colorScheme: {},
                 fontScheme: {},
+                formatScheme: {
+                    fills: [],
+                    lines: [],
+                    effects: [],
+                },
             };
 
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -436,6 +441,7 @@
                     }
                     const sysClrNode = child.getElementsByTagNameNS(DML_NS, 'sysClr')[0];
                     if (sysClrNode) {
+                        // Use lastClr as a fallback, it's often more reliable
                         theme.colorScheme[colorName] = `#${sysClrNode.getAttribute('lastClr')}`;
                     }
                 }
@@ -457,6 +463,44 @@
                         theme.fontScheme.minor = latinFontNode.getAttribute('typeface');
                     }
                 }
+            }
+
+            const fmtSchemeNode = xmlDoc.getElementsByTagNameNS(DML_NS, 'fmtScheme')[0];
+            if (fmtSchemeNode) {
+                const fillStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'fillStyleLst')[0];
+                if (fillStyleLstNode) {
+                    for (const fillNode of fillStyleLstNode.children) {
+                        if (fillNode.localName === 'solidFill') {
+                            const colorObj = parseColor(fillNode);
+                            theme.formatScheme.fills.push({ type: 'solid', color: colorObj });
+                        } else {
+                            // TODO: Handle other fill types like gradFill, etc.
+                            theme.formatScheme.fills.push({ type: 'unsupported' });
+                        }
+                    }
+                }
+
+                const lnStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'lnStyleLst')[0];
+                if (lnStyleLstNode) {
+                    for (const lineNode of lnStyleLstNode.children) {
+                        const width = parseInt(lineNode.getAttribute('w') || '9525');
+                        const cap = lineNode.getAttribute('cap');
+                        const cmpd = lineNode.getAttribute('cmpd');
+
+                        const solidFillNode = lineNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                        if (solidFillNode) {
+                            const colorObj = parseColor(solidFillNode);
+                            theme.formatScheme.lines.push({ type: 'solid', color: colorObj, width: width / EMU_PER_PIXEL, cap, cmpd });
+                        } else {
+                            theme.formatScheme.lines.push({ type: 'unsupported' });
+                        }
+                    }
+                }
+
+                 const effectStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'effectStyleLst')[0];
+                 if (effectStyleLstNode) {
+                    // TODO: Implement effect parsing if needed
+                 }
             }
 
             return theme;
@@ -664,10 +708,13 @@
             return null;
         }
 
-        function parseShapeProperties(spPrNode, slideContext) {
+        function parseShapeProperties(shapeNode, slideContext) {
+            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            const spPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
             if (!spPrNode) return null;
 
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const properties = {
                 fill: null,
                 stroke: null,
@@ -679,23 +726,72 @@
                 properties.geometry = prstGeomNode.getAttribute('prst');
             }
 
+            // Fill Logic
             const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
             if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) {
                     properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
                 }
+            } else {
+                // If no direct fill, check the style reference
+                const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
+                if (styleNode) {
+                    const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
+                    if (fillRefNode) {
+                        const idx = parseInt(fillRefNode.getAttribute('idx'));
+                        // idx=0 means no fill, idx > 0 are 1-based indices
+                        if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
+                            const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
+                            if (themeFill.type === 'solid') {
+                                // A color inside fillRef tag overrides the theme color
+                                let colorObj = parseColor(fillRefNode);
+                                if (!colorObj) {
+                                    colorObj = themeFill.color;
+                                }
+                                properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                            }
+                        }
+                    }
+                }
             }
 
+            // Stroke (Line) Logic
             const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
             if (lnNode) {
-                properties.stroke = {};
-                properties.stroke.width = parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL;
-                const solidFill = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                if (solidFill) {
-                    const colorObj = parseColor(solidFill);
-                    if (colorObj) {
-                         properties.stroke.color = resolveColor(colorObj, slideContext);
+                // Direct line properties are present
+                const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+                if (!noFillNode) {
+                    properties.stroke = {};
+                    properties.stroke.width = parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL;
+                    const solidFill = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                    if (solidFill) {
+                        const colorObj = parseColor(solidFill);
+                        if (colorObj) {
+                             properties.stroke.color = resolveColor(colorObj, slideContext);
+                        }
+                    }
+                }
+            } else {
+                // If no direct line, check the style reference
+                const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
+                if (styleNode) {
+                    const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
+                    if (lnRefNode) {
+                        const idx = parseInt(lnRefNode.getAttribute('idx'));
+                         // idx=0 means no line, idx > 0 are 1-based indices
+                        if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
+                             const themeLine = slideContext.theme.formatScheme.lines[idx - 1];
+                             if (themeLine.type === 'solid') {
+                                 properties.stroke = {};
+                                 properties.stroke.width = themeLine.width;
+                                 let colorObj = parseColor(lnRefNode);
+                                 if (!colorObj) {
+                                     colorObj = themeLine.color;
+                                 }
+                                 properties.stroke.color = resolveColor(colorObj, slideContext);
+                             }
+                        }
                     }
                 }
             }
@@ -1002,7 +1098,7 @@
                     }
                 }
             } else {
-                const shapeProps = parseShapeProperties(spPrNode, slideContext);
+                const shapeProps = parseShapeProperties(shape, slideContext);
                 if (pos && shapeProps && shapeProps.geometry) {
                     let konvaShape;
                     switch (shapeProps.geometry) {
@@ -1011,6 +1107,11 @@
                             break;
                         case 'ellipse':
                             konvaShape = new Konva.Ellipse({ x: pos.x + pos.width / 2, y: pos.y + pos.height / 2, radiusX: pos.width / 2, radiusY: pos.height / 2 });
+                            break;
+                        case 'line':
+                            konvaShape = new Konva.Line({
+                                points: [pos.x, pos.y, pos.x + pos.width, pos.y + pos.height],
+                            });
                             break;
                     }
                     if (konvaShape) {
@@ -1515,7 +1616,7 @@
             if (spTreeNode) {
                 for (const element of spTreeNode.children) {
                     const tagName = element.localName;
-                    if (tagName === 'sp') {
+                    if (tagName === 'sp' || tagName === 'cxnSp') {
                         await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
                     } else if (tagName === 'grpSp') {
                         await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
