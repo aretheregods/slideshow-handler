@@ -96,12 +96,13 @@
 
         /* --- Slide Viewer & Debug Styling --- */
         .slide-viewer {
+            width: 100%;
+            height: auto;
             border: 1px solid #e5e7eb;
             background-color: #fff;
             box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
             margin: 2rem auto;
             position: relative;
-            /* FIX: Width and height are now set dynamically */
         }
 
         .slide-viewer svg {
@@ -366,13 +367,11 @@
                     const slideContainer = document.createElement( 'div' );
                     slideContainer.className = 'slide-viewer';
                     slideContainer.id = `slide-${ i + 1 }`;
+                    slideContainer.style.aspectRatio = `${slideSize.width} / ${slideSize.height}`;
                     slideViewerContainer.appendChild( slideContainer );
 
-                    const containerWidth = slideContainer.offsetWidth;
-                    const scale = containerWidth / slideSize.width;
-                    slideContainer.style.height = `${slideSize.height * scale}px`;
-
-                    await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes );
+                    // The renderSlide function now handles its own scaling.
+                    await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes );
                 }
 
             } catch ( error ) {
@@ -1641,20 +1640,17 @@
             return { width: pos.width, height: pos.height };
         }
 
-        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, scale, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes ) {
+        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes ) {
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const listCounters = {};
-            const stage = new Konva.Stage( {
+            const stage = new Konva.Stage({
                 container: slideContainer,
                 width: slideSize.width,
                 height: slideSize.height,
-            } );
-            stage.scale({ x: scale, y: scale });
-            stage.width(slideSize.width * scale);
-            stage.height(slideSize.height * scale);
+            });
 
             const bgLayer = new Konva.Layer();
             stage.add(bgLayer);
@@ -1715,6 +1711,21 @@
                     }
                 }
             }
+
+            const resizeStage = () => {
+                const containerWidth = slideContainer.offsetWidth;
+                if (containerWidth > 0) {
+                    const scale = containerWidth / slideSize.width;
+                    stage.scale({ x: scale, y: scale });
+                    stage.width(slideSize.width * scale);
+                    stage.height(slideSize.height * scale);
+                }
+            };
+
+            resizeStage();
+
+            const observer = new ResizeObserver(resizeStage);
+            observer.observe(slideContainer);
         }
     </script>
 </body>
