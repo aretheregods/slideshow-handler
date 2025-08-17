@@ -1136,9 +1136,13 @@
                     }
 
                     const finalRunProps = { ...finalProps.defRPr };
-                    const firstRun = pNode.getElementsByTagNameNS(DML_NS, 'r')[0];
-                    if (firstRun) {
-                        const rPr = firstRun.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                    let styleNode = pNode.getElementsByTagNameNS(DML_NS, 'r')[0];
+                    if (!styleNode) {
+                        styleNode = pNode.getElementsByTagNameNS(DML_NS, 'fld')[0];
+                    }
+
+                    if (styleNode) {
+                        const rPr = styleNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
                         if (rPr) {
                             if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
                             if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
