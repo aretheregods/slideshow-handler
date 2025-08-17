@@ -1225,7 +1225,7 @@
             return { placeholders, staticShapes, defaultTextStyles, colorMap, colorMapOverride };
         }
 
-        async function processShape(shape, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles) {
+        async function processShape(shape, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -1274,6 +1274,7 @@
 
             if (shapeProps && shapeProps.geometry?.type === 'custom') {
                 console.log("--- DEBUG: Custom Geometry Shape ---");
+                console.log("Slide Number:", slideNum);
                 console.log("Shape Placeholder Info:", { type: phType, key: phKey });
                 console.log("Calculated Position & Size:", pos);
                 console.log("Raw SVG Path:", shapeProps.geometry.path.path);
@@ -1980,12 +1981,12 @@
             if (showMasterShapes) {
                 if (masterStaticShapes) {
                     for (const shape of masterStaticShapes) {
-                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
+                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     }
                 }
                  if (layoutStaticShapes) {
                     for (const shape of layoutStaticShapes) {
-                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
+                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     }
                 }
             }
@@ -1995,7 +1996,7 @@
                 for (const element of spTreeNode.children) {
                     const tagName = element.localName;
                     if (tagName === 'sp' || tagName === 'cxnSp') {
-                        await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
+                        await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     } else if (tagName === 'grpSp') {
                         await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
                     } else if (tagName === 'graphicFrame') {
