@@ -246,9 +246,10 @@
                 const zip = await JSZip.loadAsync( file );
 
                 const presRels = await getRelationships( zip, "ppt/_rels/presentation.xml.rels" );
+                const sortedPresRels = Object.values(presRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
                 let theme = null;
-                const themeRel = Object.values(presRels).find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme');
+                const themeRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme');
                 if (themeRel) {
                     const themePath = resolvePath('ppt', themeRel.target);
                     const themeXml = await zip.file(themePath).async("string");
@@ -256,7 +257,7 @@
                 }
 
                 let tableStyles = {};
-                const tableStylesRel = Object.values(presRels).find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
+                const tableStylesRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
                 if (tableStylesRel) {
                     const tableStylesPath = resolvePath('ppt', tableStylesRel.target);
                     const tableStylesXml = await zip.file(tableStylesPath).async("string");
@@ -284,16 +285,16 @@
                     const slidePath = resolvePath( 'ppt', slideRel.target );
                     const slideRelsPath = `ppt/slides/_rels/${ slidePath.split( '/' ).pop() }.rels`;
                     const slideRels = await getRelationships( zip, slideRelsPath );
+                    const sortedSlideRels = Object.values(slideRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
                     const imageMap = {};
-                    for (const relId in slideRels) {
-                        const rel = slideRels[relId];
+                    for (const rel of sortedSlideRels) {
                         if (rel.type.endsWith('/image')) {
                             const imagePath = resolvePath('ppt/slides', rel.target);
                             const imageFile = zip.file(imagePath);
                             if (imageFile) {
                                 const imageData = await imageFile.async('base64');
-                                imageMap[relId] = `data:image/png;base64,${imageData}`;
+                                imageMap[rel.id] = `data:image/png;base64,${imageData}`;
                             }
                         }
                     }
@@ -304,7 +305,7 @@
                         tableStyles: tableStyles,
                     };
 
-                    const layoutRel = Object.values( slideRels ).find( r => r.type.endsWith( '/slideLayout' ) );
+                    const layoutRel = sortedSlideRels.find( r => r.type.endsWith( '/slideLayout' ) );
 
                     let finalPlaceholders = {};
                     let defaultTextStyles = {};
@@ -315,7 +316,8 @@
                         const layoutPath = resolvePath('ppt/slides', layoutRel.target);
                         const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
                         const layoutRels = await getRelationships( zip, layoutRelsPath );
-                        const masterRel = Object.values( layoutRels ).find( r => r.type.endsWith( '/slideMaster' ) );
+                        const sortedLayoutRels = Object.values(layoutRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+                        const masterRel = sortedLayoutRels.find( r => r.type.endsWith( '/slideMaster' ) );
 
                         if ( masterRel ) {
                             const masterPath = resolvePath('ppt/slideLayouts', masterRel.target);
@@ -380,7 +382,9 @@
             const relationships = xmlDoc.getElementsByTagName( "Relationship" );
             const rels = {};
             for ( const rel of relationships ) {
-                rels[ rel.getAttribute( "Id" ) ] = {
+                const relId = rel.getAttribute("Id");
+                rels[relId] = {
+                    id: relId,
                     type: rel.getAttribute( "Type" ),
                     target: rel.getAttribute( "Target" )
                 };
