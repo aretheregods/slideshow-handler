@@ -325,14 +325,18 @@
 
                     let masterStaticShapes = [], layoutStaticShapes = [];
                     if ( layoutRel ) {
+                        console.log("Found layout relationship:", layoutRel);
                         const layoutPath = resolvePath('ppt/slides', layoutRel.target);
+                        console.log("Resolved layout path:", layoutPath);
                         const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
                         const layoutRels = await getRelationships( zip, layoutRelsPath );
                         const sortedLayoutRels = Object.values(layoutRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
                         const masterRel = sortedLayoutRels.find( r => r.type.endsWith( '/slideMaster' ) );
 
                         if ( masterRel ) {
+                            console.log("Found master relationship:", masterRel);
                             const masterPath = resolvePath('ppt/slideLayouts', masterRel.target);
+                            console.log("Resolved master path:", masterPath);
                             masterXml = await zip.file( masterPath ).async( "string" );
                             const masterData = parseMasterOrLayout( masterXml );
                             finalPlaceholders = masterData.placeholders;
