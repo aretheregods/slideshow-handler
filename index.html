@@ -813,6 +813,121 @@
             return null;
         }
 
+        function parseCustomGeometry(custGeomNode) {
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const pathLstNode = custGeomNode.getElementsByTagNameNS(DML_NS, 'pathLst')[0];
+            if (!pathLstNode) return null;
+
+            // The spec allows multiple paths, but for now, we'll handle the common case of one.
+            const pathNode = pathLstNode.getElementsByTagNameNS(DML_NS, 'path')[0];
+            if (!pathNode) return null;
+
+            const pathW = parseInt(pathNode.getAttribute('w'));
+            const pathH = parseInt(pathNode.getAttribute('h'));
+
+            let svgPath = "";
+            // Using childNodes to preserve order
+            for (const cmdNode of pathNode.childNodes) {
+                // Skip non-element nodes like #text
+                if (cmdNode.nodeType !== 1) continue;
+
+                const cmd = cmdNode.localName;
+
+                switch (cmd) {
+                    case 'moveTo': {
+                        const ptNode = cmdNode.getElementsByTagNameNS(DML_NS, 'pt')[0];
+                        if (ptNode) {
+                            const x = ptNode.getAttribute('x');
+                            const y = ptNode.getAttribute('y');
+                            svgPath += `M ${x} ${y} `;
+                        }
+                        break;
+                    }
+                    case 'lnTo': {
+                        const ptNode = cmdNode.getElementsByTagNameNS(DML_NS, 'pt')[0];
+                        if (ptNode) {
+                            const x = ptNode.getAttribute('x');
+                            const y = ptNode.getAttribute('y');
+                            svgPath += `L ${x} ${y} `;
+                        }
+                        break;
+                    }
+                    case 'cubicBezTo': {
+                        const ptNodes = cmdNode.getElementsByTagNameNS(DML_NS, 'pt');
+                        if (ptNodes.length === 3) {
+                            const x1 = ptNodes[0].getAttribute('x');
+                            const y1 = ptNodes[0].getAttribute('y');
+                            const x2 = ptNodes[1].getAttribute('x');
+                            const y2 = ptNodes[1].getAttribute('y');
+                            const x3 = ptNodes[2].getAttribute('x');
+                            const y3 = ptNodes[2].getAttribute('y');
+                            svgPath += `C ${x1} ${y1} ${x2} ${y2} ${x3} ${y3} `;
+                        }
+                        break;
+                    }
+                    case 'quadBezTo': {
+                        const ptNodes = cmdNode.getElementsByTagNameNS(DML_NS, 'pt');
+                        if (ptNodes.length === 2) {
+                            const x1 = ptNodes[0].getAttribute('x');
+                            const y1 = ptNodes[0].getAttribute('y');
+                            const x2 = ptNodes[1].getAttribute('x');
+                            const y2 = ptNodes[1].getAttribute('y');
+                            svgPath += `Q ${x1} ${y1} ${x2} ${y2} `;
+                        }
+                        break;
+                    }
+                    case 'arcTo': {
+                         // Not implemented, as it's not in the provided XML and requires complex calculations.
+                         break;
+                    }
+                    case 'close': {
+                        svgPath += 'Z ';
+                        break;
+                    }
+                }
+            }
+
+            if (svgPath === "") return null;
+
+            return {
+                path: svgPath.trim(),
+                w: pathW,
+                h: pathH,
+            };
+        }
+
+        function parseLineProperties(lnNode, slideContext) {
+            if (!lnNode) return null;
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+            if (noFillNode) return 'none';
+
+            const props = {
+                width: parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL,
+                cap: lnNode.getAttribute('cap'), // rnd, sq, flat
+                join: null // miter, round, bevel
+            };
+
+            const roundNode = lnNode.getElementsByTagNameNS(DML_NS, 'round')[0];
+            if (roundNode) props.join = 'round';
+
+            const bevelNode = lnNode.getElementsByTagNameNS(DML_NS, 'bevel')[0];
+            if (bevelNode) props.join = 'bevel';
+
+            const miterNode = lnNode.getElementsByTagNameNS(DML_NS, 'miter')[0];
+            if (miterNode) props.join = 'miter';
+
+            const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+            if (solidFillNode) {
+                props.color = resolveColor(parseColor(solidFillNode), slideContext);
+            }
+
+            if (!props.color) return 'none';
+
+            return props;
+        }
+
         function parseShapeProperties(shapeNode, slideContext) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -823,7 +938,12 @@
 
             const prstGeomNode = spPrNode.getElementsByTagNameNS(DML_NS, 'prstGeom')[0];
             if (prstGeomNode) {
-                properties.geometry = prstGeomNode.getAttribute('prst');
+                properties.geometry = { type: 'preset', preset: prstGeomNode.getAttribute('prst') };
+            }
+
+            const custGeomNode = spPrNode.getElementsByTagNameNS(DML_NS, 'custGeom')[0];
+            if (custGeomNode) {
+                properties.geometry = { type: 'custom', path: parseCustomGeometry(custGeomNode) };
             }
 
             const noFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
@@ -878,18 +998,7 @@
 
             const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
             if (lnNode) {
-                const lnNoFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
-                if (lnNoFillNode) {
-                    properties.stroke = 'none';
-                } else {
-                    const lnSolidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                    if (lnSolidFillNode) {
-                        properties.stroke = {
-                            width: parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL,
-                            color: resolveColor(parseColor(lnSolidFillNode), slideContext)
-                        };
-                    }
-                }
+                properties.stroke = parseLineProperties(lnNode, slideContext);
             } else {
                 const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
                 if (styleNode) {
@@ -899,11 +1008,19 @@
                         if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
                              const themeLine = slideContext.theme.formatScheme.lines[idx - 1];
                              if (themeLine.type === 'solid') {
-                                let colorObj = parseColor(lnRefNode) || themeLine.color;
-                                properties.stroke = {
-                                    width: themeLine.width,
-                                    color: resolveColor(colorObj, slideContext)
-                                };
+                                // Start with the theme line properties
+                                const strokeProps = { ...themeLine };
+
+                                // The lnRef can have its own color that overrides the theme one
+                                const lnRefColorObj = parseColor(lnRefNode);
+                                if (lnRefColorObj) {
+                                    strokeProps.color = resolveColor(lnRefColorObj, slideContext);
+                                } else {
+                                    // If no override, resolve the theme color
+                                    strokeProps.color = resolveColor(themeLine.color, slideContext);
+                                }
+
+                                properties.stroke = strokeProps;
                              }
                         } else {
                             properties.stroke = 'none';
@@ -1121,16 +1238,30 @@
             let konvaShape;
 
             if (shapeProps && shapeProps.geometry) {
-                switch (shapeProps.geometry) {
-                    case 'rect':
-                        konvaShape = new Konva.Rect({ x: pos.x, y: pos.y, width: pos.width, height: pos.height });
-                        break;
-                    case 'ellipse':
-                        konvaShape = new Konva.Ellipse({ x: pos.x + pos.width / 2, y: pos.y + pos.height / 2, radiusX: pos.width / 2, radiusY: pos.height / 2 });
-                        break;
-                    case 'line':
-                        konvaShape = new Konva.Line({ points: [pos.x, pos.y, pos.x + pos.width, pos.y + pos.height] });
-                        break;
+                if (shapeProps.geometry.type === 'preset') {
+                    switch (shapeProps.geometry.preset) {
+                        case 'rect':
+                            konvaShape = new Konva.Rect({ x: pos.x, y: pos.y, width: pos.width, height: pos.height });
+                            break;
+                        case 'ellipse':
+                            konvaShape = new Konva.Ellipse({ x: pos.x + pos.width / 2, y: pos.y + pos.height / 2, radiusX: pos.width / 2, radiusY: pos.height / 2 });
+                            break;
+                        case 'line':
+                            konvaShape = new Konva.Line({ points: [pos.x, pos.y, pos.x + pos.width, pos.y + pos.height] });
+                            break;
+                    }
+                } else if (shapeProps.geometry.type === 'custom' && shapeProps.geometry.path) {
+                    const pathData = shapeProps.geometry.path;
+                    konvaShape = new Konva.Path({
+                        x: pos.x,
+                        y: pos.y,
+                        data: pathData.path,
+                    });
+                    // The path from custGeom has its own coordinate system. We need to scale it
+                    // to the actual shape's dimensions (`pos.width`, `pos.height`).
+                    const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
+                    const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
+                    konvaShape.scale({ x: scaleX, y: scaleY });
                 }
 
                 if (konvaShape) {
@@ -1152,6 +1283,18 @@
                     if (shapeProps.stroke && shapeProps.stroke !== 'none') {
                         konvaShape.stroke(shapeProps.stroke.color);
                         konvaShape.strokeWidth(shapeProps.stroke.width || 1);
+
+                        if (shapeProps.stroke.join) {
+                            konvaShape.lineJoin(shapeProps.stroke.join); // 'miter', 'round', 'bevel'
+                        }
+
+                        if (shapeProps.stroke.cap) {
+                            // XML 'rnd' -> Konva 'round', 'sq' -> 'square', 'flat' -> 'butt'
+                            let lineCap = 'butt';
+                            if (shapeProps.stroke.cap === 'rnd') lineCap = 'round';
+                            if (shapeProps.stroke.cap === 'sq') lineCap = 'square';
+                            konvaShape.lineCap(lineCap);
+                        }
                     } else {
                         konvaShape.strokeEnabled(false);
                     }
