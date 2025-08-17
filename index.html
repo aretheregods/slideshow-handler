@@ -686,6 +686,11 @@
                 hex = colorObj.srgb;
             } else if (colorObj.scheme) {
                 let themeColorName = slideContext.colorMap[colorObj.scheme] || colorObj.scheme;
+                if (themeColorName === 'phClr') {
+                    // phClr is context-dependent. For a robust default, we'll map it
+                    // to a visible accent color like accent1.
+                    themeColorName = 'accent1';
+                }
                 if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
                     hex = slideContext.theme.colorScheme[themeColorName];
                     if (colorObj.tint) hex = applyTint(hex, colorObj.tint);
@@ -1026,6 +1031,24 @@
                             properties.stroke = 'none';
                         }
                     }
+                }
+            }
+
+            // If no fill is defined, apply the default from the theme
+            if (!properties.fill) {
+                if (slideContext.theme?.formatScheme?.fills?.[0]?.type === 'solid') {
+                     const themeFill = slideContext.theme.formatScheme.fills[0];
+                     properties.fill = { type: 'solid', color: resolveColor(themeFill.color, slideContext) };
+                }
+            }
+
+            // If no stroke is defined, apply the default from the theme
+            if (!properties.stroke) {
+                if (slideContext.theme?.formatScheme?.lines?.[0]?.type === 'solid') {
+                    const themeLine = slideContext.theme.formatScheme.lines[0];
+                    const strokeProps = { ...themeLine };
+                    strokeProps.color = resolveColor(themeLine.color, slideContext);
+                    properties.stroke = strokeProps;
                 }
             }
             return properties;
