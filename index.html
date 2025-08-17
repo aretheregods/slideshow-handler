@@ -195,7 +195,7 @@
 
     <!-- Main application script -->
     <script type="module">
-        import JSZip from 'https://cdn.jsdelivr.net/npm/jszip/+esm';
+        import * as zip from 'https://unpkg.com/@zip.js/zip.js/index.js';
         import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 
         const EMU_PER_PIXEL = 9525; // Standard conversion for 96 DPI
@@ -243,11 +243,12 @@
             return xmlDoc;
         }
 
-        async function getNormalizedXmlString(zip, path) {
-            const file = zip.file(path);
-            if (!file) return null;
+        async function getNormalizedXmlString(entriesMap, path) {
+            const entry = entriesMap.get(path);
+            if (!entry) return null;
 
-            let xmlString = await file.async("string");
+            const writer = new zip.TextWriter();
+            let xmlString = await entry.getData(writer);
 
             // Strip BOM if present, as it can interfere with XML parsing on some platforms.
             if (xmlString.charCodeAt(0) === 0xFEFF) {
@@ -269,17 +270,19 @@
             loadingIndicator.style.display = 'block';
             debugOutput.innerHTML = '';
 
+            const zipReader = new zip.ZipReader(new zip.BlobReader(file));
             try {
-                const zip = await JSZip.loadAsync( file );
+                const entries = await zipReader.getEntries();
+                const entriesMap = new Map(entries.map(entry => [entry.filename, entry]));
 
-                const presRels = await getRelationships( zip, "ppt/_rels/presentation.xml.rels" );
+                const presRels = await getRelationships( entriesMap, "ppt/_rels/presentation.xml.rels" );
                 const sortedPresRels = Object.values(presRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
                 let theme = null;
                 const themeRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme');
                 if (themeRel) {
                     const themePath = resolvePath('ppt', themeRel.target);
-                    const themeXml = await getNormalizedXmlString(zip, themePath);
+                    const themeXml = await getNormalizedXmlString(entriesMap, themePath);
                     if (themeXml) theme = parseTheme(themeXml);
                 }
 
@@ -287,11 +290,11 @@
                 const tableStylesRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
                 if (tableStylesRel) {
                     const tableStylesPath = resolvePath('ppt', tableStylesRel.target);
-                    const tableStylesXml = await getNormalizedXmlString(zip, tableStylesPath);
+                    const tableStylesXml = await getNormalizedXmlString(entriesMap, tableStylesPath);
                     if (tableStylesXml) tableStyles = parseTableStyles(tableStylesXml);
                 }
 
-                const presentationXml = await getNormalizedXmlString(zip, "ppt/presentation.xml");
+                const presentationXml = await getNormalizedXmlString(entriesMap, "ppt/presentation.xml");
                 const slideIds = getSlideOrder( presentationXml );
 
                 const slideSize = getSlideSize( presentationXml );
@@ -311,16 +314,23 @@
 
                     const slidePath = resolvePath( 'ppt', slideRel.target );
                     const slideRelsPath = `ppt/slides/_rels/${ slidePath.split( '/' ).pop() }.rels`;
-                    const slideRels = await getRelationships( zip, slideRelsPath );
+                    const slideRels = await getRelationships( entriesMap, slideRelsPath );
                     const sortedSlideRels = Object.values(slideRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
                     const imageMap = {};
                     for (const rel of sortedSlideRels) {
                         if (rel.type.endsWith('/image')) {
                             const imagePath = resolvePath('ppt/slides', rel.target);
-                            const imageFile = zip.file(imagePath);
-                            if (imageFile) {
-                                const imageData = await imageFile.async('base64');
+                            const imageEntry = entriesMap.get(imagePath);
+                            if (imageEntry) {
+                                const writer = new zip.BlobWriter();
+                                const imageBlob = await imageEntry.getData(writer);
+                                const reader = new FileReader();
+                                const imageData = await new Promise((resolve, reject) => {
+                                    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                                    reader.onerror = reject;
+                                    reader.readAsDataURL(imageBlob);
+                                });
                                 imageMap[rel.id] = `data:image/png;base64,${imageData}`;
                             }
                         }
@@ -342,14 +352,14 @@
                     if ( layoutRel ) {
                         const layoutPath = resolvePath('ppt/slides', layoutRel.target);
                         const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
-                        const layoutRels = await getRelationships( zip, layoutRelsPath );
+                        const layoutRels = await getRelationships( entriesMap, layoutRelsPath );
                         const sortedLayoutRels = Object.values(layoutRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
                         const masterRel = sortedLayoutRels.find( r => r.type.endsWith( '/slideMaster' ) );
 
                         let masterData;
                         if ( masterRel ) {
                             const masterPath = resolvePath('ppt/slideLayouts', masterRel.target);
-                            masterXml = await getNormalizedXmlString(zip, masterPath);
+                            masterXml = await getNormalizedXmlString(entriesMap, masterPath);
                             if (masterXml) {
                                 masterData = parseMasterOrLayout( masterXml );
                             }
@@ -360,7 +370,7 @@
                         }
 
                         let layoutData;
-                        layoutXml = await getNormalizedXmlString(zip, layoutPath);
+                        layoutXml = await getNormalizedXmlString(entriesMap, layoutPath);
                         if (layoutXml) {
                             layoutData = parseMasterOrLayout( layoutXml, true );
                         }
@@ -371,7 +381,7 @@
                         }
                     }
 
-                    const slideXml = await getNormalizedXmlString(zip, slidePath);
+                    const slideXml = await getNormalizedXmlString(entriesMap, slidePath);
 
                     const slideXmlDoc = parseXmlString(slideXml, `slide ${slideId}`);
                     const layoutXmlDoc = layoutXml ? parseXmlString(layoutXml, `layout for slide ${slideId}`) : null;
@@ -399,12 +409,13 @@
                 console.error( 'Error parsing the presentation:', error );
                 fileInfo.textContent = `Error: Could not parse presentation. ${ error.message }`;
             } finally {
+                await zipReader.close();
                 loadingIndicator.style.display = 'none';
             }
         } );
 
-        async function getRelationships(zip, path) {
-            let xmlString = await getNormalizedXmlString(zip, path);
+        async function getRelationships(entriesMap, path) {
+            let xmlString = await getNormalizedXmlString(entriesMap, path);
             if (!xmlString) return {};
 
             const rels = {};
