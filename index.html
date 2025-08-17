@@ -532,7 +532,7 @@
 
         function resolveColor(colorObj, slideContext) {
             if (!colorObj || !slideContext.theme) {
-                return '#000000';
+                return null;
             }
 
             if (colorObj.srgb) {
@@ -553,7 +553,7 @@
                 }
             }
 
-            return '#000000';
+            return null;
         }
 
         function parseTableStyles(xmlString) {
