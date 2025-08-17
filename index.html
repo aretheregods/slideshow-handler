@@ -584,7 +584,14 @@
             }
 
             if (colorObj.scheme) {
-                const themeColorName = slideContext.colorMap[colorObj.scheme];
+                // First, try to resolve the scheme color through the color map (e.g., 'tx1' -> 'dk1')
+                let themeColorName = slideContext.colorMap[colorObj.scheme];
+
+                // If not in colorMap, the scheme value might be the color name itself (e.g., 'accent1')
+                if (!themeColorName) {
+                    themeColorName = colorObj.scheme;
+                }
+
                 if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
                     let hex = slideContext.theme.colorScheme[themeColorName];
                     if (colorObj.tint) {
@@ -597,7 +604,7 @@
                 }
             }
 
-            return null;
+            return null; // Return null if color can't be resolved
         }
 
         function parseTableStyles(xmlString) {
