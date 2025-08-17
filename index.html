@@ -1271,6 +1271,17 @@
             if (!pos) return { width: 0, height: 0 };
 
             const shapeProps = parseShapeProperties(shape, slideContext);
+
+            if (shapeProps && shapeProps.geometry?.type === 'custom') {
+                console.log("--- DEBUG: Custom Geometry Shape ---");
+                console.log("Shape Placeholder Info:", { type: phType, key: phKey });
+                console.log("Calculated Position & Size:", pos);
+                console.log("Raw SVG Path:", shapeProps.geometry.path.path);
+                console.log("Resolved Fill Style:", JSON.stringify(shapeProps.fill, null, 2));
+                console.log("Resolved Stroke Style:", JSON.stringify(shapeProps.stroke, null, 2));
+                console.log("------------------------------------");
+            }
+
             let konvaShape;
 
             if (shapeProps && shapeProps.geometry) {
