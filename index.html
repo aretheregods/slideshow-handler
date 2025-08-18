@@ -1276,12 +1276,15 @@
                     }
                 }
 
+                console.log(`Processing paragraph with ${pNode.childNodes.length} children...`);
                 for (const childNode of pNode.childNodes) {
+                    console.log(`... found child node: ${childNode.nodeName}`);
                     if (childNode.localName === 'r' || childNode.localName === 'fld') {
-                        const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                        const text = childNode.textContent.trim();
+                        const text = childNode.textContent;
+                        console.log(`...... It's a text run. Content: "${text}"`);
                         if (!text) continue;
 
+                        const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
                         const finalRunProps = { ...finalProps.defRPr };
                         if (rPr) {
                             if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
