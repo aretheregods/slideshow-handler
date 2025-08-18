@@ -388,6 +388,9 @@
                         if (layoutData.colorMapOverride) {
                             slideContext.colorMap = { ...slideContext.colorMap, ...layoutData.colorMapOverride };
                         }
+
+
+                        console.log( { masterData, layoutData } );
                     }
 
                     const slideXml = await getNormalizedXmlString(entriesMap, slidePath);
