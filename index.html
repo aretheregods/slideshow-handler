@@ -1128,6 +1128,11 @@
                 if (solidFillNode) {
                     properties.defRPr.color = parseColor(solidFillNode);
                 }
+
+                const latinFontNode = defRPrNode.getElementsByTagNameNS( DML_NS, 'latin' )[ 0 ];
+                if ( latinFontNode && latinFontNode.getAttribute( 'typeface' ) ) {
+                    properties.defRPr.font = latinFontNode.getAttribute( 'typeface' );
+                }
             }
 
             return properties;
@@ -1292,6 +1297,10 @@
                             if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
                             const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                             if (solidFill) finalRunProps.color = parseColor(solidFill);
+                            const latinFontNode = rPr.getElementsByTagNameNS( DML_NS, 'latin' )[ 0 ];
+                            if ( latinFontNode && latinFontNode.getAttribute( 'typeface' ) ) {
+                                finalRunProps.font = latinFontNode.getAttribute( 'typeface' );
+                            }
                         }
 
                         const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
@@ -1353,6 +1362,11 @@
                     phType = placeholder.getAttribute('type');
                     const phIdx = placeholder.getAttribute('idx');
                     phKey = phIdx ? `idx_${phIdx}` : phType;
+
+                    // If no type is specified but an index is, it's usually a body/content placeholder.
+                    if ( !phType && phIdx ) {
+                        phType = 'body';
+                    }
                 }
             }
 
