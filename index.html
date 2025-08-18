@@ -877,6 +877,28 @@
             const miterNode = lnNode.getElementsByTagNameNS(DML_NS, 'miter')[0];
             if (miterNode) props.join = 'miter';
 
+            const prstDashNode = lnNode.getElementsByTagNameNS(DML_NS, 'prstDash')[0];
+            if (prstDashNode) {
+                const dashType = prstDashNode.getAttribute('val') || 'solid';
+                switch (dashType) {
+                    case 'solid':
+                        props.dash = [];
+                        break;
+                    case 'dot':
+                        props.dash = [1, 5];
+                        break;
+                    case 'dash':
+                        props.dash = [10, 5];
+                        break;
+                    case 'lgDash':
+                        props.dash = [20, 10];
+                        break;
+                    default:
+                        props.dash = [];
+                        break;
+                }
+            }
+
             const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
             if (solidFillNode) {
                 props.color = resolveColor(parseColor(solidFillNode), slideContext);
@@ -1372,26 +1394,39 @@
                 const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
                 switch (geomType) {
                     case 'rect':
-                        konvaShape = new Konva.Rect({ x: pos.x, y: pos.y, width: pos.width, height: pos.height });
+                        konvaShape = new Konva.Rect({
+                            x: pos.x + pos.width / 2,
+                            y: pos.y + pos.height / 2,
+                            width: pos.width,
+                            height: pos.height,
+                            offsetX: pos.width / 2,
+                            offsetY: pos.height / 2,
+                        });
                         break;
                     case 'ellipse':
-                        konvaShape = new Konva.Ellipse({ x: pos.x + pos.width / 2, y: pos.y + pos.height / 2, radiusX: pos.width / 2, radiusY: pos.height / 2 });
+                        konvaShape = new Konva.Ellipse({
+                            x: pos.x + pos.width / 2,
+                            y: pos.y + pos.height / 2,
+                            radiusX: pos.width / 2,
+                            radiusY: pos.height / 2
+                        });
                         break;
                     case 'line':
-                        konvaShape = new Konva.Line({ points: [pos.x, pos.y, pos.x + pos.width, pos.y + pos.height] });
+                        konvaShape = new Konva.Line({
+                            points: [-pos.width / 2, -pos.height / 2, pos.width / 2, pos.height / 2],
+                            x: pos.x + pos.width / 2,
+                            y: pos.y + pos.height / 2,
+                        });
                         break;
                     case 'arc':
-                        // This path creates a quarter-arc that fits the bounding box.
-                        // It starts at the bottom-left and curves to the top-right of the box.
-                        // The sweep-flag '1' ensures it's drawn clockwise, matching PPTX default.
-                        const arcPath = `M ${pos.x},${pos.y + pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.x + pos.width},${pos.y}`;
+                        const arcPath = `M 0,${pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.width},0`;
                         konvaShape = new Konva.Path({
                             data: arcPath,
-                            x: 0,
-                            y: 0,
+                            x: pos.x + pos.width / 2,
+                            y: pos.y + pos.height / 2,
+                            offsetX: pos.width / 2,
+                            offsetY: pos.height / 2,
                         });
-                        // For arcs, fill is often disabled, and it's rendered as a stroked path.
-                        // We'll disable fill to prevent it from being rendered as a pie slice.
                         konvaShape.fillEnabled(false);
                         break;
                     case 'custom':
@@ -1401,8 +1436,12 @@
                             const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
 
                             konvaShape = new Konva.Shape({
-                                x: pos.x,
-                                y: pos.y,
+                                x: pos.x + pos.width / 2,
+                                y: pos.y + pos.height / 2,
+                                width: pos.width,
+                                height: pos.height,
+                                offsetX: pos.width / 2,
+                                offsetY: pos.height / 2,
                                 sceneFunc: function (context, shape) {
                                     context.beginPath();
                                     pathData.commands.forEach(command => {
@@ -1469,6 +1508,10 @@
                     if (shapeProps.stroke && shapeProps.stroke !== 'none') {
                         konvaShape.stroke(shapeProps.stroke.color);
                         konvaShape.strokeWidth(shapeProps.stroke.width || 1);
+
+                        if (shapeProps.stroke.dash && shapeProps.stroke.dash.length > 0) {
+                            konvaShape.dash(shapeProps.stroke.dash);
+                        }
 
                         if (shapeProps.stroke.join) {
                             konvaShape.lineJoin(shapeProps.stroke.join); // 'miter', 'round', 'bevel'
