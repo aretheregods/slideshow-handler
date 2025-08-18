@@ -388,9 +388,6 @@
                         if (layoutData.colorMapOverride) {
                             slideContext.colorMap = { ...slideContext.colorMap, ...layoutData.colorMapOverride };
                         }
-
-
-                        console.log( { masterData, layoutData } );
                     }
 
                     const slideXml = await getNormalizedXmlString(entriesMap, slidePath);
@@ -406,8 +403,6 @@
                     const layoutBg = layoutXmlDoc ? parseBackground(layoutXmlDoc, slideContext) : null;
                     const masterBg = masterXmlDoc ? parseBackground(masterXmlDoc, slideContext) : null;
                     const finalBg = slideBg || layoutBg || masterBg;
-                    console.log({ masterXmlDoc });
-                    console.log({ slideBg, layoutBg, masterBg, finalBg });
 
                     const slideContainer = document.createElement( 'div' );
                     slideContainer.className = 'slide-viewer';
@@ -653,7 +648,6 @@
         function parseColorMap(node) {
             const colorMap = {};
             if (node) {
-                console.log({ node, attr: node.attributes });
                 for (const { name, value } of node.attributes) {
                     colorMap[name] = value;
                 }
@@ -755,7 +749,6 @@
                     }
                 }
                 return hex;
-                console.log({ colorObj, hex });
             }
 
             return null; // Return null if color can't be resolved
@@ -1395,7 +1388,7 @@
 
             const xfrmNode = shape.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
             if (xfrmNode) {
-                const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                const offNode = xfrmNode.getElementsByTagName('a:off')[0];
                 const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                 if (offNode && extNode) {
                     pos = {
