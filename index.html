@@ -265,7 +265,7 @@
             }
 
             // Normalize line endings to prevent cross-platform parsing issues.
-            return xmlString.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            return xmlString.replace(/\\r\\n/g, '\n').replace(/\\r/g, '\n');
         }
 
         fileInput.addEventListener( 'change', async ( event ) => {
@@ -376,7 +376,6 @@
                             masterStaticShapes = masterData.staticShapes;
                             defaultTextStyles = masterData.defaultTextStyles;
                             slideContext.colorMap = masterData.colorMap;
-                            console.log({ masterData });
                         }
 
                         let layoutData;
@@ -404,6 +403,7 @@
                     const layoutBg = layoutXmlDoc ? parseBackground(layoutXmlDoc, slideContext) : null;
                     const masterBg = masterXmlDoc ? parseBackground(masterXmlDoc, slideContext) : null;
                     const finalBg = slideBg || layoutBg || masterBg;
+                    console.log({ masterXmlDoc });
                     console.log({ slideBg, layoutBg, masterBg, finalBg });
 
                     const slideContainer = document.createElement( 'div' );
