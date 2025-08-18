@@ -1313,8 +1313,8 @@
                             width: pos.width - (currentX - pos.x),
                         });
                         textGroup.add(textEl);
-                        currentX += textEl.width();
-                        paragraphMaxHeight = Math.max(paragraphMaxHeight, textEl.height());
+                        currentX += textEl.getTextWidth();
+                        paragraphMaxHeight = Math.max(paragraphMaxHeight, textEl.getTextHeight());
                     } else if (childNode.localName === 'br') {
                         currentY += paragraphMaxHeight || LINE_HEIGHT;
                         currentX = pos.x + indent + bulletOffset;
