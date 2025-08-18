@@ -265,7 +265,7 @@
             }
 
             // Normalize line endings to prevent cross-platform parsing issues.
-            return xmlString.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            return xmlString.replace(/\\r\\n/g, '\n').replace(/\\r/g, '\n');
         }
 
         fileInput.addEventListener( 'change', async ( event ) => {
@@ -569,8 +569,51 @@
                         if (fillNode.localName === 'solidFill') {
                             const colorObj = parseColor(fillNode);
                             theme.formatScheme.fills.push({ type: 'solid', color: colorObj });
+                        } else if (fillNode.localName === 'gradFill') {
+                            const gsLstNode = fillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
+                            const stops = [];
+                            if (gsLstNode) {
+                                for (const gsNode of gsLstNode.children) {
+                                    const pos = parseInt(gsNode.getAttribute('pos')) / 1000; // Position is in 1000ths of a percent
+                                    const colorObj = parseColor(gsNode);
+                                    if (colorObj) {
+                                        stops.push({ pos, color: colorObj });
+                                    }
+                                }
+                            }
+                            let angle = 0;
+                            const linNode = fillNode.getElementsByTagNameNS(DML_NS, 'lin')[0];
+                            if (linNode) {
+                                angle = parseInt(linNode.getAttribute('ang')) / 60000; // Angle is in 60000ths of a degree
+                            }
+                            theme.formatScheme.fills.push({ type: 'gradient', stops, angle });
+                        } else if (fillNode.localName === 'blipFill') {
+                            const blipNode = fillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
+                            if (blipNode) {
+                                const relId = blipNode.getAttribute('r:embed');
+                                theme.formatScheme.fills.push({ type: 'image', relId: relId });
+                            }
+                        } else if (fillNode.localName === 'pattFill') {
+                            const pattern = {
+                                type: 'pattern',
+                                pattern: fillNode.getAttribute('prst'),
+                                fgColor: null,
+                                bgColor: null,
+                            };
+                            const fgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'fgClr')[0];
+                            if (fgClrNode) {
+                                pattern.fgColor = parseColor(fgClrNode);
+                            }
+                            const bgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'bgClr')[0];
+                            if (bgClrNode) {
+                                pattern.bgColor = parseColor(bgClrNode);
+                            }
+                            theme.formatScheme.fills.push(pattern);
+                        } else if (fillNode.localName === 'grpFill') {
+                            theme.formatScheme.fills.push({ type: 'group' });
+                        } else if (fillNode.localName === 'noFill') {
+                            theme.formatScheme.fills.push({ type: 'none' });
                         } else {
-                            // TODO: Handle other fill types like gradFill, etc.
                             theme.formatScheme.fills.push({ type: 'unsupported' });
                         }
                     }
@@ -605,8 +648,8 @@
         function parseColorMap(node) {
             const colorMap = {};
             if (node) {
-                for (const attr of node.attributes) {
-                    colorMap[attr.name] = attr.value;
+                for (const { name, value } of node.attributes) {
+                    colorMap[name] = value;
                 }
             }
             return colorMap;
@@ -1257,12 +1300,9 @@
                     }
                 }
 
-                console.log(`Processing paragraph with ${pNode.childNodes.length} children...`);
                 for (const childNode of pNode.childNodes) {
-                    console.log(`... found child node: ${childNode.nodeName}`);
                     if (childNode.localName === 'r' || childNode.localName === 'fld') {
                         const text = childNode.textContent;
-                        console.log(`...... It's a text run. Content: "${text}"`);
                         if (!text) continue;
 
                         const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
@@ -1348,7 +1388,7 @@
 
             const xfrmNode = shape.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
             if (xfrmNode) {
-                const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                const offNode = xfrmNode.getElementsByTagName('a:off')[0];
                 const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                 if (offNode && extNode) {
                     pos = {
