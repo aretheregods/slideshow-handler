@@ -831,11 +831,8 @@
             const pathH = parseInt(pathNode.getAttribute('h'));
 
             let svgPath = "";
-            // Using childNodes to preserve order
-            for (const cmdNode of pathNode.childNodes) {
-                // Skip non-element nodes like #text
-                if (cmdNode.nodeType !== 1) continue;
-
+            // Using .children is more robust as it only returns element nodes.
+            for (const cmdNode of pathNode.children) {
                 const cmd = cmdNode.localName;
 
                 switch (cmd) {
@@ -1427,14 +1424,18 @@
                         konvaShape = new Konva.Line({ points: [pos.x, pos.y, pos.x + pos.width, pos.y + pos.height] });
                         break;
                     case 'arc':
-                        konvaShape = new Konva.Arc({
-                            x: pos.x,
-                            y: pos.y + pos.height,
-                            innerRadius: 0,
-                            outerRadius: pos.width,
-                            angle: 90,
-                            rotation: -90,
+                        // This path creates a quarter-arc that fits the bounding box.
+                        // It starts at the bottom-left and curves to the top-right of the box.
+                        // The sweep-flag '1' ensures it's drawn clockwise, matching PPTX default.
+                        const arcPath = `M ${pos.x},${pos.y + pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.x + pos.width},${pos.y}`;
+                        konvaShape = new Konva.Path({
+                            data: arcPath,
+                            x: 0,
+                            y: 0,
                         });
+                        // For arcs, fill is often disabled, and it's rendered as a stroked path.
+                        // We'll disable fill to prevent it from being rendered as a pie slice.
+                        konvaShape.fillEnabled(false);
                         break;
                     case 'custom':
                         if (shapeProps.geometry.path) {
