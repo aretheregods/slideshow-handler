@@ -653,6 +653,7 @@
         function parseColorMap(node) {
             const colorMap = {};
             if (node) {
+                console.log({ node });
                 for (const attr of node.attributes) {
                     colorMap[attr.name] = attr.value;
                 }
