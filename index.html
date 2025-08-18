@@ -1302,6 +1302,22 @@
                             fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
                         }
 
+                        // Create a temporary element to measure width
+                        const tempText = new Konva.Text({
+                            text: text,
+                            fontSize: fontSize,
+                            fontFamily: fontFamily,
+                            fontStyle: fontStyle,
+                        });
+                        const textWidth = tempText.getTextWidth();
+
+                        // Check for overflow and wrap if necessary
+                        if (currentX + textWidth > pos.x + pos.width && currentX > pos.x + indent) {
+                            currentY += paragraphMaxHeight || LINE_HEIGHT;
+                            currentX = pos.x + indent;
+                            paragraphMaxHeight = 0;
+                        }
+
                         const textEl = new Konva.Text({
                             x: currentX,
                             y: currentY,
