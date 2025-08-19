@@ -207,7 +207,6 @@
         import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 
         const EMU_PER_PIXEL = 9525; // Standard conversion for 96 DPI
-        const LINE_HEIGHT = 24; // A default line height in pixels for SVG text
         const INDENTATION_AMOUNT = 30; // Pixels per indentation level
         const BULLET_OFFSET = 20; // Space between bullet and text
 
@@ -332,7 +331,6 @@
 
 
                     const slideContext = {
-                        slideNum: slideNum,
                         theme: theme,
                         colorMap: {},
                         tableStyles: tableStyles,
@@ -340,7 +338,7 @@
 
                     const layoutRel = sortedSlideRels.find( r => r.type.endsWith( '/slideLayout' ) );
 
-                    let finalPlaceholders = {};
+                    let masterPlaceholders = {}, layoutPlaceholders = {};
                     let defaultTextStyles = {};
                     let masterXml, layoutXml;
 
@@ -364,7 +362,7 @@
                             if (masterXml) {
                                 masterData = parseMasterOrLayout( masterXml, theme, null, false );
                             }
-                            finalPlaceholders = masterData.placeholders;
+                            masterPlaceholders = masterData.placeholders;
                             masterStaticShapes = masterData.staticShapes;
                             defaultTextStyles = masterData.defaultTextStyles;
                             slideContext.colorMap = masterData.colorMap;
@@ -375,7 +373,7 @@
                         if (layoutXml) {
                             layoutData = parseMasterOrLayout( layoutXml, theme, masterData.colorMap, true );
                         }
-                        finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
+                        layoutPlaceholders = layoutData.placeholders;
                         layoutStaticShapes = layoutData.staticShapes;
                         if (layoutData.colorMapOverride) {
                             slideContext.colorMap = { ...slideContext.colorMap, ...layoutData.colorMapOverride };
@@ -406,7 +404,7 @@
                     slideViewerContainer.appendChild( slideContainer );
 
                     // The renderSlide function now handles its own scaling.
-                    await renderSlide( slideXml, slideContainer, finalPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap );
+                    await renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap );
                 }
 
             } catch ( error ) {
@@ -1269,10 +1267,7 @@
             for (let i = 1; i <= 9; i++) {
                 const lvlPr = styleNode.getElementsByTagNameNS(DML_NS, `lvl${i}pPr`)[0];
                 if (lvlPr) {
-            styles[i - 1] = {
-                props: parseParagraphProperties(lvlPr),
-                rawXml: lvlPr.outerHTML
-            };
+                    styles[i - 1] = parseParagraphProperties(lvlPr);
                 }
             }
             return styles;
@@ -1364,9 +1359,24 @@
                 }
             }
 
+            const lnSpcNode = pPrNode.getElementsByTagNameNS(DML_NS, 'lnSpc')[0];
+            if (lnSpcNode) {
+                const spcPctNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPct')[0];
+                if (spcPctNode) {
+                    properties.lnSpc = { type: 'pct', val: parseInt(spcPctNode.getAttribute('val')) };
+                }
+                const spcPtsNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+                if (spcPtsNode) {
+                    properties.lnSpc = { type: 'pts', val: parseInt(spcPtsNode.getAttribute('val')) / 100 };
+                }
+            }
+
             const defRPrNode = pPrNode.getElementsByTagNameNS(DML_NS, 'defRPr')[0];
             if (defRPrNode) {
-                properties.defRPr.size = parseInt(defRPrNode.getAttribute('sz') || '1800') / 100;
+                const sz = defRPrNode.getAttribute('sz');
+                if (sz) {
+                    properties.defRPr.size = parseInt(sz) / 100;
+                }
                 properties.defRPr.bold = defRPrNode.getAttribute('b') === '1';
                 properties.defRPr.italic = defRPrNode.getAttribute('i') === '1';
 
@@ -1442,8 +1452,10 @@
                                 height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                             };
                             let listStyle = null;
+                            let bodyPr = null;
                             const txBodyNode = sp.getElementsByTagNameNS(PML_NS, 'txBody')[0];
                             if (txBodyNode) {
+                                bodyPr = parseBodyProperties(txBodyNode);
                                 const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
                                 if (lstStyleNode) {
                                     listStyle = parseTextStyle(lstStyleNode);
@@ -1493,8 +1505,8 @@
                 if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = defaultTextStyles.title;
                 else if (phType === 'body') defaultStyle = defaultTextStyles.body;
 
-                const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level].props : {};
-                const layoutListStyle = (layoutPlaceholders[phKey]?.listStyle?.[level]?.props) || {};
+                const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
+                const layoutListStyle = (layoutPlaceholders[phKey]?.listStyle?.[level]) || {};
                 const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
 
                 const finalProps = {
@@ -1509,6 +1521,15 @@
                 if (finalProps.bullet.type && finalProps.bullet.type !== 'none') {
                     bulletOffset = BULLET_OFFSET;
                     currentX += bulletOffset;
+                }
+
+                let baseLineHeight = (finalProps.defRPr.size || 18) * 1.2; // Default line height
+                if (finalProps.lnSpc) {
+                    if (finalProps.lnSpc.type === 'pct') {
+                        baseLineHeight = (finalProps.defRPr.size || 18) * (finalProps.lnSpc.val / 100000);
+                    } else if (finalProps.lnSpc.type === 'pts') {
+                        baseLineHeight = finalProps.lnSpc.val;
+                    }
                 }
 
                 currentY += paragraphMaxHeight;
@@ -1549,7 +1570,7 @@
                         const textWidth = tempText.getTextWidth();
 
                         if (currentX + textWidth > availableWidth && currentX > indent) {
-                            currentY += paragraphMaxHeight || LINE_HEIGHT;
+                            currentY += Math.max(baseLineHeight, paragraphMaxHeight);
                             currentX = indent + bulletOffset;
                             paragraphMaxHeight = 0;
                         }
@@ -1558,7 +1579,7 @@
                         paragraphMaxHeight = Math.max(paragraphMaxHeight, tempText.height());
 
                     } else if (childNode.localName === 'br') {
-                        currentY += paragraphMaxHeight || LINE_HEIGHT;
+                        currentY += Math.max(baseLineHeight, paragraphMaxHeight);
                         currentX = indent + bulletOffset;
                         paragraphMaxHeight = 0;
                     }
@@ -1572,42 +1593,6 @@
         async function processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr = {}) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
-    if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
-        console.log(`--- Logging Font Size for title: ${phKey} on slide ${slideContext.slideNum} ---`);
-
-        const masterLvl1pPrXml = defaultTextStyles.title?.[0]?.rawXml;
-        const masterDefRPr = defaultTextStyles.title?.[0]?.props?.defRPr || {};
-        console.log("Master lvl1pPr XML:", masterLvl1pPrXml || "Not found");
-        console.log("Parsed Master font size:", masterDefRPr.size);
-
-        const layoutLvl1pPrXml = layoutPlaceholders[phKey]?.listStyle?.[0]?.rawXml;
-        const layoutDefRPr = layoutPlaceholders[phKey]?.listStyle?.[0]?.props?.defRPr || {};
-        console.log("Layout lvl1pPr XML:", layoutLvl1pPrXml || "Not found");
-        console.log("Parsed Layout font size:", layoutDefRPr.size);
-
-        const paragraphsForLog = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
-        for (const pNode of paragraphsForLog) {
-            const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
-            if (pPrNode) {
-                console.log("Slide pPr XML:", pPrNode.outerHTML);
-            }
-            const slideLevelProps = parseParagraphProperties(pPrNode) || {};
-            const slideDefRPr = slideLevelProps.defRPr || {};
-            console.log("Parsed Slide Paragraph font size:", slideDefRPr.size);
-
-            for (const rNode of pNode.getElementsByTagNameNS(DML_NS, 'r')) {
-                const rPrNode = rNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                if (rPrNode) {
-                    console.log("Slide rPr XML:", rPrNode.outerHTML);
-                    if (rPrNode.getAttribute('sz')) {
-                        console.log("Parsed Slide Run font size:", parseInt(rPrNode.getAttribute('sz'))/100);
-                    }
-                }
-            }
-        }
-        console.log("-------------------------------------------------");
-    }
 
             const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
             if (paragraphs.length === 0) return;
@@ -1642,8 +1627,8 @@
                 if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = defaultTextStyles.title;
                 else if (phType === 'body') defaultStyle = defaultTextStyles.body;
 
-                const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level].props : {};
-                const layoutListStyle = (layoutPlaceholders[phKey]?.listStyle?.[level]?.props) || {};
+                const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
+                const layoutListStyle = (layoutPlaceholders[phKey]?.listStyle?.[level]) || {};
                 const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
 
                 const finalProps = {
@@ -1655,6 +1640,15 @@
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
                 let currentX = paddedPos.x + indent;
                 let bulletOffset = 0;
+
+                let baseLineHeight = (finalProps.defRPr.size || 18) * 1.2; // Default line height
+                if (finalProps.lnSpc) {
+                    if (finalProps.lnSpc.type === 'pct') {
+                        baseLineHeight = (finalProps.defRPr.size || 18) * (finalProps.lnSpc.val / 100000);
+                    } else if (finalProps.lnSpc.type === 'pts') {
+                        baseLineHeight = finalProps.lnSpc.val;
+                    }
+                }
 
                 currentY += paragraphMaxHeight;
                 paragraphMaxHeight = 0;
@@ -1718,7 +1712,7 @@
                         const textWidth = tempText.getTextWidth();
 
                         if (currentX + textWidth > paddedPos.x + paddedPos.width && currentX > paddedPos.x + indent) {
-                            currentY += paragraphMaxHeight || LINE_HEIGHT;
+                            currentY += Math.max(baseLineHeight, paragraphMaxHeight);
                             currentX = paddedPos.x + indent + bulletOffset;
                             paragraphMaxHeight = 0;
                         }
@@ -1737,7 +1731,7 @@
                         currentX += textEl.getTextWidth();
                         paragraphMaxHeight = Math.max(paragraphMaxHeight, textEl.height());
                     } else if (childNode.localName === 'br') {
-                        currentY += paragraphMaxHeight || LINE_HEIGHT;
+                        currentY += Math.max(baseLineHeight, paragraphMaxHeight);
                         currentX = paddedPos.x + indent + bulletOffset;
                         paragraphMaxHeight = 0;
                     }
@@ -1745,7 +1739,7 @@
             }
         }
 
-        async function processShape(shape, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
+        async function processShape(shape, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -1785,6 +1779,10 @@
                 pos = { ...layoutPlaceholders[phKey].pos };
                 pos.x += parentXfrm.x;
                 pos.y += parentXfrm.y;
+            } else if (phKey && masterPlaceholders[phKey]) { // Fallback to master
+                pos = { ...masterPlaceholders[phKey].pos };
+                pos.x += parentXfrm.x;
+                pos.y += parentXfrm.y;
             } else if (phType === 'ctrTitle' && layoutPlaceholders['title']) {
                 // Fallback for centered titles, which often use the standard 'title' placeholder
                 pos = { ...layoutPlaceholders['title'].pos };
@@ -1793,21 +1791,27 @@
                 phKey = 'title'; // Remap key for style inheritance
             }
 
-            if (!pos) return { width: 0, height: 0 };
-
             if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
                 console.log(`--- Logging Position for title: ${phKey} on slide ${slideNum} ---`);
+
+                const masterPlaceholder = masterPlaceholders[phKey];
+                if (masterPlaceholder && masterPlaceholder.rawXfrm) {
+                    console.log("Master xfrm XML:", masterPlaceholder.rawXfrm);
+                    console.log("Master pos:", masterPlaceholder.pos);
+                } else {
+                    console.log("Master xfrm XML: Not found.");
+                }
 
                 const layoutPlaceholder = layoutPlaceholders[phKey];
                 if (layoutPlaceholder && layoutPlaceholder.rawXfrm) {
                     console.log("Layout xfrm XML:", layoutPlaceholder.rawXfrm);
+                    console.log("Layout pos:", layoutPlaceholder.pos);
                 } else {
                     console.log("Layout xfrm XML: Not found.");
                 }
 
-                const slideXfrmNode = shape.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
-                if (slideXfrmNode) {
-                    console.log("Slide xfrm XML:", slideXfrmNode.outerHTML);
+                if (xfrmNode) {
+                    console.log("Slide xfrm XML:", xfrmNode.outerHTML);
                 } else {
                     console.log("Slide xfrm XML: Not found.");
                 }
@@ -1815,6 +1819,8 @@
                 console.log("Final calculated position:", JSON.parse(JSON.stringify(pos)));
                 console.log("-------------------------------------------------");
             }
+
+            if (!pos) return { width: 0, height: 0 };
 
             const shapeProps = parseShapeProperties(shape, slideContext, slideNum);
 
@@ -1972,10 +1978,12 @@
 
             const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
             if (txBody) {
-                const bodyPr = parseBodyProperties(txBody);
+                const layoutBodyPr = layoutPlaceholders[phKey]?.bodyPr || {};
+                const slideBodyPr = parseBodyProperties(txBody);
+                const finalBodyPr = { ...layoutBodyPr, ...slideBodyPr };
                 const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height } });
                 layer.add(textGroup);
-                await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr);
+                await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, finalBodyPr);
             }
             return konvaShape ? konvaShape.getClientRect() : { width: 0, height: 0 };
         }
@@ -2020,7 +2028,7 @@
             return properties;
         }
 
-        async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
+        async function processGroupShape(group, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -2066,9 +2074,9 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                    await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                    await processGroupShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                 } else if (tagName === 'pic') {
                     await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, layoutPlaceholders, slideContext);
                 }
@@ -2487,7 +2495,7 @@
             return { width: pos.width, height: pos.height };
         }
 
-        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
+        async function renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
             activeCharts = []; // Clear previously rendered charts
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -2532,12 +2540,12 @@
             if (showMasterShapes) {
                 if (masterStaticShapes) {
                     for (const shape of masterStaticShapes) {
-                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processShape(shape, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     }
                 }
                  if (layoutStaticShapes) {
                     for (const shape of layoutStaticShapes) {
-                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processShape(shape, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     }
                 }
             }
@@ -2547,9 +2555,9 @@
                 for (const element of spTreeNode.children) {
                     const tagName = element.localName;
                     if (tagName === 'sp' || tagName === 'cxnSp') {
-                        await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processShape(element, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     } else if (tagName === 'grpSp') {
-                        await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processGroupShape(element, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     } else if (tagName === 'graphicFrame') {
                         const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                         if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
