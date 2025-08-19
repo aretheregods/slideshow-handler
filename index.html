@@ -538,6 +538,7 @@
                     fills: [],
                     lines: [],
                     effects: [],
+                    bgFills: [],
                 },
             };
 
@@ -660,6 +661,62 @@
                  if (effectStyleLstNode) {
                     // TODO: Implement effect parsing if needed
                  }
+
+                const bgFillStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'bgFillStyleLst')[0];
+                if (bgFillStyleLstNode) {
+                    for (const fillNode of bgFillStyleLstNode.children) {
+                        if (fillNode.localName === 'solidFill') {
+                            const colorObj = parseColor(fillNode);
+                            theme.formatScheme.bgFills.push({ type: 'solid', color: colorObj });
+                        } else if (fillNode.localName === 'gradFill') {
+                            const gsLstNode = fillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
+                            const stops = [];
+                            if (gsLstNode) {
+                                for (const gsNode of gsLstNode.children) {
+                                    const pos = parseInt(gsNode.getAttribute('pos')) / 1000; // Position is in 1000ths of a percent
+                                    const colorObj = parseColor(gsNode);
+                                    if (colorObj) {
+                                        stops.push({ pos, color: colorObj });
+                                    }
+                                }
+                            }
+                            let angle = 0;
+                            const linNode = fillNode.getElementsByTagNameNS(DML_NS, 'lin')[0];
+                            if (linNode) {
+                                angle = parseInt(linNode.getAttribute('ang')) / 60000; // Angle is in 60000ths of a degree
+                            }
+                            theme.formatScheme.bgFills.push({ type: 'gradient', stops, angle });
+                        } else if (fillNode.localName === 'blipFill') {
+                            const blipNode = fillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
+                            if (blipNode) {
+                                const relId = blipNode.getAttribute('r:embed');
+                                theme.formatScheme.bgFills.push({ type: 'image', relId: relId });
+                            }
+                        } else if (fillNode.localName === 'pattFill') {
+                            const pattern = {
+                                type: 'pattern',
+                                pattern: fillNode.getAttribute('prst'),
+                                fgColor: null,
+                                bgColor: null,
+                            };
+                            const fgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'fgClr')[0];
+                            if (fgClrNode) {
+                                pattern.fgColor = parseColor(fgClrNode);
+                            }
+                            const bgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'bgClr')[0];
+                            if (bgClrNode) {
+                                pattern.bgColor = parseColor(bgClrNode);
+                            }
+                            theme.formatScheme.bgFills.push(pattern);
+                        } else if (fillNode.localName === 'grpFill') {
+                            theme.formatScheme.bgFills.push({ type: 'group' });
+                        } else if (fillNode.localName === 'noFill') {
+                            theme.formatScheme.bgFills.push({ type: 'none' });
+                        } else {
+                            theme.formatScheme.bgFills.push({ type: 'unsupported' });
+                        }
+                    }
+                }
             }
 
             return theme;
@@ -943,6 +1000,33 @@
                     if (blipNode) {
                         const relId = blipNode.getAttribute('r:embed');
                         return { type: 'image', relId: relId };
+                    }
+                }
+            }
+
+            const bgRefNode = bgNode.getElementsByTagNameNS(PML_NS, 'bgRef')[0];
+            if (bgRefNode) {
+                const idx = parseInt(bgRefNode.getAttribute('idx'));
+                if (idx > 0 && slideContext.theme) {
+                    let themeFill;
+                    if (idx >= 1001) {
+                        // Background fill styles are 1-based in the XML, 0-based in our array
+                        themeFill = slideContext.theme.formatScheme.bgFills[idx - 1001];
+                    } else {
+                        // Foreground fill styles are 1-based in the XML, 0-based in our array
+                        themeFill = slideContext.theme.formatScheme.fills[idx - 1];
+                    }
+
+                    if (themeFill) {
+                         if (themeFill.type === 'solid') {
+                             // The bgRef node can contain its own color definition which acts as an override
+                             const colorOverride = parseColor(bgRefNode);
+                             const finalColor = resolveColor(colorOverride || themeFill.color, slideContext);
+                             return { type: 'color', value: finalColor };
+                         } else if (themeFill.type === 'image' && themeFill.relId) {
+                             return { type: 'image', relId: themeFill.relId };
+                         }
+                         // TODO: Handle other fill types like gradient from bgRef
                     }
                 }
             }
@@ -1507,7 +1591,7 @@
 
                 if (lstStyle && finalProps.bullet.type && finalProps.bullet.type !== 'none') {
                     let bulletEl;
-                    const bulletColor = resolveColor(finalProps.bullet.color, slideContext);
+                    const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
                     const bulletFontSize = finalProps.defRPr.size || 18;
 
                     if (finalProps.bullet.type === 'char') {
