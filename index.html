@@ -1475,13 +1475,13 @@
             return { placeholders, staticShapes, defaultTextStyles, colorMap, colorMapOverride };
         }
 
-        function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr) {
+        function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr, listCounters) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const laidOutRuns = [];
             let currentY = 0;
-            let paragraphMaxHeight = 0;
 
             for (const pNode of paragraphs) {
+                let paragraphMaxHeight = 0;
                 const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
                 const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
                 let defaultStyle = defaultTextStyles.other;
@@ -1510,21 +1510,31 @@
 
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
                 let bulletOffset = 0;
+
                 if (finalProps.bullet.type && finalProps.bullet.type !== 'none') {
+                    const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
+                    const bulletFontSize = finalProps.defRPr.size || 18;
+                    let bulletChar;
+                    if (finalProps.bullet.type === 'char') {
+                        bulletChar = finalProps.bullet.char;
+                    } else if (finalProps.bullet.type === 'auto') {
+                        if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
+                        bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
+                    }
+
+                    if (bulletChar) {
+                        laidOutRuns.push({
+                            isBullet: true,
+                            x: indent,
+                            y: currentY,
+                            text: bulletChar,
+                            fontSize: bulletFontSize,
+                            fontFamily: finalProps.bullet.font || 'Arial',
+                            fill: bulletColor,
+                        });
+                    }
                     bulletOffset = BULLET_OFFSET;
                 }
-
-                let baseLineHeight = (finalProps.defRPr.size || 18) * 1.2;
-                if (finalProps.lnSpc) {
-                    if (finalProps.lnSpc.type === 'pct') {
-                        baseLineHeight = (finalProps.defRPr.size || 18) * (finalProps.lnSpc.val / 100000);
-                    } else if (finalProps.lnSpc.type === 'pts') {
-                        baseLineHeight = finalProps.lnSpc.val;
-                    }
-                }
-
-                currentY += paragraphMaxHeight;
-                paragraphMaxHeight = 0;
 
                 const runs = Array.from(pNode.childNodes).map(node => ({ node, type: node.localName }));
                 const lines = [];
@@ -1582,6 +1592,15 @@
                 }
                 if (currentLine.length > 0) lines.push(currentLine);
 
+                let baseLineHeight = (finalProps.defRPr.size || 18) * 1.2;
+                if (finalProps.lnSpc) {
+                    if (finalProps.lnSpc.type === 'pct') {
+                        baseLineHeight = (finalProps.defRPr.size || 18) * (finalProps.lnSpc.val / 100000);
+                    } else if (finalProps.lnSpc.type === 'pts') {
+                        baseLineHeight = finalProps.lnSpc.val;
+                    }
+                }
+
                 for (const line of lines) {
                     const totalLineWidth = line.reduce((sum, item) => sum + item.runWidth, 0);
                     let startX = indent + bulletOffset;
@@ -1598,6 +1617,7 @@
                     for (const item of line) {
                          const textColor = resolveColor(item.finalRunProps.color, slideContext) || '#000000';
                          laidOutRuns.push({
+                            isBullet: false,
                             x: currentX,
                             y: currentY,
                             text: item.text,
@@ -1611,6 +1631,7 @@
                         maxLineHeight = Math.max(maxLineHeight, tempText.height());
                     }
                     currentY += Math.max(baseLineHeight, maxLineHeight);
+                    paragraphMaxHeight = Math.max(paragraphMaxHeight, maxLineHeight);
                 }
             }
             return { laidOutRuns, textBlockHeight: currentY };
@@ -1630,7 +1651,7 @@
                 height: pos.height - (bodyPr.tIns || 0) - (bodyPr.bIns || 0),
             };
 
-            const { laidOutRuns, textBlockHeight } = layoutParagraphs(paragraphs, paddedPos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr);
+            const { laidOutRuns, textBlockHeight } = layoutParagraphs(paragraphs, paddedPos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr, listCounters);
 
             let startYOffset = 0;
             if (bodyPr.anchor === 'ctr') {
