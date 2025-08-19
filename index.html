@@ -538,6 +538,7 @@
                     fills: [],
                     lines: [],
                     effects: [],
+                    bgFills: [],
                 },
             };
 
@@ -660,6 +661,62 @@
                  if (effectStyleLstNode) {
                     // TODO: Implement effect parsing if needed
                  }
+
+                const bgFillStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'bgFillStyleLst')[0];
+                if (bgFillStyleLstNode) {
+                    for (const fillNode of bgFillStyleLstNode.children) {
+                        if (fillNode.localName === 'solidFill') {
+                            const colorObj = parseColor(fillNode);
+                            theme.formatScheme.bgFills.push({ type: 'solid', color: colorObj });
+                        } else if (fillNode.localName === 'gradFill') {
+                            const gsLstNode = fillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
+                            const stops = [];
+                            if (gsLstNode) {
+                                for (const gsNode of gsLstNode.children) {
+                                    const pos = parseInt(gsNode.getAttribute('pos')) / 1000; // Position is in 1000ths of a percent
+                                    const colorObj = parseColor(gsNode);
+                                    if (colorObj) {
+                                        stops.push({ pos, color: colorObj });
+                                    }
+                                }
+                            }
+                            let angle = 0;
+                            const linNode = fillNode.getElementsByTagNameNS(DML_NS, 'lin')[0];
+                            if (linNode) {
+                                angle = parseInt(linNode.getAttribute('ang')) / 60000; // Angle is in 60000ths of a degree
+                            }
+                            theme.formatScheme.bgFills.push({ type: 'gradient', stops, angle });
+                        } else if (fillNode.localName === 'blipFill') {
+                            const blipNode = fillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
+                            if (blipNode) {
+                                const relId = blipNode.getAttribute('r:embed');
+                                theme.formatScheme.bgFills.push({ type: 'image', relId: relId });
+                            }
+                        } else if (fillNode.localName === 'pattFill') {
+                            const pattern = {
+                                type: 'pattern',
+                                pattern: fillNode.getAttribute('prst'),
+                                fgColor: null,
+                                bgColor: null,
+                            };
+                            const fgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'fgClr')[0];
+                            if (fgClrNode) {
+                                pattern.fgColor = parseColor(fgClrNode);
+                            }
+                            const bgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'bgClr')[0];
+                            if (bgClrNode) {
+                                pattern.bgColor = parseColor(bgClrNode);
+                            }
+                            theme.formatScheme.bgFills.push(pattern);
+                        } else if (fillNode.localName === 'grpFill') {
+                            theme.formatScheme.bgFills.push({ type: 'group' });
+                        } else if (fillNode.localName === 'noFill') {
+                            theme.formatScheme.bgFills.push({ type: 'none' });
+                        } else {
+                            theme.formatScheme.bgFills.push({ type: 'unsupported' });
+                        }
+                    }
+                }
             }
 
             return theme;
@@ -1060,6 +1117,7 @@
             let solidFillNode = null;
             let gradFillNode = null;
             let noFillNode = null;
+            let bgRefNode = null;
             // Iterate over direct children to avoid picking up fills from nested elements like 'ln'
             for (const child of spPrNode.children) {
                 if (child.localName === 'solidFill') {
@@ -1072,6 +1130,10 @@
                 }
                 if (child.localName === 'noFill') {
                     noFillNode = child;
+                    break;
+                }
+                if (child.localName === 'bgRef') {
+                    bgRefNode = child;
                     break;
                 }
             }
@@ -1099,6 +1161,18 @@
                     angle = parseInt(linNode.getAttribute('ang')) / 60000;
                 }
                 properties.fill = { type: 'gradient', stops, angle };
+            } else if (bgRefNode) {
+                const idx = parseInt(bgRefNode.getAttribute('idx'));
+                // The spec says the index for bgRef starts at 1001.
+                if (idx >= 1001 && slideContext.theme.formatScheme.bgFills.length > (idx - 1001)) {
+                    const themeFill = slideContext.theme.formatScheme.bgFills[idx - 1001];
+                    let colorObj = parseColor(bgRefNode) || themeFill.color;
+
+                    if (themeFill.type === 'solid') {
+                        properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                    }
+                    // TODO: Handle other fill types
+                }
             } else {
                 const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
                 if (styleNode) {
@@ -1151,10 +1225,14 @@
                 }
             }
 
-            if (properties.fill === null && properties.stroke && properties.stroke.color) {
-                // Do not apply this logic to connector shapes, as they are lines and should not have a fill.
-                if (shapeNode.localName !== 'cxnSp') {
-                    properties.fill = { type: 'solid', color: properties.stroke.color };
+            // After all other fill checks, if fill is still null, apply the default theme fill.
+            if (properties.fill === null && shapeNode.localName !== 'cxnSp') {
+                if (slideContext.theme && slideContext.theme.formatScheme.fills.length > 0) {
+                    const defaultFill = slideContext.theme.formatScheme.fills[0];
+                    if (defaultFill.type === 'solid' && defaultFill.color) {
+                        properties.fill = { type: 'solid', color: resolveColor(defaultFill.color, slideContext) };
+                    }
+                    // TODO: Handle other default fill types like gradient if necessary
                 }
             }
 
