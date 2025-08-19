@@ -327,23 +327,8 @@
                     const sortedSlideRels = Object.values(slideRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
                     const imageMap = {};
-                    for (const rel of sortedSlideRels) {
-                        if (rel.type.endsWith('/image')) {
-                            const imagePath = resolvePath('ppt/slides', rel.target);
-                            const imageEntry = entriesMap.get(imagePath);
-                            if (imageEntry) {
-                                const writer = new BlobWriter();
-                                const imageBlob = await imageEntry.getData(writer);
-                                const reader = new FileReader();
-                                const imageData = await new Promise((resolve, reject) => {
-                                    reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                                    reader.onerror = reject;
-                                    reader.readAsDataURL(imageBlob);
-                                });
-                                imageMap[rel.id] = `data:image/png;base64,${imageData}`;
-                            }
-                        }
-                    }
+                    await populateImageMap(imageMap, slideRels, 'ppt/slides', entriesMap);
+
 
                     const slideContext = {
                         theme: theme,
@@ -362,12 +347,17 @@
                         const layoutPath = resolvePath('ppt/slides', layoutRel.target);
                         const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
                         const layoutRels = await getRelationships( entriesMap, layoutRelsPath );
+                        await populateImageMap(imageMap, layoutRels, 'ppt/slideLayouts', entriesMap);
                         const sortedLayoutRels = Object.values(layoutRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
                         const masterRel = sortedLayoutRels.find( r => r.type.endsWith( '/slideMaster' ) );
 
                         let masterData;
                         if ( masterRel ) {
                             const masterPath = resolvePath('ppt/slideLayouts', masterRel.target);
+                            const masterRelsPath = `ppt/slideMasters/_rels/${masterPath.split('/').pop()}.rels`;
+                            const masterRels = await getRelationships( entriesMap, masterRelsPath );
+                            await populateImageMap(imageMap, masterRels, 'ppt/slideMasters', entriesMap);
+
                             masterXml = await getNormalizedXmlString(entriesMap, masterPath);
                             if (masterXml) {
                                 masterData = parseMasterOrLayout( masterXml );
@@ -507,6 +497,36 @@
                 image.onerror = reject;
                 image.src = url;
             });
+        }
+
+        async function populateImageMap(imageMap, rels, baseDir, entriesMap) {
+            const imageRels = Object.values(rels).filter(rel => rel.type.endsWith('/image'));
+            for (const rel of imageRels) {
+                // Do not overwrite an image that has already been loaded from a more specific source (e.g., slide vs layout)
+                if (imageMap[rel.id]) {
+                    continue;
+                }
+
+                const imagePath = resolvePath(baseDir, rel.target);
+                const imageEntry = entriesMap.get(imagePath);
+                if (imageEntry) {
+                    try {
+                        const writer = new BlobWriter();
+                        const imageBlob = await imageEntry.getData(writer);
+                        const reader = new FileReader();
+                        const imageData = await new Promise((resolve, reject) => {
+                            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                            reader.onerror = reject;
+                            reader.readAsDataURL(imageBlob);
+                        });
+                        imageMap[rel.id] = `data:image/png;base64,${imageData}`;
+                    } catch (e) {
+                        console.error(`Failed to load image data for relId ${rel.id} at path ${imagePath}`, e);
+                    }
+                } else {
+                    console.warn(`Image relationship '${rel.id}' points to a non-existent target: ${rel.target} (resolved to ${imagePath})`);
+                }
+            }
         }
 
         function parseTheme(themeXml) {
