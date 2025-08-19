@@ -361,7 +361,7 @@
 
                             masterXml = await getNormalizedXmlString(entriesMap, masterPath);
                             if (masterXml) {
-                                masterData = parseMasterOrLayout( masterXml );
+                                masterData = parseMasterOrLayout( masterXml, theme, null, false );
                             }
                             finalPlaceholders = masterData.placeholders;
                             masterStaticShapes = masterData.staticShapes;
@@ -372,7 +372,7 @@
                         let layoutData;
                         layoutXml = await getNormalizedXmlString(entriesMap, layoutPath);
                         if (layoutXml) {
-                            layoutData = parseMasterOrLayout( layoutXml, true );
+                            layoutData = parseMasterOrLayout( layoutXml, theme, masterData.colorMap, true );
                         }
                         finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
                         layoutStaticShapes = layoutData.staticShapes;
@@ -1380,7 +1380,7 @@
             return properties;
         }
 
-        function parseMasterOrLayout(xml, isLayout = false) {
+        function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout = false) {
             const xmlDoc = parseXmlString(xml, isLayout ? "slideLayout" : "slideMaster");
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -1445,7 +1445,14 @@
                                     listStyle = parseTextStyle(lstStyleNode);
                                 }
                             }
-                            placeholders[key] = { pos, type, listStyle };
+
+                            const tempSlideContext = {
+                                theme: theme,
+                                colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
+                            };
+                            const shapeProps = parseShapeProperties(sp, tempSlideContext, "layout/master");
+
+                            placeholders[key] = { pos, type, listStyle, shapeProps };
                         }
                     }
 
@@ -1698,25 +1705,9 @@
             }
         }
 
-        async function processShape(shape, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum, filledPlaceholders = null) {
+        async function processShape(shape, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
-            // If this shape is from a layout/master, check if it's a placeholder that has been filled on the slide.
-            if (filledPlaceholders) {
-                const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
-                const ph = nvPr ? nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
-                if (ph) {
-                    const type = ph.getAttribute('type');
-                    const idx = ph.getAttribute('idx');
-                    const key = idx ? `idx_${idx}` : type;
-                    if (key && filledPlaceholders.has(key)) {
-                        const shapeName = shape.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name') || 'Unnamed Shape';
-                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' on layout/master is a placeholder that is filled on the slide. Skipping render.`);
-                        return; // Skip rendering this placeholder
-                    }
-                }
-            }
 
             let pos = null;
             const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
@@ -1968,7 +1959,7 @@
             return properties;
         }
 
-        async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum, filledPlaceholders = null) {
+        async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -2014,11 +2005,11 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum, filledPlaceholders);
+                    await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum, filledPlaceholders);
+                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                 } else if (tagName === 'pic') {
-                    await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, layoutPlaceholders);
+                    await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, layoutPlaceholders, slideContext);
                 }
             }
         }
@@ -2323,11 +2314,14 @@
             await processParagraphs(textGroup, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr);
         }
 
-        async function processPicture(picNode, layer, imageMap, parentXfrm, layoutPlaceholders) {
+        async function processPicture(picNode, layer, imageMap, parentXfrm, layoutPlaceholders, slideContext) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             let pos = null;
+            const nvPicPrNode = picNode.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0];
+            const nvPrNode = nvPicPrNode ? nvPicPrNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0] : null;
+            const phNode = nvPrNode ? nvPrNode.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
 
             // 1. Try to get transform from the picture element itself
             const spPrNode = picNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
@@ -2344,48 +2338,70 @@
                         height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                     };
                 }
-            } else {
-                // 2. If no transform, look for a placeholder and get transform from layout
-                const nvPicPrNode = picNode.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0];
-                const nvPrNode = nvPicPrNode ? nvPicPrNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0] : null;
-                const phNode = nvPrNode ? nvPrNode.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
+            } else if (phNode && layoutPlaceholders) {
+                // 2. If no transform, get it from the layout placeholder
+                const phType = phNode.getAttribute('type');
+                const phIdx = phNode.getAttribute('idx');
+                const phKey = phIdx ? `idx_${phIdx}` : phType;
 
-                if (phNode && layoutPlaceholders) {
-                    const phType = phNode.getAttribute('type');
-                    const phIdx = phNode.getAttribute('idx');
-                    const phKey = phIdx ? `idx_${phIdx}` : phType;
-
-                    if (layoutPlaceholders[phKey]) {
-                        pos = { ...layoutPlaceholders[phKey].pos }; // Clone from layout
-                        pos.x += parentXfrm.x;
-                        pos.y += parentXfrm.y;
-                    }
+                if (layoutPlaceholders[phKey]) {
+                    pos = { ...layoutPlaceholders[phKey].pos }; // Clone from layout
+                    pos.x += parentXfrm.x;
+                    pos.y += parentXfrm.y;
                 }
             }
 
             if (!pos) return { width: 0, height: 0 };
 
-            // 3. Get image relationship ID from blipFill -> blip
+            // 3. Look up placeholder properties to get background fill
+            let placeholderProps = null;
+            if (phNode && layoutPlaceholders) {
+                const phType = phNode.getAttribute('type');
+                const phIdx = phNode.getAttribute('idx');
+                const phKey = phIdx ? `idx_${phIdx}` : phType;
+                if (layoutPlaceholders[phKey]) {
+                    placeholderProps = layoutPlaceholders[phKey].shapeProps;
+                }
+            }
+
+            // 4. Create a group for the picture and its potential background
+            const pictureGroup = new Konva.Group({ x: pos.x, y: pos.y });
+            layer.add(pictureGroup);
+
+            // 5. Draw background from placeholder if it exists
+            if (placeholderProps && placeholderProps.fill && placeholderProps.fill !== 'none') {
+                if (placeholderProps.fill.type === 'solid') {
+                    const bgRect = new Konva.Rect({
+                        width: pos.width,
+                        height: pos.height,
+                        fill: placeholderProps.fill.color,
+                    });
+                    pictureGroup.add(bgRect);
+                }
+                // TODO: Handle other fill types like gradients
+            }
+
+            // 6. Get image relationship ID from blipFill -> blip
             const blipFillNode = picNode.getElementsByTagNameNS(PML_NS, 'blipFill')[0];
-            if (!blipFillNode) return { width: 0, height: 0 };
+            if (!blipFillNode) return { width: pos.width, height: pos.height };
 
             const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
-            if (!blipNode) return { width: 0, height: 0 };
+            if (!blipNode) return { width: pos.width, height: pos.height };
 
             const relId = blipNode.getAttribute('r:embed');
-            if (!relId || !imageMap[relId]) return { width: 0, height: 0 };
+            if (!relId || !imageMap[relId]) return { width: pos.width, height: pos.height };
 
-            // 4. Create Konva Image
+            // 7. Create and add Konva Image to the group
             try {
                 const imageObj = await createImage(imageMap[relId]);
                 const konvaImage = new Konva.Image({
-                    x: pos.x,
-                    y: pos.y,
+                    x: 0, // Position is relative to the group
+                    y: 0,
                     image: imageObj,
                     width: pos.width,
                     height: pos.height,
                 });
-                layer.add(konvaImage);
+                pictureGroup.add(konvaImage);
             } catch (e) {
                 console.error("Error creating image", e);
             }
@@ -2398,29 +2414,6 @@
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
 
-            // Pre-scan the slide for placeholders that are filled with content
-            const filledPlaceholders = new Set();
-            const spTreeNodeOnSlide = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
-            if (spTreeNodeOnSlide) {
-                for (const element of spTreeNodeOnSlide.children) {
-                    // Find the non-visual properties element, which can be in different places for different shape types
-                    const nvPr = element.getElementsByTagNameNS(PML_NS, 'nvPr')[0] ||
-                                 element.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0]?.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
-
-                    if (nvPr) {
-                        const ph = nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0];
-                        if (ph) {
-                            const type = ph.getAttribute('type');
-                            const idx = ph.getAttribute('idx');
-                            const key = idx ? `idx_${idx}` : type;
-                            if (key) {
-                                filledPlaceholders.add(key);
-                            }
-                        }
-                    }
-                }
-            }
-            console.log(`[Slide ${slideNum}] Placeholders filled on slide:`, filledPlaceholders);
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const listCounters = {};
@@ -2461,12 +2454,12 @@
             if (showMasterShapes) {
                 if (masterStaticShapes) {
                     for (const shape of masterStaticShapes) {
-                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum, filledPlaceholders);
+                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     }
                 }
                  if (layoutStaticShapes) {
                     for (const shape of layoutStaticShapes) {
-                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum, filledPlaceholders);
+                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     }
                 }
             }
@@ -2478,7 +2471,7 @@
                     if (tagName === 'sp' || tagName === 'cxnSp') {
                         await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     } else if (tagName === 'grpSp') {
-                        await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum, filledPlaceholders);
+                        await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     } else if (tagName === 'graphicFrame') {
                         const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                         if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
@@ -2496,7 +2489,7 @@
                             }
                         }
                     } else if (tagName === 'pic') {
-                        await processPicture(element, mainLayer, imageMap, { x: 0, y: 0 }, layoutPlaceholders);
+                        await processPicture(element, mainLayer, imageMap, { x: 0, y: 0 }, layoutPlaceholders, slideContext);
                     }
                 }
             }
