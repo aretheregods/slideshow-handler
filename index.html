@@ -394,6 +394,9 @@
                     const masterBg = masterXmlDoc ? parseBackground(masterXmlDoc, slideContext) : null;
                     const finalBg = slideBg || layoutBg || masterBg;
 
+                    console.log(`[Slide ${slideNum}] Parsing background. Slide BG: ${JSON.stringify(slideBg)}, Layout BG: ${JSON.stringify(layoutBg)}, Master BG: ${JSON.stringify(masterBg)}`);
+                    console.log(`[Slide ${slideNum}] Final background chosen: ${JSON.stringify(finalBg)}`);
+
                     const slideContainer = document.createElement( 'div' );
                     slideContainer.className = 'slide-viewer';
                     slideContainer.id = `slide-${ i + 1 }`;
@@ -1096,13 +1099,16 @@
             return props;
         }
 
-        function parseShapeProperties(shapeNode, slideContext) {
+        function parseShapeProperties(shapeNode, slideContext, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const spPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
             if (!spPrNode) return { fill: null, stroke: null, geometry: null };
 
             const properties = { fill: null, stroke: null, geometry: null };
+
+            const shapeName = shapeNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name') || 'Unnamed Shape';
+            console.log(`[Slide ${slideNum}] Processing shape: ${shapeName} (type: ${shapeNode.localName})`);
 
             const prstGeomNode = spPrNode.getElementsByTagNameNS(DML_NS, 'prstGeom')[0];
             if (prstGeomNode) {
@@ -1140,9 +1146,13 @@
 
             if (noFillNode) {
                 properties.fill = 'none';
+                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Fill: none (noFill tag found)`);
             } else if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
-                if (colorObj) properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                if (colorObj) {
+                    properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                    console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Fill: explicit solidFill, Color: ${JSON.stringify(colorObj)}, Resolved: ${properties.fill.color}`);
+                }
             } else if (gradFillNode) {
                 const gsLstNode = gradFillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
                 const stops = [];
@@ -1161,8 +1171,10 @@
                     angle = parseInt(linNode.getAttribute('ang')) / 60000;
                 }
                 properties.fill = { type: 'gradient', stops, angle };
+                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Fill: explicit gradFill`);
             } else if (bgRefNode) {
                 const idx = parseInt(bgRefNode.getAttribute('idx'));
+                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Found bgRef, Index: ${idx}`);
                 // The spec says the index for bgRef starts at 1001.
                 if (idx >= 1001 && slideContext.theme.formatScheme.bgFills.length > (idx - 1001)) {
                     const themeFill = slideContext.theme.formatScheme.bgFills[idx - 1001];
@@ -1170,6 +1182,7 @@
 
                     if (themeFill.type === 'solid') {
                         properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied bgRef fill, Color: ${JSON.stringify(colorObj)}, Resolved: ${properties.fill.color}`);
                     }
                     // TODO: Handle other fill types
                 }
@@ -1179,16 +1192,22 @@
                     const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
                     if (fillRefNode) {
                         const idx = parseInt(fillRefNode.getAttribute('idx'));
+                        const colorOverride = parseColor(fillRefNode);
+                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Found fillRef, Index: ${idx}, Override: ${JSON.stringify(colorOverride)}`);
+
                         if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
                             const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
-                            // The fillRef can have its own color definitions that override the theme
-                            let colorObj = parseColor(fillRefNode) || themeFill.color;
+                            let colorObj = colorOverride || themeFill.color;
 
                             if (themeFill.type === 'solid') {
                                 properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied fillRef, Color: ${JSON.stringify(colorObj)}, Resolved: ${properties.fill.color}`);
                             } else if (themeFill.type === 'gradient') {
                                 // TODO: Handle gradient fills from themes
                             }
+                        } else if (colorOverride) {
+                             properties.fill = { type: 'solid', color: resolveColor(colorOverride, slideContext) };
+                             console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied fillRef override, Color: ${JSON.stringify(colorOverride)}, Resolved: ${properties.fill.color}`);
                         }
                     }
                 }
@@ -1227,10 +1246,12 @@
 
             // After all other fill checks, if fill is still null, apply the default theme fill.
             if (properties.fill === null && shapeNode.localName !== 'cxnSp') {
+                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> No explicit fill found. Attempting to apply default theme fill.`);
                 if (slideContext.theme && slideContext.theme.formatScheme.fills.length > 0) {
                     const defaultFill = slideContext.theme.formatScheme.fills[0];
                     if (defaultFill.type === 'solid' && defaultFill.color) {
                         properties.fill = { type: 'solid', color: resolveColor(defaultFill.color, slideContext) };
+                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied default theme fill, Color: ${JSON.stringify(defaultFill.color)}, Resolved: ${properties.fill.color}`);
                     }
                     // TODO: Handle other default fill types like gradient if necessary
                 }
@@ -1726,7 +1747,7 @@
 
             if (!pos) return { width: 0, height: 0 };
 
-            const shapeProps = parseShapeProperties(shape, slideContext);
+            const shapeProps = parseShapeProperties(shape, slideContext, slideNum);
 
             if (shapeProps && shapeProps.geometry?.type === 'custom') {
                 // This debug log is removed to avoid console spam and potential errors.
@@ -1930,7 +1951,7 @@
             return properties;
         }
 
-        async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles) {
+        async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -1976,9 +1997,9 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
+                    await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
+                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                 } else if (tagName === 'pic') {
                     await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, layoutPlaceholders);
                 }
@@ -2416,7 +2437,7 @@
                     if (tagName === 'sp' || tagName === 'cxnSp') {
                         await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     } else if (tagName === 'grpSp') {
-                        await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles);
+                        await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     } else if (tagName === 'graphicFrame') {
                         const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                         if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
