@@ -2368,14 +2368,31 @@
             const pictureGroup = new Konva.Group({ x: pos.x, y: pos.y });
             layer.add(pictureGroup);
 
-            // 5. Draw background from placeholder if it exists
-            if (placeholderProps && placeholderProps.fill && placeholderProps.fill !== 'none') {
-                if (placeholderProps.fill.type === 'solid') {
-                    const bgRect = new Konva.Rect({
-                        width: pos.width,
-                        height: pos.height,
-                        fill: placeholderProps.fill.color,
-                    });
+            // 5. Draw background and border from placeholder if they exist
+            if (placeholderProps) {
+                const rectConfig = {
+                    width: pos.width,
+                    height: pos.height,
+                };
+
+                let shouldDrawRect = false;
+
+                if (placeholderProps.fill && placeholderProps.fill !== 'none' && placeholderProps.fill.type === 'solid') {
+                    rectConfig.fill = placeholderProps.fill.color;
+                    shouldDrawRect = true;
+                }
+
+                if (placeholderProps.stroke && placeholderProps.stroke !== 'none') {
+                    rectConfig.stroke = placeholderProps.stroke.color;
+                    rectConfig.strokeWidth = placeholderProps.stroke.width || 1;
+                    if (placeholderProps.stroke.dash) {
+                        rectConfig.dash = placeholderProps.stroke.dash;
+                    }
+                    shouldDrawRect = true;
+                }
+
+                if (shouldDrawRect) {
+                    const bgRect = new Konva.Rect(rectConfig);
                     pictureGroup.add(bgRect);
                 }
                 // TODO: Handle other fill types like gradients
