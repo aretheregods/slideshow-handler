@@ -1123,6 +1123,17 @@
                 }
             }
 
+            if (properties.fill === null && shapeNode.localName !== 'cxnSp') {
+                // If after all checks, no fill is defined, apply the default theme fill (first in fillStyleLst)
+                if (slideContext.theme && slideContext.theme.formatScheme.fills.length > 0) {
+                    const defaultFill = slideContext.theme.formatScheme.fills[0];
+                    if (defaultFill.type === 'solid') {
+                        properties.fill = { type: 'solid', color: resolveColor(defaultFill.color, slideContext) };
+                    }
+                    // TODO: Handle default gradient, etc. if necessary
+                }
+            }
+
             const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
             if (lnNode) {
                 properties.stroke = parseLineProperties(lnNode, slideContext);
