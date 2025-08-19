@@ -1345,7 +1345,7 @@
                         }
 
                         currentX += textWidth;
-                        paragraphMaxHeight = Math.max(paragraphMaxHeight, tempText.getTextHeight());
+                        paragraphMaxHeight = Math.max(paragraphMaxHeight, tempText.height());
 
                     } else if (childNode.localName === 'br') {
                         currentY += paragraphMaxHeight || LINE_HEIGHT;
@@ -1552,14 +1552,7 @@
             const shapeProps = parseShapeProperties(shape, slideContext);
 
             if (shapeProps && shapeProps.geometry?.type === 'custom') {
-                console.log("--- DEBUG: Custom Geometry Shape ---");
-                console.log("Slide Number:", slideNum);
-                console.log("Shape Placeholder Info:", { type: phType, key: phKey });
-                console.log("Calculated Position & Size:", pos);
-                console.log("Custom Geometry Path Data:", shapeProps.geometry.path);
-                console.log("Resolved Fill Style:", JSON.stringify(shapeProps.fill, null, 2));
-                console.log("Resolved Stroke Style:", JSON.stringify(shapeProps.stroke, null, 2));
-                console.log("------------------------------------");
+                // This debug log is removed to avoid console spam and potential errors.
             }
 
             let konvaShape;
@@ -2075,18 +2068,16 @@
             const txBodyNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
             if (!txBodyNode) return;
 
-            const PADDING = 5;
+            const bodyPr = parseBodyProperties(txBodyNode);
             const pos = {
-                x: cellX + PADDING,
-                y: cellY + PADDING,
-                width: cellWidth - (PADDING * 2),
-                height: cellHeight - (PADDING * 2)
+                x: cellX,
+                y: cellY,
+                width: cellWidth,
+                height: cellHeight
             };
 
-            // TODO: VAlign is not handled by processParagraphs yet. This is a simplification.
-
             const textGroup = new Konva.Group({
-                x: 0, // Position is handled by the text elements within the group
+                x: 0,
                 y: 0,
                 width: cellWidth,
                 height: cellHeight,
@@ -2096,14 +2087,11 @@
             });
             layer.add(textGroup);
 
-            // For cells, we don't have placeholder context. Pass empty/default values.
             const listCounters = {};
-            // TODO: Tables can have their own text styles. For now, use an empty object,
-            // which will cause text to use the hardcoded defaults in processParagraphs.
             const defaultTextStyles = { title: {}, body: {}, other: {} };
             const layoutPlaceholders = {};
 
-            await processParagraphs(textGroup, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, layoutPlaceholders);
+            await processParagraphs(textGroup, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr);
         }
 
         async function processPicture(picNode, layer, imageMap, parentXfrm, layoutPlaceholders) {
