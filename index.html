@@ -1665,7 +1665,7 @@
                 if (placeholder) {
                     phType = placeholder.getAttribute('type');
                     const phIdx = placeholder.getAttribute('idx');
-                    phKey = phIdx ? `idx_${phIdx}` : type;
+                    phKey = phIdx ? `idx_${phIdx}` : phType;
 
                     // If no type is specified but an index is, it's usually a body/content placeholder.
                     if ( !phType && phIdx ) {
