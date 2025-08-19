@@ -1698,9 +1698,25 @@
             }
         }
 
-        async function processShape(shape, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
+        async function processShape(shape, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum, filledPlaceholders = null) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            // If this shape is from a layout/master, check if it's a placeholder that has been filled on the slide.
+            if (filledPlaceholders) {
+                const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
+                const ph = nvPr ? nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
+                if (ph) {
+                    const type = ph.getAttribute('type');
+                    const idx = ph.getAttribute('idx');
+                    const key = idx ? `idx_${idx}` : type;
+                    if (key && filledPlaceholders.has(key)) {
+                        const shapeName = shape.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name') || 'Unnamed Shape';
+                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' on layout/master is a placeholder that is filled on the slide. Skipping render.`);
+                        return; // Skip rendering this placeholder
+                    }
+                }
+            }
 
             let pos = null;
             const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
@@ -1952,7 +1968,7 @@
             return properties;
         }
 
-        async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
+        async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum, filledPlaceholders = null) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -1998,9 +2014,9 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                    await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum, filledPlaceholders);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum, filledPlaceholders);
                 } else if (tagName === 'pic') {
                     await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, layoutPlaceholders);
                 }
@@ -2381,6 +2397,30 @@
             activeCharts = []; // Clear previously rendered charts
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+
+            // Pre-scan the slide for placeholders that are filled with content
+            const filledPlaceholders = new Set();
+            const spTreeNodeOnSlide = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
+            if (spTreeNodeOnSlide) {
+                for (const element of spTreeNodeOnSlide.children) {
+                    // Find the non-visual properties element, which can be in different places for different shape types
+                    const nvPr = element.getElementsByTagNameNS(PML_NS, 'nvPr')[0] ||
+                                 element.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0]?.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
+
+                    if (nvPr) {
+                        const ph = nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0];
+                        if (ph) {
+                            const type = ph.getAttribute('type');
+                            const idx = ph.getAttribute('idx');
+                            const key = idx ? `idx_${idx}` : type;
+                            if (key) {
+                                filledPlaceholders.add(key);
+                            }
+                        }
+                    }
+                }
+            }
+            console.log(`[Slide ${slideNum}] Placeholders filled on slide:`, filledPlaceholders);
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const listCounters = {};
@@ -2421,12 +2461,12 @@
             if (showMasterShapes) {
                 if (masterStaticShapes) {
                     for (const shape of masterStaticShapes) {
-                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum, filledPlaceholders);
                     }
                 }
                  if (layoutStaticShapes) {
                     for (const shape of layoutStaticShapes) {
-                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum, filledPlaceholders);
                     }
                 }
             }
@@ -2438,7 +2478,7 @@
                     if (tagName === 'sp' || tagName === 'cxnSp') {
                         await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     } else if (tagName === 'grpSp') {
-                        await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum, filledPlaceholders);
                     } else if (tagName === 'graphicFrame') {
                         const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                         if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
