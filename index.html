@@ -207,6 +207,7 @@
         import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 
         const EMU_PER_PIXEL = 9525; // Standard conversion for 96 DPI
+        const LINE_HEIGHT = 24; // A default line height in pixels for SVG text
         const INDENTATION_AMOUNT = 30; // Pixels per indentation level
         const BULLET_OFFSET = 20; // Space between bullet and text
 
@@ -246,6 +247,7 @@
             const errorNode = xmlDoc.querySelector("parsererror");
             if (errorNode) {
                 console.error(`XML Parsing Error in ${identifier}:`, errorNode.innerHTML);
+                console.log(`Problematic XML for ${identifier}:`, xmlString);
             }
             return xmlDoc;
         }
@@ -393,6 +395,9 @@
                     const masterBg = masterXmlDoc ? parseBackground(masterXmlDoc, slideContext) : null;
                     const finalBg = slideBg || layoutBg || masterBg;
 
+                    console.log(`[Slide ${slideNum}] Parsing background. Slide BG: ${JSON.stringify(slideBg)}, Layout BG: ${JSON.stringify(layoutBg)}, Master BG: ${JSON.stringify(masterBg)}`);
+                    console.log(`[Slide ${slideNum}] Final background chosen: ${JSON.stringify(finalBg)}`);
+
                     const slideContainer = document.createElement( 'div' );
                     slideContainer.className = 'slide-viewer';
                     slideContainer.id = `slide-${ i + 1 }`;
@@ -522,6 +527,8 @@
                     } catch (e) {
                         console.error(`Failed to load image data for relId ${rel.id} at path ${imagePath}`, e);
                     }
+                } else {
+                    console.warn(`Image relationship '${rel.id}' points to a non-existent target: ${rel.target} (resolved to ${imagePath})`);
                 }
             }
         }
@@ -1102,6 +1109,7 @@
             const properties = { fill: null, stroke: null, geometry: null };
 
             const shapeName = shapeNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name') || 'Unnamed Shape';
+            console.log(`[Slide ${slideNum}] Processing shape: ${shapeName} (type: ${shapeNode.localName})`);
 
             const prstGeomNode = spPrNode.getElementsByTagNameNS(DML_NS, 'prstGeom')[0];
             if (prstGeomNode) {
@@ -1139,10 +1147,12 @@
 
             if (noFillNode) {
                 properties.fill = 'none';
+                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Fill: none (noFill tag found)`);
             } else if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) {
                     properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                    console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Fill: explicit solidFill, Color: ${JSON.stringify(colorObj)}, Resolved: ${properties.fill.color}`);
                 }
             } else if (gradFillNode) {
                 const gsLstNode = gradFillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
@@ -1162,8 +1172,10 @@
                     angle = parseInt(linNode.getAttribute('ang')) / 60000;
                 }
                 properties.fill = { type: 'gradient', stops, angle };
+                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Fill: explicit gradFill`);
             } else if (bgRefNode) {
                 const idx = parseInt(bgRefNode.getAttribute('idx'));
+                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Found bgRef, Index: ${idx}`);
                 // The spec says the index for bgRef starts at 1001.
                 if (idx >= 1001 && slideContext.theme.formatScheme.bgFills.length > (idx - 1001)) {
                     const themeFill = slideContext.theme.formatScheme.bgFills[idx - 1001];
@@ -1171,6 +1183,7 @@
 
                     if (themeFill.type === 'solid') {
                         properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied bgRef fill, Color: ${JSON.stringify(colorObj)}, Resolved: ${properties.fill.color}`);
                     }
                     // TODO: Handle other fill types
                 }
@@ -1181,6 +1194,7 @@
                     if (fillRefNode) {
                         const idx = parseInt(fillRefNode.getAttribute('idx'));
                         const colorOverride = parseColor(fillRefNode);
+                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Found fillRef, Index: ${idx}, Override: ${JSON.stringify(colorOverride)}`);
 
                         if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
                             const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
@@ -1188,11 +1202,13 @@
 
                             if (themeFill.type === 'solid') {
                                 properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied fillRef, Color: ${JSON.stringify(colorObj)}, Resolved: ${properties.fill.color}`);
                             } else if (themeFill.type === 'gradient') {
                                 // TODO: Handle gradient fills from themes
                             }
                         } else if (colorOverride) {
                              properties.fill = { type: 'solid', color: resolveColor(colorOverride, slideContext) };
+                             console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied fillRef override, Color: ${JSON.stringify(colorOverride)}, Resolved: ${properties.fill.color}`);
                         }
                     }
                 }
@@ -1231,10 +1247,12 @@
 
             // After all other fill checks, if fill is still null, apply the default theme fill.
             if (properties.fill === null && shapeNode.localName !== 'cxnSp') {
+                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> No explicit fill found. Attempting to apply default theme fill.`);
                 if (slideContext.theme && slideContext.theme.formatScheme.fills.length > 0) {
                     const defaultFill = slideContext.theme.formatScheme.fills[0];
                     if (defaultFill.type === 'solid' && defaultFill.color) {
                         properties.fill = { type: 'solid', color: resolveColor(defaultFill.color, slideContext) };
+                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied default theme fill, Color: ${JSON.stringify(defaultFill.color)}, Resolved: ${properties.fill.color}`);
                     }
                     // TODO: Handle other default fill types like gradient if necessary
                 }
@@ -1288,21 +1306,6 @@
 
             const marL = pPrNode.getAttribute('marL');
             if (marL) properties.indent = parseInt(marL) / EMU_PER_PIXEL;
-
-            const algn = pPrNode.getAttribute('algn');
-            if (algn) properties.align = algn;
-
-            const lnSpcNode = pPrNode.getElementsByTagNameNS(DML_NS, 'lnSpc')[0];
-            if (lnSpcNode) {
-                const spcPctNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPct')[0];
-                if (spcPctNode) {
-                    properties.lnSpc = { type: 'pct', val: parseInt(spcPctNode.getAttribute('val')) };
-                }
-                const spcPtsNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
-                if (spcPtsNode) {
-                    properties.lnSpc = { type: 'pts', val: parseInt(spcPtsNode.getAttribute('val')) / 100 };
-                }
-            }
 
             const buNone = pPrNode.getElementsByTagNameNS(DML_NS, 'buNone')[0];
             if (buNone) properties.bullet.type = 'none';
@@ -1359,10 +1362,7 @@
 
             const defRPrNode = pPrNode.getElementsByTagNameNS(DML_NS, 'defRPr')[0];
             if (defRPrNode) {
-                const sz = defRPrNode.getAttribute('sz');
-                if (sz) {
-                    properties.defRPr.size = parseInt(sz) / 100;
-                }
+                properties.defRPr.size = parseInt(defRPrNode.getAttribute('sz') || '1800') / 100;
                 properties.defRPr.bold = defRPrNode.getAttribute('b') === '1';
                 properties.defRPr.italic = defRPrNode.getAttribute('i') === '1';
 
@@ -1438,10 +1438,8 @@
                                 height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                             };
                             let listStyle = null;
-                            let bodyPr = null;
                             const txBodyNode = sp.getElementsByTagNameNS(PML_NS, 'txBody')[0];
                             if (txBodyNode) {
-                                bodyPr = parseBodyProperties(txBodyNode);
                                 const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
                                 if (lstStyleNode) {
                                     listStyle = parseTextStyle(lstStyleNode);
@@ -1454,7 +1452,7 @@
                             };
                             const shapeProps = parseShapeProperties(sp, tempSlideContext, "layout/master");
 
-                            placeholders[key] = { pos, type, listStyle, bodyPr, shapeProps };
+                            placeholders[key] = { pos, type, listStyle, shapeProps };
                         }
                     }
 
@@ -1475,13 +1473,21 @@
             return { placeholders, staticShapes, defaultTextStyles, colorMap, colorMapOverride };
         }
 
-        function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr, listCounters) {
+        function calculateTextBlockSize(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-            const laidOutRuns = [];
+            console.log(`%c[calculateTextBlockSize] Starting for phKey: ${phKey}, phType: ${phType}`, "color: #4CAF50; font-weight: bold;");
+            console.log(`[calculateTextBlockSize] Input pos:`, JSON.parse(JSON.stringify(pos)));
+            console.log(`[calculateTextBlockSize] Body Props:`, JSON.parse(JSON.stringify(bodyPr)));
+
+            let totalHeight = 0;
+            let paragraphMaxHeight = 0;
             let currentY = 0;
 
+            const availableWidth = pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0);
+            console.log(`[calculateTextBlockSize] Available Width: ${availableWidth}`);
+
             for (const pNode of paragraphs) {
-                let paragraphMaxHeight = 0;
+                console.log(`%c[calculateTextBlockSize] Processing new paragraph: ${pNode.textContent.substring(0, 50)}...`, "color: #2196F3;");
                 const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
                 const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
                 let defaultStyle = defaultTextStyles.other;
@@ -1495,146 +1501,86 @@
                 const finalProps = {
                     ...defaultLevelProps, ...layoutListStyle, ...slideLevelProps,
                     bullet: { ...defaultLevelProps.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
+                    defRPr: { ...defaultLevelProps.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
-                const defRPrs = [defaultLevelProps.defRPr, layoutListStyle.defRPr, slideLevelProps.defRPr];
-                const mergedDefRPr = {};
-                for (const style of defRPrs) {
-                    if (!style) continue;
-                    for (const key in style) {
-                        if (style[key] !== undefined) {
-                            mergedDefRPr[key] = style[key];
-                        }
-                    }
-                }
-                finalProps.defRPr = mergedDefRPr;
+                console.log(`[calculateTextBlockSize] Final Props for paragraph (lvl ${level}):`, { size: finalProps.defRPr.size, bold: finalProps.defRPr.bold, indent: finalProps.indent });
+
 
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
+                let currentX = indent;
                 let bulletOffset = 0;
-
                 if (finalProps.bullet.type && finalProps.bullet.type !== 'none') {
-                    const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
-                    const bulletFontSize = finalProps.defRPr.size || 18;
-                    let bulletChar;
-                    if (finalProps.bullet.type === 'char') {
-                        bulletChar = finalProps.bullet.char;
-                    } else if (finalProps.bullet.type === 'auto') {
-                        if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
-                        bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
-                    }
-
-                    if (bulletChar) {
-                        laidOutRuns.push({
-                            isBullet: true,
-                            x: indent,
-                            y: currentY,
-                            text: bulletChar,
-                            fontSize: bulletFontSize,
-                            fontFamily: finalProps.bullet.font || 'Arial',
-                            fill: bulletColor,
-                        });
-                    }
                     bulletOffset = BULLET_OFFSET;
+                    currentX += bulletOffset;
                 }
 
-                const runs = Array.from(pNode.childNodes).map(node => ({ node, type: node.localName }));
-                const lines = [];
-                let currentLine = [];
-                let currentXForWrapping = indent + bulletOffset;
+                currentY += paragraphMaxHeight;
+                paragraphMaxHeight = 0;
+                console.log(`[calculateTextBlockSize] Paragraph Start Y: ${currentY.toFixed(2)}, Start X: ${currentX.toFixed(2)}`);
 
-                for (const run of runs) {
-                    if (run.type === 'br') {
-                        lines.push(currentLine);
-                        currentLine = [];
-                        currentXForWrapping = indent + bulletOffset;
-                        continue;
-                    }
-                    if (run.type !== 'r' && run.type !== 'fld') continue;
+                for (const childNode of pNode.childNodes) {
+                    if (childNode.localName === 'r' || childNode.localName === 'fld') {
+                        const text = childNode.textContent;
+                        if (!text) continue;
 
-                    const text = run.node.textContent;
-                    if (!text) continue;
-
-                    const rPr = run.node.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                    const finalRunProps = { ...finalProps.defRPr };
-                     if (rPr) {
-                        if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
-                        if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
-                        if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
-                        const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                        if (solidFill) finalRunProps.color = parseColor(solidFill);
-                        const latinFontNode = rPr.getElementsByTagNameNS( DML_NS, 'latin' )[ 0 ];
-                        if ( latinFontNode && latinFontNode.getAttribute( 'typeface' ) ) {
-                            finalRunProps.font = latinFontNode.getAttribute( 'typeface' );
+                        const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                        const finalRunProps = { ...finalProps.defRPr };
+                        if (rPr) {
+                            if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
+                            if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
+                            if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
+                            const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                            if (solidFill) finalRunProps.color = parseColor(solidFill);
+                            const latinFontNode = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                            if (latinFontNode && latinFontNode.getAttribute('typeface')) {
+                                finalRunProps.font = latinFontNode.getAttribute('typeface');
+                            }
                         }
-                    }
-                    const fontSize = finalRunProps.size || 18;
-                    const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
-                    let fontFamily = finalRunProps.font;
-                    if (fontFamily && fontFamily.startsWith('+')) {
-                        const fontType = fontFamily.substring(1, 3);
-                        if (fontType === 'mj') fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
-                        else if (fontType === 'mn') fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
-                    } else if (!fontFamily) {
-                        if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
-                        else fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
-                    }
 
-                    const tempText = new Konva.Text({ text, fontSize, fontFamily, fontStyle });
-                    const runWidth = tempText.getTextWidth();
+                        const fontSize = finalRunProps.size || 18;
+                        const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
+                        let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
+                        if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                            fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                        }
+                        // Note: This does not yet handle theme font aliases like '+mj-lt' from rPr.
 
-                    if (currentXForWrapping + runWidth > pos.width && currentLine.length > 0) {
-                        lines.push(currentLine);
-                        currentLine = [];
-                        currentXForWrapping = indent + bulletOffset;
-                    }
-
-                    currentLine.push({ text, finalRunProps, fontSize, fontFamily, fontStyle, runWidth });
-                    currentXForWrapping += runWidth;
-                }
-                if (currentLine.length > 0) lines.push(currentLine);
-
-                let baseLineHeight = (finalProps.defRPr.size || 18) * 1.2;
-                if (finalProps.lnSpc) {
-                    if (finalProps.lnSpc.type === 'pct') {
-                        baseLineHeight = (finalProps.defRPr.size || 18) * (finalProps.lnSpc.val / 100000);
-                    } else if (finalProps.lnSpc.type === 'pts') {
-                        baseLineHeight = finalProps.lnSpc.val;
-                    }
-                }
-
-                for (const line of lines) {
-                    const totalLineWidth = line.reduce((sum, item) => sum + item.runWidth, 0);
-                    let startX = indent + bulletOffset;
-
-                    if (finalProps.align === 'ctr') {
-                        startX = (pos.width - totalLineWidth) / 2;
-                    } else if (finalProps.align === 'r') {
-                        startX = pos.width - totalLineWidth;
-                    }
-
-                    let currentX = startX;
-                    let maxLineHeight = 0;
-
-                    for (const item of line) {
-                         const textColor = resolveColor(item.finalRunProps.color, slideContext) || '#000000';
-                         laidOutRuns.push({
-                            isBullet: false,
-                            x: currentX,
-                            y: currentY,
-                            text: item.text,
-                            fontSize: item.fontSize,
-                            fontFamily: item.fontFamily,
-                            fontStyle: item.fontStyle,
-                            fill: textColor,
+                        const tempText = new Konva.Text({
+                            text: text,
+                            fontSize: fontSize,
+                            fontFamily: fontFamily,
+                            fontStyle: fontStyle,
                         });
-                        currentX += item.runWidth;
-                        const tempText = new Konva.Text({text: item.text, fontSize: item.fontSize, fontFamily: item.fontFamily, fontStyle: item.fontStyle});
-                        maxLineHeight = Math.max(maxLineHeight, tempText.height());
+                        const textWidth = tempText.getTextWidth();
+                        const textHeight = tempText.height();
+
+                        console.log(`[calculateTextBlockSize]   Run: "${text}" | Width: ${textWidth.toFixed(2)}, Height: ${textHeight.toFixed(2)}, Font: ${fontSize}pt ${fontFamily}`);
+
+                        if (currentX + textWidth > availableWidth && currentX > indent) {
+                            console.log(`%c[calculateTextBlockSize]   --Line wrap detected--`, "color: #E91E63;");
+                            currentY += paragraphMaxHeight || LINE_HEIGHT;
+                            currentX = indent + bulletOffset;
+                            paragraphMaxHeight = 0;
+                            console.log(`[calculateTextBlockSize]   New line Y: ${currentY.toFixed(2)}, New X: ${currentX.toFixed(2)}`);
+                        }
+
+                        currentX += textWidth;
+                        paragraphMaxHeight = Math.max(paragraphMaxHeight, textHeight);
+                        console.log(`[calculateTextBlockSize]   Current X after run: ${currentX.toFixed(2)}, Current max line height: ${paragraphMaxHeight.toFixed(2)}`);
+
+                    } else if (childNode.localName === 'br') {
+                        console.log(`%c[calculateTextBlockSize]   --Explicit <br> detected--`, "color: #E91E63;");
+                        currentY += paragraphMaxHeight || LINE_HEIGHT;
+                        currentX = indent + bulletOffset;
+                        paragraphMaxHeight = 0;
+                        console.log(`[calculateTextBlockSize]   New line Y: ${currentY.toFixed(2)}, New X: ${currentX.toFixed(2)}`);
                     }
-                    currentY += Math.max(baseLineHeight, maxLineHeight);
-                    paragraphMaxHeight = Math.max(paragraphMaxHeight, maxLineHeight);
                 }
             }
-            return { laidOutRuns, textBlockHeight: currentY };
+
+            totalHeight = currentY + paragraphMaxHeight;
+            console.log(`%c[calculateTextBlockSize] Final calculated height: ${totalHeight.toFixed(2)}`, "color: #4CAF50; font-weight: bold;");
+            return { height: totalHeight };
         }
 
         async function processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr = {}) {
@@ -1644,6 +1590,10 @@
             const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
             if (paragraphs.length === 0) return;
 
+            // Step 1: Calculate text block size for vertical alignment
+            const { height: textBlockHeight } = calculateTextBlockSize(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr);
+
+            // Step 2: Apply padding from body properties
             const paddedPos = {
                 x: pos.x + (bodyPr.lIns || 0),
                 y: pos.y + (bodyPr.tIns || 0),
@@ -1651,26 +1601,125 @@
                 height: pos.height - (bodyPr.tIns || 0) - (bodyPr.bIns || 0),
             };
 
-            const { laidOutRuns, textBlockHeight } = layoutParagraphs(paragraphs, paddedPos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr, listCounters);
-
-            let startYOffset = 0;
+            // Step 3: Determine starting Y-coordinate based on vertical alignment anchor
+            let startY = paddedPos.y;
             if (bodyPr.anchor === 'ctr') {
-                startYOffset = (paddedPos.height - textBlockHeight) / 2;
+                startY += (paddedPos.height - textBlockHeight) / 2;
             } else if (bodyPr.anchor === 'b') {
-                startYOffset = paddedPos.height - textBlockHeight;
+                startY += paddedPos.height - textBlockHeight;
             }
 
-            for (const run of laidOutRuns) {
-                const textEl = new Konva.Text({
-                    x: paddedPos.x + run.x,
-                    y: paddedPos.y + run.y + startYOffset,
-                    text: run.text,
-                    fontSize: run.fontSize,
-                    fontFamily: run.fontFamily,
-                    fontStyle: run.fontStyle,
-                    fill: run.fill,
-                });
-                textGroup.add(textEl);
+            const lstStyle = txBody.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+            let currentY = startY;
+            let paragraphMaxHeight = 0;
+
+            for (const pNode of paragraphs) {
+                const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
+                const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
+                let defaultStyle = defaultTextStyles.other;
+                if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = defaultTextStyles.title;
+                else if (phType === 'body') defaultStyle = defaultTextStyles.body;
+
+                const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
+                const layoutListStyle = (layoutPlaceholders[phKey]?.listStyle?.[level]) || {};
+                const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
+
+                const finalProps = {
+                    ...defaultLevelProps, ...layoutListStyle, ...slideLevelProps,
+                    bullet: { ...defaultLevelProps.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
+                    defRPr: { ...defaultLevelProps.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
+                };
+
+                const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
+                let currentX = paddedPos.x + indent;
+                let bulletOffset = 0;
+
+                currentY += paragraphMaxHeight;
+                paragraphMaxHeight = 0;
+
+                if (lstStyle && finalProps.bullet.type && finalProps.bullet.type !== 'none') {
+                    let bulletEl;
+                    const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
+                    const bulletFontSize = finalProps.defRPr.size || 18;
+
+                    if (finalProps.bullet.type === 'char') {
+                        bulletEl = new Konva.Text({ x: currentX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
+                    } else if (finalProps.bullet.type === 'auto') {
+                        if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
+                        const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
+                        bulletEl = new Konva.Text({ x: currentX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
+                    } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
+                        const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
+                        bulletEl = new Konva.Image({ x: currentX, y: currentY, image: imageObj, width: 16, height: 16 });
+                    }
+
+                    if (bulletEl) {
+                        textGroup.add(bulletEl);
+                        bulletOffset = BULLET_OFFSET;
+                        currentX += bulletOffset;
+                    }
+                }
+
+                for (const childNode of pNode.childNodes) {
+                    if (childNode.localName === 'r' || childNode.localName === 'fld') {
+                        const text = childNode.textContent;
+                        if (!text) continue;
+
+                        const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                        const finalRunProps = { ...finalProps.defRPr };
+                        if (rPr) {
+                            if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
+                            if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
+                            if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
+                            const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                            if (solidFill) finalRunProps.color = parseColor(solidFill);
+                            const latinFontNode = rPr.getElementsByTagNameNS( DML_NS, 'latin' )[ 0 ];
+                            if ( latinFontNode && latinFontNode.getAttribute( 'typeface' ) ) {
+                                finalRunProps.font = latinFontNode.getAttribute( 'typeface' );
+                            }
+                        }
+
+                        const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
+                        const fontSize = finalRunProps.size || 18;
+                        const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
+                        let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
+                        if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                            fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                        }
+
+                        const tempText = new Konva.Text({
+                            text: text,
+                            fontSize: fontSize,
+                            fontFamily: fontFamily,
+                            fontStyle: fontStyle,
+                        });
+                        const textWidth = tempText.getTextWidth();
+
+                        if (currentX + textWidth > paddedPos.x + paddedPos.width && currentX > paddedPos.x + indent) {
+                            currentY += paragraphMaxHeight || LINE_HEIGHT;
+                            currentX = paddedPos.x + indent + bulletOffset;
+                            paragraphMaxHeight = 0;
+                        }
+
+                        const textEl = new Konva.Text({
+                            x: currentX,
+                            y: currentY,
+                            text: text,
+                            fontSize: fontSize,
+                            fontFamily: fontFamily,
+                            fontStyle: fontStyle,
+                            fill: textColor,
+                            width: paddedPos.width - (currentX - paddedPos.x),
+                        });
+                        textGroup.add(textEl);
+                        currentX += textEl.getTextWidth();
+                        paragraphMaxHeight = Math.max(paragraphMaxHeight, textEl.height());
+                    } else if (childNode.localName === 'br') {
+                        currentY += paragraphMaxHeight || LINE_HEIGHT;
+                        currentX = paddedPos.x + indent + bulletOffset;
+                        paragraphMaxHeight = 0;
+                    }
+                }
             }
         }
 
@@ -1725,6 +1774,10 @@
             if (!pos) return { width: 0, height: 0 };
 
             const shapeProps = parseShapeProperties(shape, slideContext, slideNum);
+
+            if (shapeProps && shapeProps.geometry?.type === 'custom') {
+                // This debug log is removed to avoid console spam and potential errors.
+            }
 
             let konvaShape;
 
@@ -1876,12 +1929,10 @@
 
             const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
             if (txBody) {
-                const layoutBodyPr = layoutPlaceholders[phKey]?.bodyPr || {};
-                const slideBodyPr = parseBodyProperties(txBody);
-                const finalBodyPr = { ...layoutBodyPr, ...slideBodyPr };
+                const bodyPr = parseBodyProperties(txBody);
                 const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height } });
                 layer.add(textGroup);
-                await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, finalBodyPr);
+                await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr);
             }
             return konvaShape ? konvaShape.getClientRect() : { width: 0, height: 0 };
         }
@@ -2464,6 +2515,7 @@
                             const chartRelId = graphicData.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/chart", "chart")[0].getAttribute("r:id");
                             if (chartRelId && slideRels[chartRelId]) {
                                 const chartPath = resolvePath('ppt/slides', slideRels[chartRelId].target);
+                                console.log(`Found chart with relId ${chartRelId}, path: ${chartPath}`);
                                 const chartXml = await getNormalizedXmlString(entriesMap, chartPath);
                                 if (chartXml) {
                                     const chartData = parseChart(chartXml);
