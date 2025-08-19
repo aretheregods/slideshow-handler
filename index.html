@@ -1489,7 +1489,7 @@
                         });
                         textGroup.add(textEl);
                         currentX += textEl.getTextWidth();
-                        paragraphMaxHeight = Math.max(paragraphMaxHeight, textEl.getTextHeight());
+                        paragraphMaxHeight = Math.max(paragraphMaxHeight, textEl.height());
                     } else if (childNode.localName === 'br') {
                         currentY += paragraphMaxHeight || LINE_HEIGHT;
                         currentX = paddedPos.x + indent + bulletOffset;
@@ -1556,7 +1556,7 @@
                 console.log("Slide Number:", slideNum);
                 console.log("Shape Placeholder Info:", { type: phType, key: phKey });
                 console.log("Calculated Position & Size:", pos);
-                console.log("Raw SVG Path:", shapeProps.geometry.path.path);
+                console.log("Custom Geometry Path Data:", shapeProps.geometry.path);
                 console.log("Resolved Fill Style:", JSON.stringify(shapeProps.fill, null, 2));
                 console.log("Resolved Stroke Style:", JSON.stringify(shapeProps.stroke, null, 2));
                 console.log("------------------------------------");
