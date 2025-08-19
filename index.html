@@ -1057,8 +1057,19 @@
                 properties.geometry = { type: 'custom', path: parseCustomGeometry(custGeomNode) };
             }
 
-            const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-            const gradFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
+            let solidFillNode = null;
+            let gradFillNode = null;
+            // Iterate over direct children to avoid picking up fills from nested elements like 'ln'
+            for (const child of spPrNode.children) {
+                if (child.localName === 'solidFill') {
+                    solidFillNode = child;
+                    break;
+                }
+                if (child.localName === 'gradFill') {
+                    gradFillNode = child;
+                    break;
+                }
+            }
 
             if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
@@ -1133,26 +1144,6 @@
                 }
             }
 
-            // If no fill is defined, apply the default from the theme
-            if (properties.fill === null) {
-                if (slideContext.theme?.formatScheme?.fills?.[0]?.type === 'solid') {
-                     const themeFill = slideContext.theme.formatScheme.fills[0];
-                     properties.fill = { type: 'solid', color: resolveColor(themeFill.color, slideContext) };
-                }
-            }
-
-            // If no stroke is defined, apply the default from the theme
-            if (properties.stroke === null) {
-                if (slideContext.theme?.formatScheme?.lines?.[0]?.type === 'solid') {
-                    const themeLine = slideContext.theme.formatScheme.lines[0];
-                    const strokeProps = { ...themeLine };
-                    // The default theme line color is often 'phClr', which can be the same as the
-                    // default fill. To ensure visibility, we'll override the default stroke
-                    // color with the main text color from the theme ('tx1').
-                    strokeProps.color = resolveColor({ scheme: 'tx1' }, slideContext);
-                    properties.stroke = strokeProps;
-                }
-            }
             return properties;
         }
 
