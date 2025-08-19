@@ -1059,6 +1059,7 @@
 
             let solidFillNode = null;
             let gradFillNode = null;
+            let noFillNode = null;
             // Iterate over direct children to avoid picking up fills from nested elements like 'ln'
             for (const child of spPrNode.children) {
                 if (child.localName === 'solidFill') {
@@ -1069,9 +1070,15 @@
                     gradFillNode = child;
                     break;
                 }
+                if (child.localName === 'noFill') {
+                    noFillNode = child;
+                    break;
+                }
             }
 
-            if (solidFillNode) {
+            if (noFillNode) {
+                properties.fill = 'none';
+            } else if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
             } else if (gradFillNode) {
@@ -1814,8 +1821,22 @@
                 }
             }
 
-            const solidFillNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-            if (solidFillNode) {
+            let solidFillNode = null;
+            let noFillNode = null;
+            for (const child of grpSpPrNode.children) {
+                if (child.localName === 'solidFill') {
+                    solidFillNode = child;
+                    break;
+                }
+                if (child.localName === 'noFill') {
+                    noFillNode = child;
+                    break;
+                }
+            }
+
+            if (noFillNode) {
+                properties.fill = 'none';
+            } else if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) {
                     properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
