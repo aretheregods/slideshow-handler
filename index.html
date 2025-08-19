@@ -1105,32 +1105,18 @@
                     const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
                     if (fillRefNode) {
                         const idx = parseInt(fillRefNode.getAttribute('idx'));
-                        const colorOverride = parseColor(fillRefNode);
-
                         if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
                             const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
-                            let colorObj = colorOverride || themeFill.color;
+                            // The fillRef can have its own color definitions that override the theme
+                            let colorObj = parseColor(fillRefNode) || themeFill.color;
 
                             if (themeFill.type === 'solid') {
                                 properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
                             } else if (themeFill.type === 'gradient') {
                                 // TODO: Handle gradient fills from themes
                             }
-                        } else if (colorOverride) {
-                             properties.fill = { type: 'solid', color: resolveColor(colorOverride, slideContext) };
                         }
                     }
-                }
-            }
-
-            if (properties.fill === null && shapeNode.localName !== 'cxnSp') {
-                // If after all checks, no fill is defined, apply the default theme fill (first in fillStyleLst)
-                if (slideContext.theme && slideContext.theme.formatScheme.fills.length > 0) {
-                    const defaultFill = slideContext.theme.formatScheme.fills[0];
-                    if (defaultFill.type === 'solid') {
-                        properties.fill = { type: 'solid', color: resolveColor(defaultFill.color, slideContext) };
-                    }
-                    // TODO: Handle default gradient, etc. if necessary
                 }
             }
 
@@ -1162,6 +1148,13 @@
                              }
                         }
                     }
+                }
+            }
+
+            if (properties.fill === null && properties.stroke && properties.stroke.color) {
+                // Do not apply this logic to connector shapes, as they are lines and should not have a fill.
+                if (shapeNode.localName !== 'cxnSp') {
+                    properties.fill = { type: 'solid', color: properties.stroke.color };
                 }
             }
 
