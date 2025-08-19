@@ -1189,50 +1189,50 @@
                     const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
                     if (fillRefNode) {
                         const idx = parseInt(fillRefNode.getAttribute('idx'));
+                        const colorOverride = parseColor(fillRefNode);
+
                         if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
                             const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
-                            // The fillRef can have its own color definitions that override the theme
-                            let colorObj = parseColor(fillRefNode) || themeFill.color;
+                            let colorObj = colorOverride || themeFill.color;
 
                             if (themeFill.type === 'solid') {
                                 properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
                             } else if (themeFill.type === 'gradient') {
                                 // TODO: Handle gradient fills from themes
                             }
+                        } else if (colorOverride) {
+                             properties.fill = { type: 'solid', color: resolveColor(colorOverride, slideContext) };
                         }
                     }
                 }
             }
 
             const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
+            const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
+            const lnRefNode = styleNode ? styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0] : null;
+
+            let baseStroke = null;
             if (lnNode) {
-                properties.stroke = parseLineProperties(lnNode, slideContext);
-            } else {
-                const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
-                if (styleNode) {
-                    const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
-                    if (lnRefNode) {
-                        const idx = parseInt(lnRefNode.getAttribute('idx'));
-                        if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
-                             const themeLine = slideContext.theme.formatScheme.lines[idx - 1];
-                             if (themeLine.type === 'solid') {
-                                // Start with the theme line properties
-                                const strokeProps = { ...themeLine };
+                baseStroke = parseLineProperties(lnNode, slideContext);
+            }
 
-                                // The lnRef can have its own color that overrides the theme one
-                                const lnRefColorObj = parseColor(lnRefNode);
-                                if (lnRefColorObj) {
-                                    strokeProps.color = resolveColor(lnRefColorObj, slideContext);
-                                } else {
-                                    // If no override, resolve the theme color
-                                    strokeProps.color = resolveColor(themeLine.color, slideContext);
-                                }
-
-                                properties.stroke = strokeProps;
-                             }
+            if (lnRefNode) {
+                const idx = parseInt(lnRefNode.getAttribute('idx'));
+                if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
+                    const themeLine = { ...slideContext.theme.formatScheme.lines[idx - 1] }; // Clone
+                    if (themeLine.type === 'solid') {
+                        const lnRefColorObj = parseColor(lnRefNode);
+                        if (lnRefColorObj) {
+                            themeLine.color = resolveColor(lnRefColorObj, slideContext);
+                        } else {
+                            themeLine.color = resolveColor(themeLine.color, slideContext);
                         }
+                        // Merge, with lnRef properties taking precedence
+                        properties.stroke = { ...baseStroke, ...themeLine };
                     }
                 }
+            } else if (baseStroke) {
+                properties.stroke = baseStroke;
             }
 
             return properties;
