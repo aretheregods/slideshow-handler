@@ -708,6 +708,69 @@
             return rgbToHex(r, g, b);
         }
 
+        function rgbToHsl(r, g, b) {
+            r /= 255, g /= 255, b /= 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, l = (max + min) / 2;
+
+            if (max === min) {
+                h = s = 0; // achromatic
+            } else {
+                const d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+            return { h, s, l };
+        }
+
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l; // achromatic
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return { r: r * 255, g: g * 255, b: b * 255 };
+        }
+
+        function applyLuminance(hex, lumMod, lumOff) {
+            const rgb = hexToRgb(hex);
+            if (!rgb) return hex;
+
+            const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+            let newL = hsl.l;
+
+            if (lumMod) {
+                newL *= (lumMod / 100000);
+            }
+            if (lumOff) {
+                newL += (lumOff / 100000);
+            }
+
+            // Clamp luminance to the valid range [0, 1]
+            newL = Math.max(0, Math.min(1, newL));
+
+            const newRgb = hslToRgb(hsl.h, hsl.s, newL);
+            return rgbToHex(newRgb.r, newRgb.g, newRgb.b);
+        }
+
         function parseColor(colorNode) {
             if (!colorNode) return null;
 
@@ -732,7 +795,12 @@
                 const alphaNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'alpha')[0];
                 if (alphaNode) color.alpha = parseInt(alphaNode.getAttribute('val'));
 
-                // TODO: Add other transformations like lumMod, lumOff, etc.
+                const lumModNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'lumMod')[0];
+                if (lumModNode) color.lumMod = parseInt(lumModNode.getAttribute('val'));
+
+                const lumOffNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'lumOff')[0];
+                if (lumOffNode) color.lumOff = parseInt(lumOffNode.getAttribute('val'));
+
                 return color;
             }
 
@@ -758,6 +826,7 @@
                     hex = slideContext.theme.colorScheme[themeColorName];
                     if (colorObj.tint) hex = applyTint(hex, colorObj.tint);
                     if (colorObj.shade) hex = applyShade(hex, colorObj.shade);
+                    if (colorObj.lumMod || colorObj.lumOff) hex = applyLuminance(hex, colorObj.lumMod, colorObj.lumOff);
                 }
             }
 
@@ -988,10 +1057,28 @@
                 properties.geometry = { type: 'custom', path: parseCustomGeometry(custGeomNode) };
             }
 
-            const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-            const gradFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
+            let solidFillNode = null;
+            let gradFillNode = null;
+            let noFillNode = null;
+            // Iterate over direct children to avoid picking up fills from nested elements like 'ln'
+            for (const child of spPrNode.children) {
+                if (child.localName === 'solidFill') {
+                    solidFillNode = child;
+                    break;
+                }
+                if (child.localName === 'gradFill') {
+                    gradFillNode = child;
+                    break;
+                }
+                if (child.localName === 'noFill') {
+                    noFillNode = child;
+                    break;
+                }
+            }
 
-            if (solidFillNode) {
+            if (noFillNode) {
+                properties.fill = 'none';
+            } else if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
             } else if (gradFillNode) {
@@ -1064,26 +1151,6 @@
                 }
             }
 
-            // If no fill is defined, apply the default from the theme
-            if (properties.fill === null) {
-                if (slideContext.theme?.formatScheme?.fills?.[0]?.type === 'solid') {
-                     const themeFill = slideContext.theme.formatScheme.fills[0];
-                     properties.fill = { type: 'solid', color: resolveColor(themeFill.color, slideContext) };
-                }
-            }
-
-            // If no stroke is defined, apply the default from the theme
-            if (properties.stroke === null) {
-                if (slideContext.theme?.formatScheme?.lines?.[0]?.type === 'solid') {
-                    const themeLine = slideContext.theme.formatScheme.lines[0];
-                    const strokeProps = { ...themeLine };
-                    // The default theme line color is often 'phClr', which can be the same as the
-                    // default fill. To ensure visibility, we'll override the default stroke
-                    // color with the main text color from the theme ('tx1').
-                    strokeProps.color = resolveColor({ scheme: 'tx1' }, slideContext);
-                    properties.stroke = strokeProps;
-                }
-            }
             return properties;
         }
 
@@ -1140,6 +1207,11 @@
             if (buChar) {
                 properties.bullet.type = 'char';
                 properties.bullet.char = buChar.getAttribute('char');
+            }
+
+            const buFont = pPrNode.getElementsByTagNameNS(DML_NS, 'buFont')[0];
+            if (buFont) {
+                properties.bullet.font = buFont.getAttribute('typeface');
             }
 
             const buAutoNum = pPrNode.getElementsByTagNameNS(DML_NS, 'buAutoNum')[0];
@@ -1439,11 +1511,11 @@
                     const bulletFontSize = finalProps.defRPr.size || 18;
 
                     if (finalProps.bullet.type === 'char') {
-                        bulletEl = new Konva.Text({ x: currentX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                        bulletEl = new Konva.Text({ x: currentX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
                     } else if (finalProps.bullet.type === 'auto') {
                         if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
                         const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
-                        bulletEl = new Konva.Text({ x: currentX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: 'Arial', fill: bulletColor });
+                        bulletEl = new Konva.Text({ x: currentX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
                     } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
                         const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
                         bulletEl = new Konva.Image({ x: currentX, y: currentY, image: imageObj, width: 16, height: 16 });
@@ -1749,8 +1821,22 @@
                 }
             }
 
-            const solidFillNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-            if (solidFillNode) {
+            let solidFillNode = null;
+            let noFillNode = null;
+            for (const child of grpSpPrNode.children) {
+                if (child.localName === 'solidFill') {
+                    solidFillNode = child;
+                    break;
+                }
+                if (child.localName === 'noFill') {
+                    noFillNode = child;
+                    break;
+                }
+            }
+
+            if (noFillNode) {
+                properties.fill = 'none';
+            } else if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) {
                     properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
