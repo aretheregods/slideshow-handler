@@ -1105,16 +1105,19 @@
                     const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
                     if (fillRefNode) {
                         const idx = parseInt(fillRefNode.getAttribute('idx'));
+                        const colorOverride = parseColor(fillRefNode);
+
                         if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
                             const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
-                            // The fillRef can have its own color definitions that override the theme
-                            let colorObj = parseColor(fillRefNode) || themeFill.color;
+                            let colorObj = colorOverride || themeFill.color;
 
                             if (themeFill.type === 'solid') {
                                 properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
                             } else if (themeFill.type === 'gradient') {
                                 // TODO: Handle gradient fills from themes
                             }
+                        } else if (colorOverride) {
+                             properties.fill = { type: 'solid', color: resolveColor(colorOverride, slideContext) };
                         }
                     }
                 }
@@ -1507,7 +1510,7 @@
 
                 if (lstStyle && finalProps.bullet.type && finalProps.bullet.type !== 'none') {
                     let bulletEl;
-                    const bulletColor = resolveColor(finalProps.bullet.color, slideContext);
+                    const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
                     const bulletFontSize = finalProps.defRPr.size || 18;
 
                     if (finalProps.bullet.type === 'char') {
