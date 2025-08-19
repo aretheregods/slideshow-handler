@@ -317,6 +317,7 @@
                 let totalElementsFound = 0;
 
                 for ( let i = 0; i < slideIds.length; i++ ) {
+                    const slideNum = i + 1;
                     const slideId = slideIds[ i ];
                     const slideRel = presRels[ slideId ];
                     if ( !slideRel ) continue;
@@ -404,7 +405,7 @@
                     slideViewerContainer.appendChild( slideContainer );
 
                     // The renderSlide function now handles its own scaling.
-                    await renderSlide( slideXml, slideContainer, finalPlaceholders, i + 1, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap );
+                    await renderSlide( slideXml, slideContainer, finalPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap );
                 }
 
             } catch ( error ) {
