@@ -207,7 +207,6 @@
         import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 
         const EMU_PER_PIXEL = 9525; // Standard conversion for 96 DPI
-        const LINE_HEIGHT = 24; // A default line height in pixels for SVG text
         const INDENTATION_AMOUNT = 30; // Pixels per indentation level
         const BULLET_OFFSET = 20; // Space between bullet and text
 
@@ -1343,6 +1342,18 @@
                 }
             }
 
+            const lnSpcNode = pPrNode.getElementsByTagNameNS(DML_NS, 'lnSpc')[0];
+            if (lnSpcNode) {
+                const spcPctNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPct')[0];
+                if (spcPctNode) {
+                    properties.lnSpc = { type: 'pct', val: parseInt(spcPctNode.getAttribute('val')) };
+                }
+                const spcPtsNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+                if (spcPtsNode) {
+                    properties.lnSpc = { type: 'pts', val: parseInt(spcPtsNode.getAttribute('val')) / 100 };
+                }
+            }
+
             const defRPrNode = pPrNode.getElementsByTagNameNS(DML_NS, 'defRPr')[0];
             if (defRPrNode) {
                 properties.defRPr.size = parseInt(defRPrNode.getAttribute('sz') || '1800') / 100;
@@ -1421,8 +1432,10 @@
                                 height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                             };
                             let listStyle = null;
+                            let bodyPr = null;
                             const txBodyNode = sp.getElementsByTagNameNS(PML_NS, 'txBody')[0];
                             if (txBodyNode) {
+                                bodyPr = parseBodyProperties(txBodyNode);
                                 const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
                                 if (lstStyleNode) {
                                     listStyle = parseTextStyle(lstStyleNode);
@@ -1435,7 +1448,7 @@
                             };
                             const shapeProps = parseShapeProperties(sp, tempSlideContext, "layout/master");
 
-                            placeholders[key] = { pos, type, listStyle, shapeProps };
+                            placeholders[key] = { pos, type, listStyle, bodyPr, shapeProps };
                         }
                     }
 
@@ -1501,6 +1514,15 @@
                     currentX += bulletOffset;
                 }
 
+                let baseLineHeight = (finalProps.defRPr.size || 18) * 1.2; // Default line height
+                if (finalProps.lnSpc) {
+                    if (finalProps.lnSpc.type === 'pct') {
+                        baseLineHeight = (finalProps.defRPr.size || 18) * (finalProps.lnSpc.val / 100000);
+                    } else if (finalProps.lnSpc.type === 'pts') {
+                        baseLineHeight = finalProps.lnSpc.val;
+                    }
+                }
+
                 currentY += paragraphMaxHeight;
                 paragraphMaxHeight = 0;
 
@@ -1551,7 +1573,7 @@
                         const textWidth = tempText.getTextWidth();
 
                         if (currentX + textWidth > availableWidth && currentX > indent) {
-                            currentY += paragraphMaxHeight || LINE_HEIGHT;
+                            currentY += Math.max(baseLineHeight, paragraphMaxHeight);
                             currentX = indent + bulletOffset;
                             paragraphMaxHeight = 0;
                         }
@@ -1560,7 +1582,7 @@
                         paragraphMaxHeight = Math.max(paragraphMaxHeight, tempText.height());
 
                     } else if (childNode.localName === 'br') {
-                        currentY += paragraphMaxHeight || LINE_HEIGHT;
+                        currentY += Math.max(baseLineHeight, paragraphMaxHeight);
                         currentX = indent + bulletOffset;
                         paragraphMaxHeight = 0;
                     }
@@ -1621,6 +1643,15 @@
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
                 let currentX = paddedPos.x + indent;
                 let bulletOffset = 0;
+
+                let baseLineHeight = (finalProps.defRPr.size || 18) * 1.2; // Default line height
+                if (finalProps.lnSpc) {
+                    if (finalProps.lnSpc.type === 'pct') {
+                        baseLineHeight = (finalProps.defRPr.size || 18) * (finalProps.lnSpc.val / 100000);
+                    } else if (finalProps.lnSpc.type === 'pts') {
+                        baseLineHeight = finalProps.lnSpc.val;
+                    }
+                }
 
                 currentY += paragraphMaxHeight;
                 paragraphMaxHeight = 0;
@@ -1696,7 +1727,7 @@
                         const textWidth = tempText.getTextWidth();
 
                         if (currentX + textWidth > paddedPos.x + paddedPos.width && currentX > paddedPos.x + indent) {
-                            currentY += paragraphMaxHeight || LINE_HEIGHT;
+                            currentY += Math.max(baseLineHeight, paragraphMaxHeight);
                             currentX = paddedPos.x + indent + bulletOffset;
                             paragraphMaxHeight = 0;
                         }
@@ -1715,7 +1746,7 @@
                         currentX += textEl.getTextWidth();
                         paragraphMaxHeight = Math.max(paragraphMaxHeight, textEl.height());
                     } else if (childNode.localName === 'br') {
-                        currentY += paragraphMaxHeight || LINE_HEIGHT;
+                        currentY += Math.max(baseLineHeight, paragraphMaxHeight);
                         currentX = paddedPos.x + indent + bulletOffset;
                         paragraphMaxHeight = 0;
                     }
@@ -1925,10 +1956,12 @@
 
             const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
             if (txBody) {
-                const bodyPr = parseBodyProperties(txBody);
+                const layoutBodyPr = layoutPlaceholders[phKey]?.bodyPr || {};
+                const slideBodyPr = parseBodyProperties(txBody);
+                const finalBodyPr = { ...layoutBodyPr, ...slideBodyPr };
                 const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height } });
                 layer.add(textGroup);
-                await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr);
+                await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, finalBodyPr);
             }
             return konvaShape ? konvaShape.getClientRect() : { width: 0, height: 0 };
         }
