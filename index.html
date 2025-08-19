@@ -331,7 +331,6 @@
 
 
                     const slideContext = {
-                        slideNum: slideNum,
                         theme: theme,
                         colorMap: {},
                         tableStyles: tableStyles,
@@ -1480,8 +1479,19 @@
                 const finalProps = {
                     ...defaultLevelProps, ...layoutListStyle, ...slideLevelProps,
                     bullet: { ...defaultLevelProps.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
-                    defRPr: { ...defaultLevelProps.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
+
+                const defRPrs = [defaultLevelProps.defRPr, layoutListStyle.defRPr, slideLevelProps.defRPr];
+                const mergedDefRPr = {};
+                for (const style of defRPrs) {
+                    if (!style) continue;
+                    for (const key in style) {
+                        if (style[key] !== undefined) {
+                            mergedDefRPr[key] = style[key];
+                        }
+                    }
+                }
+                finalProps.defRPr = mergedDefRPr;
 
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
                 let currentX = indent;
@@ -1515,9 +1525,21 @@
 
                         const fontSize = finalRunProps.size || 18;
                         const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
-                        let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
-                        if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
-                            fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                        let fontFamily = finalRunProps.font;
+
+                        if (fontFamily && fontFamily.startsWith('+')) {
+                            const fontType = fontFamily.substring(1, 3);
+                            if (fontType === 'mj') {
+                                fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                            } else if (fontType === 'mn') {
+                                fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
+                            }
+                        } else if (!fontFamily) {
+                            if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                                fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                            } else {
+                                fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
+                            }
                         }
 
                         const tempText = new Konva.Text({
@@ -1552,50 +1574,6 @@
         async function processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr = {}) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
-    if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
-        console.log(`--- Logging Title Properties for slide ${slideContext.slideNum}, phKey: ${phKey} ---`);
-        console.log("Position (final):", JSON.parse(JSON.stringify(pos)));
-
-        const masterStyle = defaultTextStyles.title?.[0]?.defRPr || {};
-        const layoutStyle = layoutPlaceholders[phKey]?.listStyle?.[0]?.defRPr || {};
-
-        console.log("Master Style (lvl 1):", {
-            fontSize: masterStyle.size,
-            fontFace: masterStyle.font
-        });
-        console.log("Layout Style (lvl 1):", {
-            fontSize: layoutStyle.size,
-            fontFace: layoutStyle.font
-        });
-
-        const paragraphsForLog = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
-        for (const pNode of paragraphsForLog) {
-            const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
-            const slideLevelProps = parseParagraphProperties(pPrNode) || {};
-            const slideStyle = slideLevelProps.defRPr || {};
-            if(slideStyle.size || slideStyle.font) console.log("Slide Paragraph Style:", {
-                fontSize: slideStyle.size,
-                fontFace: slideStyle.font
-            });
-
-            for (const childNode of pNode.childNodes) {
-                if (childNode.localName === 'r' || childNode.localName === 'fld') {
-                    const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                    if (rPr) {
-                        const runStyle = {};
-                        if (rPr.getAttribute('sz')) runStyle.fontSize = parseInt(rPr.getAttribute('sz')) / 100;
-                        const latinFontNode = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
-                        if (latinFontNode && latinFontNode.getAttribute('typeface')) {
-                            runStyle.fontFace = latinFontNode.getAttribute('typeface');
-                        }
-                        if(Object.keys(runStyle).length > 0) console.log("Slide Run Style:", runStyle);
-                    }
-                }
-            }
-        }
-        console.log("-------------------------------------------------");
-    }
 
             const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
             if (paragraphs.length === 0) return;
@@ -1692,9 +1670,21 @@
                         const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
                         const fontSize = finalRunProps.size || 18;
                         const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
-                        let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
-                        if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
-                            fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                        let fontFamily = finalRunProps.font;
+
+                        if (fontFamily && fontFamily.startsWith('+')) {
+                            const fontType = fontFamily.substring(1, 3);
+                            if (fontType === 'mj') {
+                                fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                            } else if (fontType === 'mn') {
+                                fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
+                            }
+                        } else if (!fontFamily) {
+                            if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                                fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
+                            } else {
+                                fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
+                            }
                         }
 
                         const tempText = new Konva.Text({
