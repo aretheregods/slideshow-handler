@@ -1700,6 +1700,11 @@
 
             if (!pos) return { width: 0, height: 0 };
 
+            if (layer instanceof Konva.Group) {
+                pos.x = 0;
+                pos.y = 0;
+            }
+
             // --- INHERITANCE LOGIC ---
             const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
             const masterShapeProps = masterPh ? masterPh.shapeProps : {};
@@ -1936,17 +1941,8 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
-            let groupXfrm = {
-                x: parentXfrm.x,
-                y: parentXfrm.y,
-                rot: 0,
-                flipH: false,
-                flipV: false,
-                w: 0,
-                h: 0
-            };
+            let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y, rot: 0, flipH: false, flipV: false };
             let groupProps = null;
-            let childXfrm = { x: 0, y: 0 }; // This will be the base transform for all children of this group
 
             if (grpSpPrNode) {
                 groupProps = parseGroupShapeProperties(grpSpPrNode, slideContext);
@@ -1957,19 +1953,6 @@
                         groupXfrm.x += parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
                         groupXfrm.y += parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
                     }
-
-                    const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
-                    if (extNode) {
-                        groupXfrm.w = parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL;
-                        groupXfrm.h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
-                    }
-
-                    const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
-                    if (chOffNode) {
-                        childXfrm.x = -(parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL);
-                        childXfrm.y = -(parseInt(chOffNode.getAttribute("y")) / EMU_PER_PIXEL);
-                    }
-
                     groupXfrm.rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
                     groupXfrm.flipH = xfrmNode.getAttribute('flipH') === '1';
                     groupXfrm.flipV = xfrmNode.getAttribute('flipV') === '1';
@@ -1988,11 +1971,8 @@
             }
 
             const konvaGroup = new Konva.Group({
-                // Position the group at its center, and set offset to rotate around center
-                x: groupXfrm.x + groupXfrm.w / 2,
-                y: groupXfrm.y + groupXfrm.h / 2,
-                offsetX: groupXfrm.w / 2,
-                offsetY: groupXfrm.h / 2,
+                x: groupXfrm.x,
+                y: groupXfrm.y,
             });
             konvaGroup.rotation(groupXfrm.rot);
             if (groupXfrm.flipH) konvaGroup.scaleX(-1);
@@ -2002,11 +1982,11 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
+                    await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
+                    await processGroupShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                 } else if (tagName === 'pic') {
-                    await processPicture(element, konvaGroup, imageMap, childXfrm, masterPlaceholders, layoutPlaceholders, slideContext);
+                    await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, masterPlaceholders, layoutPlaceholders, slideContext);
                 }
             }
         }
