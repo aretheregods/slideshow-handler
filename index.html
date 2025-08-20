@@ -1746,11 +1746,26 @@
             const slideShapeProps = parseShapeProperties(shape, slideContext, slideNum);
 
             const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+            const isTextPlaceholder = phKey && txBody;
+
+            let finalFill;
+            if (isTextPlaceholder) {
+                finalFill = slideShapeProps.fill ?? 'none';
+            } else {
+                finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
+            }
+
+            let finalStroke;
+            if (isTextPlaceholder) {
+                finalStroke = slideShapeProps.stroke ?? null;
+            } else {
+                finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
+            }
 
             const shapeProps = {
                 geometry: slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry,
-                fill: txBody ? (slideShapeProps.fill ?? 'none') : (slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill),
-                stroke: txBody ? (slideShapeProps.stroke ?? null) : (slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke),
+                fill: finalFill,
+                stroke: finalStroke,
             };
             // --- END INHERITANCE LOGIC ---
 
