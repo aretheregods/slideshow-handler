@@ -1516,9 +1516,12 @@
 
                 if (ph) {
                     // This shape is a placeholder, so create an entry for it.
-                    const type = ph.getAttribute('type');
+                    let type = ph.getAttribute('type');
                     const idx = ph.getAttribute('idx');
-                    const key = idx ? `idx_${idx}` : type;
+                    if (!type && idx) {
+                        type = 'body'; // Default to body if idx exists but type doesn't
+                    }
+                    const key = idx ? `${type}_${idx}` : type;
 
                     const xfrmNode = sp.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                     if (xfrmNode) {
@@ -1645,12 +1648,12 @@
                 if (placeholder) {
                     phType = placeholder.getAttribute('type');
                     const phIdx = placeholder.getAttribute('idx');
-                    phKey = phIdx ? `idx_${phIdx}` : phType;
 
                     // If no type is specified but an index is, it's usually a body/content placeholder.
                     if ( !phType && phIdx ) {
                         phType = 'body';
                     }
+                    phKey = phIdx ? `${phType}_${phIdx}` : phType;
                 }
             }
 
