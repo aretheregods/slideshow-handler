@@ -1715,13 +1715,6 @@
                 stroke: finalStroke,
             };
 
-            const cNvPrNode = shape.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
-            const shapeName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unnamed Shape';
-            console.log(`Slide ${slideNum} - Shape: "${shapeName}"`, {
-                fill: shapeProps.fill,
-                stroke: shapeProps.stroke
-            });
-
             // --- END INHERITANCE LOGIC ---
 
             if (shapeProps && shapeProps.geometry?.type === 'custom') {
@@ -2000,7 +1993,8 @@
             if (groupXfrm.flipV) konvaGroup.scaleY(-1);
             layer.add(konvaGroup);
 
-            for (const element of group.children) {
+            const children = Array.from(group.children).reverse();
+            for (const element of children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
                     await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
