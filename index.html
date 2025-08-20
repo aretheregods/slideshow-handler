@@ -1717,7 +1717,7 @@
 
             const cNvPrNode = shape.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
             const shapeName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unnamed Shape';
-            console.log(`Processing shape: "${shapeName}"`, {
+            console.log(`Slide ${slideNum} - Shape: "${shapeName}"`, {
                 fill: shapeProps.fill,
                 stroke: shapeProps.stroke
             });
