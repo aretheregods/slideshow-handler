@@ -504,7 +504,7 @@
             };
 
             const lines = [];
-            let paragraphStartHeight = 0;
+            let currentY = 0; // This will track the Y position for the start of each line.
 
             for (const pNode of paragraphs) {
                 const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
@@ -530,13 +530,21 @@
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
                 const effectiveWidth = paddedPos.width - indent - bulletOffset;
 
-                let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: paragraphStartHeight };
+                let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY };
+
+                const pushCurrentLine = () => {
+                    if (currentLine.runs.length > 0) {
+                        lines.push(currentLine);
+                        currentY += currentLine.height || LINE_HEIGHT;
+                    }
+                    currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY };
+                };
+
                 const runsAndBreaks = Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName));
 
                 for (const childNode of runsAndBreaks) {
                     if (childNode.localName === 'br') {
-                        if (currentLine.runs.length > 0) lines.push(currentLine);
-                        currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: paragraphStartHeight + lines.reduce((acc, line) => acc + line.height, 0) };
+                        pushCurrentLine();
                         continue;
                     }
 
@@ -560,25 +568,28 @@
                     const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
                     const fontFamily = resolveFontFamily(finalRunProps, phType, slideContext);
 
-                    const textEl = new Konva.Text({ text, fontSize, fontFamily, fontStyle, fill: textColor });
-                    const textWidth = textEl.width();
+                    const measurer = new Konva.Text({ fontSize, fontFamily, fontStyle });
+                    const words = text.split(/(\s+)/); // Split on whitespace but keep it
 
-                    if (currentLine.width + textWidth > effectiveWidth && currentLine.runs.length > 0) {
-                        lines.push(currentLine);
-                        currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: paragraphStartHeight + lines.reduce((acc, line) => acc + line.height, 0) };
+                    for (const word of words) {
+                        if (!word) continue;
+
+                        const wordWidth = measurer.text(word).width();
+
+                        if (currentLine.width + wordWidth > effectiveWidth && currentLine.runs.length > 0) {
+                            pushCurrentLine();
+                        }
+
+                        const wordEl = new Konva.Text({ text: word, fontSize, fontFamily, fontStyle, fill: textColor });
+                        currentLine.runs.push(wordEl);
+                        currentLine.width += wordWidth;
+                        currentLine.height = Math.max(currentLine.height, wordEl.height());
                     }
-
-                    currentLine.runs.push(textEl);
-                    currentLine.width += textWidth;
-                    currentLine.height = Math.max(currentLine.height, textEl.height());
                 }
-                if (currentLine.runs.length > 0) lines.push(currentLine);
-
-                paragraphStartHeight = lines.reduce((acc, line) => acc + (line.height || LINE_HEIGHT), 0);
+                pushCurrentLine(); // Push the last line of the paragraph
             }
 
-            // Calculate total height and alignment offsets
-            let totalHeight = 0;
+            const totalHeight = currentY;
             for(const line of lines) {
                 const align = line.paragraphProps.align || 'l';
                 const level = line.paragraphProps.level || 0;
@@ -593,8 +604,6 @@
                     lineXOffset = effectiveWidth - line.width;
                 }
                 line.x = paddedPos.x + indent + bulletOffset + lineXOffset;
-
-                totalHeight += line.height || LINE_HEIGHT;
             }
 
             return { totalHeight, lines };
@@ -1638,9 +1647,6 @@
                 startY += paddedPos.height - layout.totalHeight;
             }
 
-            let currentY = startY;
-            let lineOffsetY = 0;
-
             for (const line of layout.lines) {
                 const finalProps = line.paragraphProps;
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
@@ -1649,7 +1655,7 @@
                     let bulletEl;
                     const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
                     const bulletFontSize = finalProps.defRPr.size || 18;
-                    const bulletY = currentY + line.startY;
+                    const bulletY = startY + line.startY;
 
                     if (finalProps.bullet.type === 'char') {
                         bulletEl = new Konva.Text({ x: line.x - bulletOffset, y: bulletY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
@@ -1669,12 +1675,10 @@
                 let currentX = line.x;
                 for (const textRun of line.runs) {
                     textRun.x(currentX);
-                    textRun.y(startY + lineOffsetY);
+                    textRun.y(startY + line.startY); // Use the calculated startY for the line
                     textGroup.add(textRun);
                     currentX += textRun.width();
                 }
-
-                lineOffsetY += line.height || LINE_HEIGHT;
             }
         }
 
