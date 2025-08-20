@@ -541,17 +541,7 @@
                     if (currentLine.runs.length > 0) {
                         currentLine.isFirstLineOfParagraph = isFirstLineOfParagraph;
                         lines.push(currentLine);
-
-                        let lineHeight = currentLine.height || LINE_HEIGHT;
-                        const lineSpacing = currentLine.paragraphProps.lineSpacing;
-                        if (lineSpacing) {
-                            if (lineSpacing.type === 'pct') {
-                                lineHeight *= (lineSpacing.value / 100);
-                            } else if (lineSpacing.type === 'pts') {
-                                lineHeight = lineSpacing.value;
-                            }
-                        }
-                        currentY += lineHeight;
+                        currentY += currentLine.height || LINE_HEIGHT;
                         isFirstLineOfParagraph = false;
                     }
                     currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY };
@@ -1457,18 +1447,6 @@
                 const schemeClr = buClr.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
                 if (schemeClr) {
                     properties.bullet.color = parseColor(buClr);
-                }
-            }
-
-            const lnSpcNode = pPrNode.getElementsByTagNameNS(DML_NS, 'lnSpc')[0];
-            if (lnSpcNode) {
-                const spcPctNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPct')[0];
-                const spcPtsNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
-
-                if (spcPctNode) {
-                    properties.lineSpacing = { type: 'pct', value: parseInt(spcPctNode.getAttribute('val')) / 1000 };
-                } else if (spcPtsNode) {
-                    properties.lineSpacing = { type: 'pts', value: parseInt(spcPtsNode.getAttribute('val')) / 100 };
                 }
             }
 
