@@ -581,6 +581,7 @@
             let totalHeight = 0;
             for(const line of lines) {
                 const align = line.paragraphProps.align || 'l';
+                const level = line.paragraphProps.level || 0;
                 const indent = line.paragraphProps.indent || (level * INDENTATION_AMOUNT);
                 const bulletOffset = (line.paragraphProps.bullet.type && line.paragraphProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
                 const effectiveWidth = paddedPos.width - indent - bulletOffset;
