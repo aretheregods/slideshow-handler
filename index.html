@@ -1742,10 +1742,6 @@
             };
             // --- END INHERITANCE LOGIC ---
 
-            const cNvPrNode = shape.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
-            const shapeName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unnamed Shape';
-            console.log(`[processShape] FINAL POS for ${shapeName}:`, pos);
-
             if (shapeProps && shapeProps.geometry?.type === 'custom') {
                 // This debug log is removed to avoid console spam and potential errors.
             }
@@ -2017,7 +2013,7 @@
                 offsetX: groupXfrm.w / 2,
                 offsetY: groupXfrm.h / 2,
             });
-            konvaGroup.rotation(groupXfrm.rot);
+            konvaGroup.rotation(-groupXfrm.rot);
             if (groupXfrm.flipH) konvaGroup.scaleX(-1);
             if (groupXfrm.flipV) konvaGroup.scaleY(-1);
             layer.add(konvaGroup);
