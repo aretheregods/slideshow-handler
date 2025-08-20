@@ -493,6 +493,112 @@
             return theme?.fontScheme?.minor || 'Arial';
         }
 
+        function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr) {
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            const paddedPos = {
+                x: pos.x + (bodyPr.lIns || 0),
+                y: pos.y + (bodyPr.tIns || 0),
+                width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
+                height: pos.height - (bodyPr.tIns || 0) - (bodyPr.bIns || 0),
+            };
+
+            const lines = [];
+            let paragraphStartHeight = 0;
+
+            for (const pNode of paragraphs) {
+                const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
+                const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
+                let defaultStyle = defaultTextStyles.other;
+                if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = defaultTextStyles.title;
+                else if (phType === 'body') defaultStyle = defaultTextStyles.body;
+
+                const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
+                const layoutListStyle = (layoutPlaceholders[phKey]?.listStyle?.[level]) || {};
+                const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
+
+                const finalProps = {
+                    level,
+                    ...defaultLevelProps,
+                    ...layoutListStyle,
+                    ...slideLevelProps,
+                    bullet: { ...defaultLevelProps.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
+                    defRPr: { ...defaultLevelProps.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
+                };
+
+                const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
+                const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
+                const effectiveWidth = paddedPos.width - indent - bulletOffset;
+
+                let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: paragraphStartHeight };
+                const runsAndBreaks = Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName));
+
+                for (const childNode of runsAndBreaks) {
+                    if (childNode.localName === 'br') {
+                        if (currentLine.runs.length > 0) lines.push(currentLine);
+                        currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: paragraphStartHeight + lines.reduce((acc, line) => acc + line.height, 0) };
+                        continue;
+                    }
+
+                    const text = childNode.textContent;
+                    if (!text) continue;
+
+                    const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                    const finalRunProps = { ...finalProps.defRPr };
+                    if (rPr) {
+                        if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
+                        if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
+                        if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
+                        const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                        if (solidFill) finalRunProps.color = parseColor(solidFill);
+                        const latinFontNode = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                        if (latinFontNode && latinFontNode.getAttribute('typeface')) finalRunProps.font = latinFontNode.getAttribute('typeface');
+                    }
+
+                    const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
+                    const fontSize = finalRunProps.size || 18;
+                    const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
+                    const fontFamily = resolveFontFamily(finalRunProps, phType, slideContext);
+
+                    const textEl = new Konva.Text({ text, fontSize, fontFamily, fontStyle, fill: textColor });
+                    const textWidth = textEl.width();
+
+                    if (currentLine.width + textWidth > effectiveWidth && currentLine.runs.length > 0) {
+                        lines.push(currentLine);
+                        currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: paragraphStartHeight + lines.reduce((acc, line) => acc + line.height, 0) };
+                    }
+
+                    currentLine.runs.push(textEl);
+                    currentLine.width += textWidth;
+                    currentLine.height = Math.max(currentLine.height, textEl.height());
+                }
+                if (currentLine.runs.length > 0) lines.push(currentLine);
+
+                paragraphStartHeight = lines.reduce((acc, line) => acc + (line.height || LINE_HEIGHT), 0);
+            }
+
+            // Calculate total height and alignment offsets
+            let totalHeight = 0;
+            for(const line of lines) {
+                const align = line.paragraphProps.align || 'l';
+                const indent = line.paragraphProps.indent || (level * INDENTATION_AMOUNT);
+                const bulletOffset = (line.paragraphProps.bullet.type && line.paragraphProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
+                const effectiveWidth = paddedPos.width - indent - bulletOffset;
+
+                let lineXOffset = 0;
+                if (align === 'ctr') {
+                    lineXOffset = (effectiveWidth - line.width) / 2;
+                } else if (align === 'r') {
+                    lineXOffset = effectiveWidth - line.width;
+                }
+                line.x = paddedPos.x + indent + bulletOffset + lineXOffset;
+
+                totalHeight += line.height || LINE_HEIGHT;
+            }
+
+            return { totalHeight, lines };
+        }
+
         function getAutoNumberingChar(scheme, number) {
             switch (scheme) {
                 case 'alphaLcParenBoth': return `(${String.fromCharCode(96 + number)})`;
@@ -1326,6 +1432,9 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const properties = { bullet: {}, defRPr: {} };
 
+            const align = pPrNode.getAttribute('algn');
+            if (align) properties.align = align;
+
             const marL = pPrNode.getAttribute('marL');
             if (marL) properties.indent = parseInt(marL) / EMU_PER_PIXEL;
 
@@ -1384,7 +1493,10 @@
 
             const defRPrNode = pPrNode.getElementsByTagNameNS(DML_NS, 'defRPr')[0];
             if (defRPrNode) {
-                properties.defRPr.size = parseInt(defRPrNode.getAttribute('sz') || '1800') / 100;
+                const sz = defRPrNode.getAttribute('sz');
+                if (sz) {
+                    properties.defRPr.size = parseInt(sz) / 100;
+                }
                 properties.defRPr.bold = defRPrNode.getAttribute('b') === '1';
                 properties.defRPr.italic = defRPrNode.getAttribute('i') === '1';
 
@@ -1496,109 +1608,10 @@
         }
 
         function calculateTextBlockSize(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr) {
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-            console.log(`%c[calculateTextBlockSize] Starting for phKey: ${phKey}, phType: ${phType}`, "color: #4CAF50; font-weight: bold;");
-            console.log(`[calculateTextBlockSize] Input pos:`, JSON.parse(JSON.stringify(pos)));
-            console.log(`[calculateTextBlockSize] Body Props:`, JSON.parse(JSON.stringify(bodyPr)));
-
-            let totalHeight = 0;
-            let paragraphMaxHeight = 0;
-            let currentY = 0;
-
-            const availableWidth = pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0);
-            console.log(`[calculateTextBlockSize] Available Width: ${availableWidth}`);
-
-            for (const pNode of paragraphs) {
-                console.log(`%c[calculateTextBlockSize] Processing new paragraph: ${pNode.textContent.substring(0, 50)}...`, "color: #2196F3;");
-                const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
-                const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
-                let defaultStyle = defaultTextStyles.other;
-                if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = defaultTextStyles.title;
-                else if (phType === 'body') defaultStyle = defaultTextStyles.body;
-
-                const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
-                const layoutListStyle = (layoutPlaceholders[phKey]?.listStyle?.[level]) || {};
-                const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
-
-                const finalProps = {
-                    ...defaultLevelProps, ...layoutListStyle, ...slideLevelProps,
-                    bullet: { ...defaultLevelProps.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
-                    defRPr: { ...defaultLevelProps.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
-                };
-                console.log(`[calculateTextBlockSize] Final Props for paragraph (lvl ${level}):`, { size: finalProps.defRPr.size, bold: finalProps.defRPr.bold, indent: finalProps.indent });
-
-
-                const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
-                let currentX = indent;
-                let bulletOffset = 0;
-                if (finalProps.bullet.type && finalProps.bullet.type !== 'none') {
-                    bulletOffset = BULLET_OFFSET;
-                    currentX += bulletOffset;
-                }
-
-                currentY += paragraphMaxHeight;
-                paragraphMaxHeight = 0;
-                console.log(`[calculateTextBlockSize] Paragraph Start Y: ${currentY.toFixed(2)}, Start X: ${currentX.toFixed(2)}`);
-
-                for (const childNode of pNode.childNodes) {
-                    if (childNode.localName === 'r' || childNode.localName === 'fld') {
-                        const text = childNode.textContent;
-                        if (!text) continue;
-
-                        const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                        const finalRunProps = { ...finalProps.defRPr };
-                        if (rPr) {
-                            if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
-                            if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
-                            if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
-                            const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                            if (solidFill) finalRunProps.color = parseColor(solidFill);
-                            const latinFontNode = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
-                            if (latinFontNode && latinFontNode.getAttribute('typeface')) {
-                                finalRunProps.font = latinFontNode.getAttribute('typeface');
-                            }
-                        }
-
-                        const fontSize = finalRunProps.size || 18;
-                        const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
-                        const fontFamily = resolveFontFamily(finalRunProps, phType, slideContext);
-
-                        const tempText = new Konva.Text({
-                            text: text,
-                            fontSize: fontSize,
-                            fontFamily: fontFamily,
-                            fontStyle: fontStyle,
-                        });
-                        const textWidth = tempText.getTextWidth();
-                        const textHeight = tempText.height();
-
-                        console.log(`[calculateTextBlockSize]   Run: "${text}" | Width: ${textWidth.toFixed(2)}, Height: ${textHeight.toFixed(2)}, Font: ${fontSize}pt ${fontFamily}`);
-
-                        if (currentX + textWidth > availableWidth && currentX > indent) {
-                            console.log(`%c[calculateTextBlockSize]   --Line wrap detected--`, "color: #E91E63;");
-                            currentY += paragraphMaxHeight || LINE_HEIGHT;
-                            currentX = indent + bulletOffset;
-                            paragraphMaxHeight = 0;
-                            console.log(`[calculateTextBlockSize]   New line Y: ${currentY.toFixed(2)}, New X: ${currentX.toFixed(2)}`);
-                        }
-
-                        currentX += textWidth;
-                        paragraphMaxHeight = Math.max(paragraphMaxHeight, textHeight);
-                        console.log(`[calculateTextBlockSize]   Current X after run: ${currentX.toFixed(2)}, Current max line height: ${paragraphMaxHeight.toFixed(2)}`);
-
-                    } else if (childNode.localName === 'br') {
-                        console.log(`%c[calculateTextBlockSize]   --Explicit <br> detected--`, "color: #E91E63;");
-                        currentY += paragraphMaxHeight || LINE_HEIGHT;
-                        currentX = indent + bulletOffset;
-                        paragraphMaxHeight = 0;
-                        console.log(`[calculateTextBlockSize]   New line Y: ${currentY.toFixed(2)}, New X: ${currentX.toFixed(2)}`);
-                    }
-                }
-            }
-
-            totalHeight = currentY + paragraphMaxHeight;
-            console.log(`%c[calculateTextBlockSize] Final calculated height: ${totalHeight.toFixed(2)}`, "color: #4CAF50; font-weight: bold;");
-            return { height: totalHeight };
+            console.log(`%c[calculateTextBlockSize] Delegating to layoutParagraphs for phKey: ${phKey}, phType: ${phType}`, "color: #4CAF50; font-weight: bold;");
+            const layout = layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr);
+            console.log(`%c[calculateTextBlockSize] Final calculated height: ${layout.totalHeight.toFixed(2)}`, "color: #4CAF50; font-weight: bold;");
+            return { height: layout.totalHeight };
         }
 
         async function processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr = {}) {
@@ -1608,10 +1621,8 @@
             const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
             if (paragraphs.length === 0) return;
 
-            // Step 1: Calculate text block size for vertical alignment
-            const { height: textBlockHeight } = calculateTextBlockSize(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr);
+            const layout = layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr);
 
-            // Step 2: Apply padding from body properties
             const paddedPos = {
                 x: pos.x + (bodyPr.lIns || 0),
                 y: pos.y + (bodyPr.tIns || 0),
@@ -1619,137 +1630,50 @@
                 height: pos.height - (bodyPr.tIns || 0) - (bodyPr.bIns || 0),
             };
 
-            // Step 3: Determine starting Y-coordinate based on vertical alignment anchor
             let startY = paddedPos.y;
             if (bodyPr.anchor === 'ctr') {
-                startY += (paddedPos.height - textBlockHeight) / 2;
+                startY += (paddedPos.height - layout.totalHeight) / 2;
             } else if (bodyPr.anchor === 'b') {
-                startY += paddedPos.height - textBlockHeight;
+                startY += paddedPos.height - layout.totalHeight;
             }
 
             let currentY = startY;
-            let paragraphMaxHeight = 0; // Height of the previously rendered paragraph
+            let lineOffsetY = 0;
 
-            for (const pNode of paragraphs) {
-                currentY += paragraphMaxHeight;
-                paragraphMaxHeight = 0;
-
-                // --- 1. Get Paragraph Properties ---
-                const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
-                const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
-                let defaultStyle = defaultTextStyles.other;
-                if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = defaultTextStyles.title;
-                else if (phType === 'body') defaultStyle = defaultTextStyles.body;
-
-                const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
-                const layoutListStyle = (layoutPlaceholders[phKey]?.listStyle?.[level]) || {};
-                const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
-
-                const finalProps = {
-                    ...defaultLevelProps, ...layoutListStyle, ...slideLevelProps,
-                    bullet: { ...defaultLevelProps.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
-                    defRPr: { ...defaultLevelProps.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
-                };
-
-                const align = pPrNode?.getAttribute('algn') || 'l';
-                const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
+            for (const line of layout.lines) {
+                const finalProps = line.paragraphProps;
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
-                const effectiveWidth = paddedPos.width - indent - bulletOffset;
 
-                // --- 2. Pre-calculate lines for the paragraph ---
-                const lines = [];
-                let currentLine = { runs: [], width: 0, height: 0 };
-                const runsAndBreaks = Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName));
-
-                for (const childNode of runsAndBreaks) {
-                    if (childNode.localName === 'br') {
-                        if (currentLine.runs.length > 0) lines.push(currentLine);
-                        currentLine = { runs: [], width: 0, height: 0 };
-                        continue;
-                    }
-
-                    const text = childNode.textContent;
-                    if (!text) continue;
-
-                    const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                    const finalRunProps = { ...finalProps.defRPr };
-                    if (rPr) {
-                        if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
-                        if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
-                        if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
-                        const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                        if (solidFill) finalRunProps.color = parseColor(solidFill);
-                        const latinFontNode = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
-                        if (latinFontNode && latinFontNode.getAttribute('typeface')) finalRunProps.font = latinFontNode.getAttribute('typeface');
-                    }
-
-                    const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
-                    const fontSize = finalRunProps.size || 18;
-                    const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
-                    const fontFamily = resolveFontFamily(finalRunProps, phType, slideContext);
-
-                    const textEl = new Konva.Text({ text, fontSize, fontFamily, fontStyle, fill: textColor });
-                    const textWidth = textEl.width();
-
-                    if (currentLine.width + textWidth > effectiveWidth && currentLine.runs.length > 0) {
-                        lines.push(currentLine);
-                        currentLine = { runs: [], width: 0, height: 0 };
-                    }
-
-                    currentLine.runs.push(textEl);
-                    currentLine.width += textWidth;
-                    currentLine.height = Math.max(currentLine.height, textEl.height());
-                }
-                if (currentLine.runs.length > 0) lines.push(currentLine);
-
-                // --- 3. Render the paragraph (bullets and lines) ---
-                const paragraphStartY = currentY;
-
-                // Render bullet (if any)
                 if (bulletOffset > 0) {
                     let bulletEl;
                     const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
                     const bulletFontSize = finalProps.defRPr.size || 18;
-                    const bulletY = paragraphStartY;
+                    const bulletY = currentY + line.startY;
 
                     if (finalProps.bullet.type === 'char') {
-                        bulletEl = new Konva.Text({ x: paddedPos.x + indent, y: bulletY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
+                        bulletEl = new Konva.Text({ x: line.x - bulletOffset, y: bulletY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
                     } else if (finalProps.bullet.type === 'auto') {
+                        const level = finalProps.level || 0;
                         if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
                         const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
-                        bulletEl = new Konva.Text({ x: paddedPos.x + indent, y: bulletY, text: bulletChar, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
+                        bulletEl = new Konva.Text({ x: line.x - bulletOffset, y: bulletY, text: bulletChar, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
                     } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
                         const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
-                        bulletEl = new Konva.Image({ x: paddedPos.x + indent, y: bulletY, image: imageObj, width: 16, height: 16 });
+                        bulletEl = new Konva.Image({ x: line.x - bulletOffset, y: bulletY, image: imageObj, width: 16, height: 16 });
                     }
 
                     if (bulletEl) textGroup.add(bulletEl);
                 }
 
-                // Render lines
-                let paragraphRenderHeight = 0;
-                for (const line of lines) {
-                    let lineXOffset = 0;
-                    if (align === 'ctr') {
-                        lineXOffset = (effectiveWidth - line.width) / 2;
-                    } else if (align === 'r') {
-                        lineXOffset = effectiveWidth - line.width;
-                    }
-
-                    let currentX = paddedPos.x + indent + bulletOffset + lineXOffset;
-
-                    for (const textRun of line.runs) {
-                        textRun.x(currentX);
-                        textRun.y(currentY);
-                        textGroup.add(textRun);
-                        currentX += textRun.width();
-                    }
-
-                    const lineHeight = line.height || LINE_HEIGHT;
-                    currentY += lineHeight;
-                    paragraphRenderHeight += lineHeight;
+                let currentX = line.x;
+                for (const textRun of line.runs) {
+                    textRun.x(currentX);
+                    textRun.y(startY + lineOffsetY);
+                    textGroup.add(textRun);
+                    currentX += textRun.width();
                 }
-                paragraphMaxHeight = paragraphRenderHeight;
+
+                lineOffsetY += line.height || LINE_HEIGHT;
             }
         }
 
