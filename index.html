@@ -339,7 +339,8 @@
 
                     const layoutRel = sortedSlideRels.find( r => r.type.endsWith( '/slideLayout' ) );
 
-                    let finalPlaceholders = {};
+                    let masterPlaceholders = {};
+                    let layoutPlaceholders = {};
                     let defaultTextStyles = {};
                     let masterXml, layoutXml;
 
@@ -363,7 +364,7 @@
                             if (masterXml) {
                                 masterData = parseMasterOrLayout( masterXml, theme, null, false );
                             }
-                            finalPlaceholders = masterData.placeholders;
+                            masterPlaceholders = masterData.placeholders;
                             masterStaticShapes = masterData.staticShapes;
                             defaultTextStyles = masterData.defaultTextStyles;
                             slideContext.colorMap = masterData.colorMap;
@@ -372,9 +373,9 @@
                         let layoutData;
                         layoutXml = await getNormalizedXmlString(entriesMap, layoutPath);
                         if (layoutXml) {
-                            layoutData = parseMasterOrLayout( layoutXml, theme, masterData.colorMap, true );
+                            layoutData = parseMasterOrLayout( layoutXml, theme, masterData ? masterData.colorMap : null, true );
                         }
-                        finalPlaceholders = { ...finalPlaceholders, ...layoutData.placeholders };
+                        layoutPlaceholders = layoutData.placeholders;
                         layoutStaticShapes = layoutData.staticShapes;
                         if (layoutData.colorMapOverride) {
                             slideContext.colorMap = { ...slideContext.colorMap, ...layoutData.colorMapOverride };
@@ -395,9 +396,6 @@
                     const masterBg = masterXmlDoc ? parseBackground(masterXmlDoc, slideContext) : null;
                     const finalBg = slideBg || layoutBg || masterBg;
 
-                    console.log(`[Slide ${slideNum}] Parsing background. Slide BG: ${JSON.stringify(slideBg)}, Layout BG: ${JSON.stringify(layoutBg)}, Master BG: ${JSON.stringify(masterBg)}`);
-                    console.log(`[Slide ${slideNum}] Final background chosen: ${JSON.stringify(finalBg)}`);
-
                     const slideContainer = document.createElement( 'div' );
                     slideContainer.className = 'slide-viewer';
                     slideContainer.id = `slide-${ i + 1 }`;
@@ -405,7 +403,7 @@
                     slideViewerContainer.appendChild( slideContainer );
 
                     // The renderSlide function now handles its own scaling.
-                    await renderSlide( slideXml, slideContainer, finalPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap );
+                    await renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap );
                 }
 
             } catch ( error ) {
@@ -493,7 +491,7 @@
             return theme?.fontScheme?.minor || 'Arial';
         }
 
-        function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr) {
+        function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const paddedPos = {
@@ -514,16 +512,22 @@
                 else if (phType === 'body') defaultStyle = defaultTextStyles.body;
 
                 const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
-                const layoutListStyle = (layoutPlaceholders[phKey]?.listStyle?.[level]) || {};
+
+                const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
+                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+
+                const masterListStyle = (masterPh?.listStyle?.[level]) || {};
+                const layoutListStyle = (layoutPh?.listStyle?.[level]) || {};
                 const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
 
                 const finalProps = {
                     level,
                     ...defaultLevelProps,
+                    ...masterListStyle,
                     ...layoutListStyle,
                     ...slideLevelProps,
-                    bullet: { ...defaultLevelProps.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
-                    defRPr: { ...defaultLevelProps.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
+                    bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
+                    defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
 
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
@@ -1246,9 +1250,6 @@
 
             const properties = { fill: null, stroke: null, geometry: null };
 
-            const shapeName = shapeNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name') || 'Unnamed Shape';
-            console.log(`[Slide ${slideNum}] Processing shape: ${shapeName} (type: ${shapeNode.localName})`);
-
             const prstGeomNode = spPrNode.getElementsByTagNameNS(DML_NS, 'prstGeom')[0];
             if (prstGeomNode) {
                 properties.geometry = { type: 'preset', preset: prstGeomNode.getAttribute('prst') };
@@ -1285,12 +1286,10 @@
 
             if (noFillNode) {
                 properties.fill = 'none';
-                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Fill: none (noFill tag found)`);
             } else if (solidFillNode) {
                 const colorObj = parseColor(solidFillNode);
                 if (colorObj) {
                     properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
-                    console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Fill: explicit solidFill, Color: ${JSON.stringify(colorObj)}, Resolved: ${properties.fill.color}`);
                 }
             } else if (gradFillNode) {
                 const gsLstNode = gradFillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
@@ -1310,10 +1309,8 @@
                     angle = parseInt(linNode.getAttribute('ang')) / 60000;
                 }
                 properties.fill = { type: 'gradient', stops, angle };
-                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Fill: explicit gradFill`);
             } else if (bgRefNode) {
                 const idx = parseInt(bgRefNode.getAttribute('idx'));
-                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Found bgRef, Index: ${idx}`);
                 // The spec says the index for bgRef starts at 1001.
                 if (idx >= 1001 && slideContext.theme.formatScheme.bgFills.length > (idx - 1001)) {
                     const themeFill = slideContext.theme.formatScheme.bgFills[idx - 1001];
@@ -1321,7 +1318,6 @@
 
                     if (themeFill.type === 'solid') {
                         properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
-                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied bgRef fill, Color: ${JSON.stringify(colorObj)}, Resolved: ${properties.fill.color}`);
                     }
                     // TODO: Handle other fill types
                 }
@@ -1332,7 +1328,6 @@
                     if (fillRefNode) {
                         const idx = parseInt(fillRefNode.getAttribute('idx'));
                         const colorOverride = parseColor(fillRefNode);
-                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Found fillRef, Index: ${idx}, Override: ${JSON.stringify(colorOverride)}`);
 
                         if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
                             const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
@@ -1340,13 +1335,11 @@
 
                             if (themeFill.type === 'solid') {
                                 properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
-                                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied fillRef, Color: ${JSON.stringify(colorObj)}, Resolved: ${properties.fill.color}`);
                             } else if (themeFill.type === 'gradient') {
                                 // TODO: Handle gradient fills from themes
                             }
                         } else if (colorOverride) {
                              properties.fill = { type: 'solid', color: resolveColor(colorOverride, slideContext) };
-                             console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied fillRef override, Color: ${JSON.stringify(colorOverride)}, Resolved: ${properties.fill.color}`);
                         }
                     }
                 }
@@ -1385,12 +1378,10 @@
 
             // After all other fill checks, if fill is still null, apply the default theme fill.
             if (properties.fill === null && shapeNode.localName !== 'cxnSp') {
-                console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> No explicit fill found. Attempting to apply default theme fill.`);
                 if (slideContext.theme && slideContext.theme.formatScheme.fills.length > 0) {
                     const defaultFill = slideContext.theme.formatScheme.fills[0];
                     if (defaultFill.type === 'solid' && defaultFill.color) {
                         properties.fill = { type: 'solid', color: resolveColor(defaultFill.color, slideContext) };
-                        console.log(`[Slide ${slideNum}] Shape: '${shapeName}' -> Applied default theme fill, Color: ${JSON.stringify(defaultFill.color)}, Resolved: ${properties.fill.color}`);
                     }
                     // TODO: Handle other default fill types like gradient if necessary
                 }
@@ -1620,21 +1611,19 @@
             return { placeholders, staticShapes, defaultTextStyles, colorMap, colorMapOverride };
         }
 
-        function calculateTextBlockSize(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr) {
-            console.log(`%c[calculateTextBlockSize] Delegating to layoutParagraphs for phKey: ${phKey}, phType: ${phType}`, "color: #4CAF50; font-weight: bold;");
-            const layout = layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr);
-            console.log(`%c[calculateTextBlockSize] Final calculated height: ${layout.totalHeight.toFixed(2)}`, "color: #4CAF50; font-weight: bold;");
+        function calculateTextBlockSize(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr) {
+            const layout = layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr);
             return { height: layout.totalHeight };
         }
 
-        async function processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr = {}) {
+        async function processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, bodyPr = {}) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
             if (paragraphs.length === 0) return;
 
-            const layout = layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, layoutPlaceholders, slideContext, bodyPr);
+            const layout = layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr);
 
             const paddedPos = {
                 x: pos.x + (bodyPr.lIns || 0),
@@ -1686,7 +1675,7 @@
             }
         }
 
-        async function processShape(shape, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
+        async function processShape(shape, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -1722,21 +1711,46 @@
                         flipV: xfrmNode.getAttribute('flipV') === '1',
                     };
                 }
-            } else if (phKey && layoutPlaceholders[phKey]) {
-                pos = { ...layoutPlaceholders[phKey].pos };
-                pos.x += parentXfrm.x;
-                pos.y += parentXfrm.y;
-            } else if (phType === 'ctrTitle' && layoutPlaceholders['title']) {
+            } else if (phKey && (layoutPlaceholders?.[phKey] || masterPlaceholders?.[phKey])) {
+                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+                const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
+                // Layout position overrides master position.
+                const placeholder = layoutPh || masterPh;
+                if (placeholder) {
+                    pos = { ...placeholder.pos };
+                    pos.x += parentXfrm.x;
+                    pos.y += parentXfrm.y;
+                }
+            } else if (phType === 'ctrTitle' && (layoutPlaceholders?.['title'] || masterPlaceholders?.['title'])) {
                 // Fallback for centered titles, which often use the standard 'title' placeholder
-                pos = { ...layoutPlaceholders['title'].pos };
-                pos.x += parentXfrm.x;
-                pos.y += parentXfrm.y;
-                phKey = 'title'; // Remap key for style inheritance
+                const layoutPh = layoutPlaceholders ? layoutPlaceholders['title'] : null;
+                const masterPh = masterPlaceholders ? masterPlaceholders['title'] : null;
+                const placeholder = layoutPh || masterPh;
+                if (placeholder) {
+                    pos = { ...placeholder.pos };
+                    pos.x += parentXfrm.x;
+                    pos.y += parentXfrm.y;
+                    phKey = 'title'; // Remap key for style inheritance
+                }
             }
 
             if (!pos) return { width: 0, height: 0 };
 
-            const shapeProps = parseShapeProperties(shape, slideContext, slideNum);
+            // --- INHERITANCE LOGIC ---
+            const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
+            const masterShapeProps = masterPh ? masterPh.shapeProps : {};
+
+            const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+            const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
+
+            const slideShapeProps = parseShapeProperties(shape, slideContext, slideNum);
+
+            const shapeProps = {
+                geometry: slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry,
+                fill: slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill,
+                stroke: slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke,
+            };
+            // --- END INHERITANCE LOGIC ---
 
             if (shapeProps && shapeProps.geometry?.type === 'custom') {
                 // This debug log is removed to avoid console spam and potential errors.
@@ -1893,21 +1907,17 @@
             const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
             if (txBody) {
                 const slideBodyPr = parseBodyProperties(txBody);
-                const layoutPh = layoutPlaceholders[phKey];
-                const inheritedBodyPr = layoutPh ? layoutPh.bodyPr : {};
+                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+                const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
 
-                const finalBodyPr = { ...inheritedBodyPr, ...slideBodyPr };
+                const masterBodyPr = masterPh ? masterPh.bodyPr : {};
+                const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
 
-                if (phType === 'title' || phType === 'ctrTitle' || phType === 'body') {
-                    console.log(`[Slide ${slideNum}] Vertical Align Debug for ${phType} (${phKey}):`);
-                    console.log("  > Inherited bodyPr:", JSON.stringify(inheritedBodyPr));
-                    console.log("  > Slide shape bodyPr:", JSON.stringify(slideBodyPr));
-                    console.log("  > Final bodyPr:", JSON.stringify(finalBodyPr));
-                }
+                const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
 
                 const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height } });
                 layer.add(textGroup);
-                await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, layoutPlaceholders, finalBodyPr);
+                await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, finalBodyPr);
             }
             return konvaShape ? konvaShape.getClientRect() : { width: 0, height: 0 };
         }
@@ -1952,7 +1962,7 @@
             return properties;
         }
 
-        async function processGroupShape(group, layer, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
+        async function processGroupShape(group, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -1998,11 +2008,11 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                    await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                    await processGroupShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                 } else if (tagName === 'pic') {
-                    await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, layoutPlaceholders, slideContext);
+                    await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, masterPlaceholders, layoutPlaceholders, slideContext);
                 }
             }
         }
@@ -2307,7 +2317,7 @@
             await processParagraphs(textGroup, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr);
         }
 
-        async function processPicture(picNode, layer, imageMap, parentXfrm, layoutPlaceholders, slideContext) {
+        async function processPicture(picNode, layer, imageMap, parentXfrm, masterPlaceholders, layoutPlaceholders, slideContext) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -2331,14 +2341,18 @@
                         height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                     };
                 }
-            } else if (phNode && layoutPlaceholders) {
-                // 2. If no transform, get it from the layout placeholder
+            } else if (phNode && (layoutPlaceholders || masterPlaceholders)) {
+                // 2. If no transform, get it from the layout or master placeholder
                 const phType = phNode.getAttribute('type');
                 const phIdx = phNode.getAttribute('idx');
                 const phKey = phIdx ? `idx_${phIdx}` : phType;
 
-                if (layoutPlaceholders[phKey]) {
-                    pos = { ...layoutPlaceholders[phKey].pos }; // Clone from layout
+                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+                const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
+                const placeholder = layoutPh || masterPh; // Layout takes precedence
+
+                if (placeholder) {
+                    pos = { ...placeholder.pos }; // Clone from layout/master
                     pos.x += parentXfrm.x;
                     pos.y += parentXfrm.y;
                 }
@@ -2348,13 +2362,18 @@
 
             // 3. Look up placeholder properties to get background fill
             let placeholderProps = null;
-            if (phNode && layoutPlaceholders) {
+            if (phNode && (layoutPlaceholders || masterPlaceholders)) {
                 const phType = phNode.getAttribute('type');
                 const phIdx = phNode.getAttribute('idx');
                 const phKey = phIdx ? `idx_${phIdx}` : phType;
-                if (layoutPlaceholders[phKey]) {
-                    placeholderProps = layoutPlaceholders[phKey].shapeProps;
-                }
+                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+                const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
+
+                // Merge properties: layout overrides master
+                const masterShapeProps = masterPh ? masterPh.shapeProps : null;
+                const layoutShapeProps = layoutPh ? layoutPh.shapeProps : null;
+
+                placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
             }
 
             // 4. Create a group for the picture and its potential background
@@ -2419,7 +2438,7 @@
             return { width: pos.width, height: pos.height };
         }
 
-        async function renderSlide( slideXml, slideContainer, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
+        async function renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
             activeCharts = []; // Clear previously rendered charts
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -2464,12 +2483,12 @@
             if (showMasterShapes) {
                 if (masterStaticShapes) {
                     for (const shape of masterStaticShapes) {
-                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processShape(shape, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     }
                 }
                  if (layoutStaticShapes) {
                     for (const shape of layoutStaticShapes) {
-                        await processShape(shape, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processShape(shape, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     }
                 }
             }
@@ -2479,9 +2498,9 @@
                 for (const element of spTreeNode.children) {
                     const tagName = element.localName;
                     if (tagName === 'sp' || tagName === 'cxnSp') {
-                        await processShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processShape(element, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     } else if (tagName === 'grpSp') {
-                        await processGroupShape(element, mainLayer, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                        await processGroupShape(element, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
                     } else if (tagName === 'graphicFrame') {
                         const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                         if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
@@ -2499,7 +2518,7 @@
                             }
                         }
                     } else if (tagName === 'pic') {
-                        await processPicture(element, mainLayer, imageMap, { x: 0, y: 0 }, layoutPlaceholders, slideContext);
+                        await processPicture(element, mainLayer, imageMap, { x: 0, y: 0 }, masterPlaceholders, layoutPlaceholders, slideContext);
                     }
                 }
             }
