@@ -515,10 +515,16 @@
                 const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
 
                 const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
-                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+                let masterListStyle = (masterPh?.listStyle?.[level]) || {};
+                if (masterPh && masterPh.type && phType && masterPh.type !== phType) {
+                    masterListStyle = {};
+                }
 
-                const masterListStyle = (masterPh?.listStyle?.[level]) || {};
-                const layoutListStyle = (layoutPh?.listStyle?.[level]) || {};
+                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+                let layoutListStyle = (layoutPh?.listStyle?.[level]) || {};
+                if (layoutPh && layoutPh.type && phType && layoutPh.type !== phType) {
+                    layoutListStyle = {};
+                }
                 const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
 
                 const finalProps = {
@@ -1516,12 +1522,9 @@
 
                 if (ph) {
                     // This shape is a placeholder, so create an entry for it.
-                    let type = ph.getAttribute('type');
+                    const type = ph.getAttribute('type');
                     const idx = ph.getAttribute('idx');
-                    if (!type && idx) {
-                        type = 'body'; // Default to body if idx exists but type doesn't
-                    }
-                    const key = idx ? `${type}_${idx}` : type;
+                    const key = idx ? `idx_${idx}` : type;
 
                     const xfrmNode = sp.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                     if (xfrmNode) {
@@ -1648,12 +1651,12 @@
                 if (placeholder) {
                     phType = placeholder.getAttribute('type');
                     const phIdx = placeholder.getAttribute('idx');
+                    phKey = phIdx ? `idx_${phIdx}` : phType;
 
                     // If no type is specified but an index is, it's usually a body/content placeholder.
                     if ( !phType && phIdx ) {
                         phType = 'body';
                     }
-                    phKey = phIdx ? `${phType}_${phIdx}` : phType;
                 }
             }
 
