@@ -535,11 +535,14 @@
                 const effectiveWidth = paddedPos.width - indent - bulletOffset;
 
                 let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY };
+                let isFirstLineOfParagraph = true;
 
                 const pushCurrentLine = () => {
                     if (currentLine.runs.length > 0) {
+                        currentLine.isFirstLineOfParagraph = isFirstLineOfParagraph;
                         lines.push(currentLine);
                         currentY += currentLine.height || LINE_HEIGHT;
+                        isFirstLineOfParagraph = false;
                     }
                     currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY };
                 };
@@ -1598,7 +1601,7 @@
                 const finalProps = line.paragraphProps;
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
 
-                if (bulletOffset > 0) {
+                if (bulletOffset > 0 && line.isFirstLineOfParagraph) {
                     let bulletEl;
                     const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
                     const bulletFontSize = finalProps.defRPr.size || 18;
@@ -2268,6 +2271,18 @@
             if (tcPrNode) {
                 const anchor = tcPrNode.getAttribute('anchor');
                 if (anchor) bodyPrFromTcPr.anchor = anchor;
+
+                const marL = tcPrNode.getAttribute('marL');
+                if (marL) bodyPrFromTcPr.lIns = parseInt(marL) / EMU_PER_PIXEL;
+
+                const marT = tcPrNode.getAttribute('marT');
+                if (marT) bodyPrFromTcPr.tIns = parseInt(marT) / EMU_PER_PIXEL;
+
+                const marR = tcPrNode.getAttribute('marR');
+                if (marR) bodyPrFromTcPr.rIns = parseInt(marR) / EMU_PER_PIXEL;
+
+                const marB = tcPrNode.getAttribute('marB');
+                if (marB) bodyPrFromTcPr.bIns = parseInt(marB) / EMU_PER_PIXEL;
             }
 
             const bodyPr = { ...bodyPrFromTxBody, ...bodyPrFromTcPr };
