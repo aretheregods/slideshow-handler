@@ -541,7 +541,17 @@
                     if (currentLine.runs.length > 0) {
                         currentLine.isFirstLineOfParagraph = isFirstLineOfParagraph;
                         lines.push(currentLine);
-                        currentY += currentLine.height || LINE_HEIGHT;
+
+                        let lineHeight = currentLine.height || LINE_HEIGHT;
+                        const lineSpacing = currentLine.paragraphProps.lineSpacing;
+                        if (lineSpacing) {
+                            if (lineSpacing.type === 'pct') {
+                                lineHeight *= (lineSpacing.value / 100);
+                            } else if (lineSpacing.type === 'pts') {
+                                lineHeight = lineSpacing.value;
+                            }
+                        }
+                        currentY += lineHeight;
                         isFirstLineOfParagraph = false;
                     }
                     currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY };
@@ -1450,6 +1460,18 @@
                 }
             }
 
+            const lnSpcNode = pPrNode.getElementsByTagNameNS(DML_NS, 'lnSpc')[0];
+            if (lnSpcNode) {
+                const spcPctNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPct')[0];
+                const spcPtsNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+
+                if (spcPctNode) {
+                    properties.lineSpacing = { type: 'pct', value: parseInt(spcPctNode.getAttribute('val')) / 1000 };
+                } else if (spcPtsNode) {
+                    properties.lineSpacing = { type: 'pts', value: parseInt(spcPtsNode.getAttribute('val')) / 100 };
+                }
+            }
+
             const defRPrNode = pPrNode.getElementsByTagNameNS(DML_NS, 'defRPr')[0];
             if (defRPrNode) {
                 const sz = defRPrNode.getAttribute('sz');
@@ -1876,6 +1898,10 @@
                 const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
 
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
+
+                if ((phType === 'subTitle' || phType === 'ctrTitle' || phType === 'title') && !finalBodyPr.anchor) {
+                    finalBodyPr.anchor = 'ctr';
+                }
 
                 const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height } });
                 layer.add(textGroup);
