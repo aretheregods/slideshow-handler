@@ -1984,11 +1984,12 @@
                         groupXfrm.h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
                     }
 
-                    const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
-                    if (chOffNode) {
-                        childXfrm.x = -(parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL);
-                        childXfrm.y = -(parseInt(chOffNode.getAttribute("y")) / EMU_PER_PIXEL);
-                    }
+                    // EXPERIMENT: Ignore chOff for now
+                    // const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
+                    // if (chOffNode) {
+                    //     childXfrm.x = -(parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL);
+                    //     childXfrm.y = -(parseInt(chOffNode.getAttribute("y")) / EMU_PER_PIXEL);
+                    // }
 
                     groupXfrm.rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
                     groupXfrm.flipH = xfrmNode.getAttribute('flipH') === '1';
@@ -2013,7 +2014,7 @@
                 offsetX: groupXfrm.w / 2,
                 offsetY: groupXfrm.h / 2,
             });
-            konvaGroup.rotation(-groupXfrm.rot);
+            konvaGroup.rotation(groupXfrm.rot);
             if (groupXfrm.flipH) konvaGroup.scaleX(-1);
             if (groupXfrm.flipV) konvaGroup.scaleY(-1);
             layer.add(konvaGroup);
