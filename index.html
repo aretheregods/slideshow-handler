@@ -515,10 +515,16 @@
                 const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
 
                 const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
-                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+                let masterListStyle = (masterPh?.listStyle?.[level]) || {};
+                if (masterPh && masterPh.type && phType && masterPh.type !== phType) {
+                    masterListStyle = {};
+                }
 
-                const masterListStyle = (masterPh?.listStyle?.[level]) || {};
-                const layoutListStyle = (layoutPh?.listStyle?.[level]) || {};
+                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+                let layoutListStyle = (layoutPh?.listStyle?.[level]) || {};
+                if (layoutPh && layoutPh.type && phType && layoutPh.type !== phType) {
+                    layoutListStyle = {};
+                }
                 const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
 
                 const finalProps = {
