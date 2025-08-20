@@ -1747,10 +1747,17 @@
 
             const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
             const isTextPlaceholder = phKey && txBody;
+            const shapeName = shape.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name') || 'Unnamed Shape';
 
             let finalFill;
             if (isTextPlaceholder) {
+                console.log(`--- Debugging Fill for Text Placeholder: "${shapeName}" (phKey: ${phKey}) ---`);
+                console.log("Master Fill:", JSON.stringify(masterShapeProps.fill));
+                console.log("Layout Fill:", JSON.stringify(layoutShapeProps.fill));
+                console.log("Slide Fill:", JSON.stringify(slideShapeProps.fill));
                 finalFill = slideShapeProps.fill ?? 'none';
+                console.log("Final Computed Fill:", JSON.stringify(finalFill));
+                console.log("-------------------------------------------------");
             } else {
                 finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
             }
