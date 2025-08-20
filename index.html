@@ -1982,6 +1982,9 @@
                     if (extNode) {
                         groupXfrm.w = parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL;
                         groupXfrm.h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
+                        if (groupXfrm.h === 0) {
+                            groupXfrm.h = 1; // EXPERIMENT: Avoid zero-height groups
+                        }
                     }
 
                     const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
