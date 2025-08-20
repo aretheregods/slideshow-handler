@@ -1657,6 +1657,9 @@
 
         async function processShape(shape, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+    const cNvPrNode = shape.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+    const shapeName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unnamed';
+    console.log(`[processShape] Called for ${shape.localName} (Name: ${shapeName})`);
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             let pos = null;
@@ -1953,6 +1956,9 @@
 
         async function processGroupShape(group, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+    const cNvPrNode = group.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+    const shapeName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unnamed';
+    console.log(`[processGroupShape] Called for ${group.localName} (Name: ${shapeName})`);
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
@@ -2481,7 +2487,11 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const parentXfrm = { x: 0, y: 0 };
 
+    const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             for (const element of elements) {
+        const cNvPrNode = element.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+        const shapeName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unnamed';
+        console.log(`[processShapeTree] Processing element: ${element.localName} (Name: ${shapeName})`);
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
                     await processShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum);
@@ -2553,6 +2563,7 @@
                     await processShapeTree(masterStaticShapes, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap);
                 }
                  if (layoutStaticShapes) {
+            console.log(`[renderSlide] Processing ${layoutStaticShapes.length} static shapes from layout...`);
                     await processShapeTree(layoutStaticShapes, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap);
                 }
             }
