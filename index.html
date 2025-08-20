@@ -2271,6 +2271,18 @@
             if (tcPrNode) {
                 const anchor = tcPrNode.getAttribute('anchor');
                 if (anchor) bodyPrFromTcPr.anchor = anchor;
+
+                const marL = tcPrNode.getAttribute('marL');
+                if (marL) bodyPrFromTcPr.lIns = parseInt(marL) / EMU_PER_PIXEL;
+
+                const marT = tcPrNode.getAttribute('marT');
+                if (marT) bodyPrFromTcPr.tIns = parseInt(marT) / EMU_PER_PIXEL;
+
+                const marR = tcPrNode.getAttribute('marR');
+                if (marR) bodyPrFromTcPr.rIns = parseInt(marR) / EMU_PER_PIXEL;
+
+                const marB = tcPrNode.getAttribute('marB');
+                if (marB) bodyPrFromTcPr.bIns = parseInt(marB) / EMU_PER_PIXEL;
             }
 
             const bodyPr = { ...bodyPrFromTxBody, ...bodyPrFromTcPr };
