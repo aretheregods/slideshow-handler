@@ -1745,10 +1745,12 @@
 
             const slideShapeProps = parseShapeProperties(shape, slideContext, slideNum);
 
+            const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+
             const shapeProps = {
                 geometry: slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry,
-                fill: slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill,
-                stroke: slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke,
+                fill: txBody ? (slideShapeProps.fill ?? 'none') : (slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill),
+                stroke: txBody ? (slideShapeProps.stroke ?? null) : (slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke),
             };
             // --- END INHERITANCE LOGIC ---
 
