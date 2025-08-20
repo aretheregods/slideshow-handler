@@ -207,6 +207,7 @@
         import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 
         const EMU_PER_PIXEL = 9525; // Standard conversion for 96 DPI
+        const PT_TO_PX = 4 / 3; // Standard conversion for 96 DPI (96/72)
         const LINE_HEIGHT = 24; // A default line height in pixels for SVG text
         const INDENTATION_AMOUNT = 30; // Pixels per indentation level
         const BULLET_OFFSET = 20; // Space between bullet and text
@@ -530,8 +531,6 @@
                     defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
 
-                currentY += finalProps.spcBef || 0;
-
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
                 const effectiveWidth = paddedPos.width - indent - bulletOffset;
@@ -543,17 +542,7 @@
                     if (currentLine.runs.length > 0) {
                         currentLine.isFirstLineOfParagraph = isFirstLineOfParagraph;
                         lines.push(currentLine);
-
-                        let lineHeight = currentLine.height || LINE_HEIGHT;
-                        const lineSpacing = currentLine.paragraphProps.lineSpacing;
-                        if (lineSpacing) {
-                            if (lineSpacing.type === 'pct') {
-                                lineHeight *= (lineSpacing.value / 100);
-                            } else if (lineSpacing.type === 'pts') {
-                                lineHeight = lineSpacing.value;
-                            }
-                        }
-                        currentY += lineHeight;
+                        currentY += currentLine.height || LINE_HEIGHT;
                         isFirstLineOfParagraph = false;
                     }
                     currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY };
@@ -573,7 +562,7 @@
                     const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
                     const finalRunProps = { ...finalProps.defRPr };
                     if (rPr) {
-                        if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
+                        if (rPr.getAttribute('sz')) finalRunProps.size = (parseInt(rPr.getAttribute('sz')) / 100) * PT_TO_PX;
                         if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
                         if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
                         const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
@@ -583,7 +572,7 @@
                     }
 
                     const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
-                    const fontSize = finalRunProps.size || 18;
+                    const fontSize = finalRunProps.size || (18 * PT_TO_PX);
                     const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
                     const fontFamily = resolveFontFamily(finalRunProps, phType, slideContext);
 
@@ -606,23 +595,9 @@
                     }
                 }
                 pushCurrentLine(); // Push the last line of the paragraph
-                currentY += finalProps.spcAft || 0;
             }
 
-            let totalHeight = 0;
-            if (lines.length > 0) {
-                const lastLine = lines[lines.length - 1];
-                totalHeight = lastLine.startY + lastLine.height;
-
-                const lineSpacing = lastLine.paragraphProps.lineSpacing;
-                if (lineSpacing) {
-                    if (lineSpacing.type === 'pct') {
-                        totalHeight = lastLine.startY + lastLine.height * (lineSpacing.value / 100);
-                    } else if (lineSpacing.type === 'pts') {
-                        totalHeight = lastLine.startY + lineSpacing.value;
-                    }
-                }
-            }
+            const totalHeight = currentY;
             for(const line of lines) {
                 const align = line.paragraphProps.align || 'l';
                 const level = line.paragraphProps.level || 0;
@@ -1476,39 +1451,11 @@
                 }
             }
 
-            const lnSpcNode = pPrNode.getElementsByTagNameNS(DML_NS, 'lnSpc')[0];
-            if (lnSpcNode) {
-                const spcPctNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPct')[0];
-                const spcPtsNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
-
-                if (spcPctNode) {
-                    properties.lineSpacing = { type: 'pct', value: parseInt(spcPctNode.getAttribute('val')) / 1000 };
-                } else if (spcPtsNode) {
-                    properties.lineSpacing = { type: 'pts', value: parseInt(spcPtsNode.getAttribute('val')) / 100 };
-                }
-            }
-
-            const spcBefNode = pPrNode.getElementsByTagNameNS(DML_NS, 'spcBef')[0];
-            if (spcBefNode) {
-                const spcPtsNode = spcBefNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
-                if (spcPtsNode && spcPtsNode.getAttribute('val')) {
-                    properties.spcBef = parseInt(spcPtsNode.getAttribute('val')) / 100;
-                }
-            }
-
-            const spcAftNode = pPrNode.getElementsByTagNameNS(DML_NS, 'spcAft')[0];
-            if (spcAftNode) {
-                const spcPtsNode = spcAftNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
-                if (spcPtsNode && spcPtsNode.getAttribute('val')) {
-                    properties.spcAft = parseInt(spcPtsNode.getAttribute('val')) / 100;
-                }
-            }
-
             const defRPrNode = pPrNode.getElementsByTagNameNS(DML_NS, 'defRPr')[0];
             if (defRPrNode) {
                 const sz = defRPrNode.getAttribute('sz');
                 if (sz) {
-                    properties.defRPr.size = parseInt(sz) / 100;
+                    properties.defRPr.size = (parseInt(sz) / 100) * PT_TO_PX;
                 }
                 properties.defRPr.bold = defRPrNode.getAttribute('b') === '1';
                 properties.defRPr.italic = defRPrNode.getAttribute('i') === '1';
