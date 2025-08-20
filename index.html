@@ -1519,58 +1519,56 @@
                         continue;
                     }
 
-                    console.log(`[parseMasterOrLayout] Processing shape: ${shapeNode.localName} with name: ${shapeNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name')}`);
-
                     const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
                     const ph = nvPr ? nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
 
                     if (ph) {
-                        console.log(`[parseMasterOrLayout]   - Identified as PLACEHOLDER`);
                         const type = ph.getAttribute('type');
                         const idx = ph.getAttribute('idx');
                         const key = idx ? `idx_${idx}` : type;
 
+                        let pos = null;
                         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                         if (xfrmNode) {
                             const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
                             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                             if (offNode && extNode) {
-                                const pos = {
+                                pos = {
                                     x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
                                     y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
                                     width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
                                     height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                                 };
-                                let listStyle = null;
-                                let bodyPr = {};
-                                const txBodyNode = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-                                if (txBodyNode) {
-                                    const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
-                                    if (lstStyleNode) {
-                                        listStyle = parseTextStyle(lstStyleNode);
-                                    }
-                                    bodyPr = parseBodyProperties(txBodyNode);
-                                }
-
-                                const tempSlideContext = {
-                                    theme: theme,
-                                    colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
-                                };
-                                const shapeProps = parseShapeProperties(shapeNode, tempSlideContext, "layout/master");
-
-                                placeholders[key] = { pos, type, listStyle, shapeProps, bodyPr };
                             }
                         }
+
+                        let listStyle = null;
+                        let bodyPr = {};
+                        const txBodyNode = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+                        if (txBodyNode) {
+                            const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+                            if (lstStyleNode) {
+                                listStyle = parseTextStyle(lstStyleNode);
+                            }
+                            bodyPr = parseBodyProperties(txBodyNode);
+                        }
+
+                        const tempSlideContext = {
+                            theme: theme,
+                            colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
+                        };
+                        const shapeProps = parseShapeProperties(shapeNode, tempSlideContext, "layout/master");
+
+                        placeholders[key] = { pos, type, listStyle, shapeProps, bodyPr };
+
                         if (type === 'pic') {
                             staticShapes.push(shapeNode);
                         }
                     } else {
-                        console.log(`[parseMasterOrLayout]   - Identified as STATIC SHAPE`);
                         staticShapes.push(shapeNode);
                     }
                 }
             }
-            console.log(`[parseMasterOrLayout] Returning staticShapes with ${staticShapes.length} elements.`);
             return { placeholders, staticShapes, defaultTextStyles, colorMap, colorMapOverride };
         }
 
@@ -1677,10 +1675,14 @@
             } else if (phKey && (layoutPlaceholders?.[phKey] || masterPlaceholders?.[phKey])) {
                 const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
                 const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
-                // Layout position overrides master position.
-                const placeholder = layoutPh || masterPh;
-                if (placeholder) {
-                    pos = { ...placeholder.pos };
+
+                if (layoutPh && layoutPh.pos) {
+                    pos = { ...layoutPh.pos };
+                } else if (masterPh && masterPh.pos) {
+                    pos = { ...masterPh.pos };
+                }
+
+                if (pos) {
                     pos.x += parentXfrm.x;
                     pos.y += parentXfrm.y;
                 }
@@ -2485,10 +2487,6 @@
         }
 
         async function renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
-            console.log(`[renderSlide] Received layoutStaticShapes with ${layoutStaticShapes.length} elements.`);
-            if (layoutStaticShapes.length > 0) {
-                console.log(layoutStaticShapes);
-            }
             activeCharts = []; // Clear previously rendered charts
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
