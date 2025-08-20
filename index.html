@@ -530,6 +530,8 @@
                     defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
 
+                currentY += finalProps.spcBef || 0;
+
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
                 const effectiveWidth = paddedPos.width - indent - bulletOffset;
@@ -604,12 +606,22 @@
                     }
                 }
                 pushCurrentLine(); // Push the last line of the paragraph
+                currentY += finalProps.spcAft || 0;
             }
 
             let totalHeight = 0;
             if (lines.length > 0) {
                 const lastLine = lines[lines.length - 1];
                 totalHeight = lastLine.startY + lastLine.height;
+
+                const lineSpacing = lastLine.paragraphProps.lineSpacing;
+                if (lineSpacing) {
+                    if (lineSpacing.type === 'pct') {
+                        totalHeight = lastLine.startY + lastLine.height * (lineSpacing.value / 100);
+                    } else if (lineSpacing.type === 'pts') {
+                        totalHeight = lastLine.startY + lineSpacing.value;
+                    }
+                }
             }
             for(const line of lines) {
                 const align = line.paragraphProps.align || 'l';
@@ -1473,6 +1485,22 @@
                     properties.lineSpacing = { type: 'pct', value: parseInt(spcPctNode.getAttribute('val')) / 1000 };
                 } else if (spcPtsNode) {
                     properties.lineSpacing = { type: 'pts', value: parseInt(spcPtsNode.getAttribute('val')) / 100 };
+                }
+            }
+
+            const spcBefNode = pPrNode.getElementsByTagNameNS(DML_NS, 'spcBef')[0];
+            if (spcBefNode) {
+                const spcPtsNode = spcBefNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+                if (spcPtsNode && spcPtsNode.getAttribute('val')) {
+                    properties.spcBef = parseInt(spcPtsNode.getAttribute('val')) / 100;
+                }
+            }
+
+            const spcAftNode = pPrNode.getElementsByTagNameNS(DML_NS, 'spcAft')[0];
+            if (spcAftNode) {
+                const spcPtsNode = spcAftNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+                if (spcPtsNode && spcPtsNode.getAttribute('val')) {
+                    properties.spcAft = parseInt(spcPtsNode.getAttribute('val')) / 100;
                 }
             }
 
