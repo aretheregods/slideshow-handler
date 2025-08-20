@@ -1485,9 +1485,6 @@
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-            const spNodes = Array.from(xmlDoc.getElementsByTagNameNS(PML_NS, 'sp'));
-            const cxnSpNodes = Array.from(xmlDoc.getElementsByTagNameNS(PML_NS, 'cxnSp'));
-            const shapeNodes = [...spNodes, ...cxnSpNodes];
             const placeholders = {};
             const staticShapes = [];
             const defaultTextStyles = {};
@@ -1514,62 +1511,59 @@
                 defaultTextStyles.other = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'otherStyle')[0]);
             }
 
-            for (const sp of shapeNodes) {
-                const nvPr = sp.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
-                const ph = nvPr ? nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
+            const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
+            if (spTreeNode) {
+                for (const shapeNode of spTreeNode.children) {
+                    const supportedNodes = ['sp', 'cxnSp', 'grpSp', 'graphicFrame', 'pic'];
+                    if (!supportedNodes.includes(shapeNode.localName)) {
+                        continue;
+                    }
 
-                let isStaticShape = false;
+                    const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
+                    const ph = nvPr ? nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
 
-                if (ph) {
-                    // This shape is a placeholder, so create an entry for it.
-                    const type = ph.getAttribute('type');
-                    const idx = ph.getAttribute('idx');
-                    const key = idx ? `idx_${idx}` : type;
+                    if (ph) {
+                        const type = ph.getAttribute('type');
+                        const idx = ph.getAttribute('idx');
+                        const key = idx ? `idx_${idx}` : type;
 
-                    const xfrmNode = sp.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
-                    if (xfrmNode) {
-                        const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
-                        const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
-                        if (offNode && extNode) {
-                            const pos = {
-                                x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
-                                y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
-                                width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
-                                height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
-                            };
-                            let listStyle = null;
-                            let bodyPr = {};
-                            const txBodyNode = sp.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-                            if (txBodyNode) {
-                                const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
-                                if (lstStyleNode) {
-                                    listStyle = parseTextStyle(lstStyleNode);
+                        const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
+                        if (xfrmNode) {
+                            const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                            const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+                            if (offNode && extNode) {
+                                const pos = {
+                                    x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
+                                    y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
+                                    width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
+                                    height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
+                                };
+                                let listStyle = null;
+                                let bodyPr = {};
+                                const txBodyNode = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+                                if (txBodyNode) {
+                                    const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+                                    if (lstStyleNode) {
+                                        listStyle = parseTextStyle(lstStyleNode);
+                                    }
+                                    bodyPr = parseBodyProperties(txBodyNode);
                                 }
-                                bodyPr = parseBodyProperties(txBodyNode);
+
+                                const tempSlideContext = {
+                                    theme: theme,
+                                    colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
+                                };
+                                const shapeProps = parseShapeProperties(shapeNode, tempSlideContext, "layout/master");
+
+                                placeholders[key] = { pos, type, listStyle, shapeProps, bodyPr };
                             }
-
-                            const tempSlideContext = {
-                                theme: theme,
-                                colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
-                            };
-                            const shapeProps = parseShapeProperties(sp, tempSlideContext, "layout/master");
-
-                            placeholders[key] = { pos, type, listStyle, shapeProps, bodyPr };
                         }
+                        if (type === 'pic') {
+                            staticShapes.push(shapeNode);
+                        }
+                    } else {
+                        staticShapes.push(shapeNode);
                     }
-
-                    // Decide if the placeholder's own geometry should be rendered.
-                    // Picture placeholders often have a visible shape.
-                    if (type === 'pic') {
-                        isStaticShape = true;
-                    }
-                } else {
-                    // This shape is not a placeholder, so it must be a static shape.
-                    isStaticShape = true;
-                }
-
-                if (isStaticShape) {
-                    staticShapes.push(sp);
                 }
             }
             return { placeholders, staticShapes, defaultTextStyles, colorMap, colorMapOverride };
@@ -1936,8 +1930,17 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
-            let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y, rot: 0, flipH: false, flipV: false };
+            let groupXfrm = {
+                x: parentXfrm.x,
+                y: parentXfrm.y,
+                rot: 0,
+                flipH: false,
+                flipV: false,
+                w: 0,
+                h: 0
+            };
             let groupProps = null;
+            let childXfrm = { x: 0, y: 0 }; // This will be the base transform for all children of this group
 
             if (grpSpPrNode) {
                 groupProps = parseGroupShapeProperties(grpSpPrNode, slideContext);
@@ -1948,6 +1951,19 @@
                         groupXfrm.x += parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
                         groupXfrm.y += parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
                     }
+
+                    const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+                    if (extNode) {
+                        groupXfrm.w = parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL;
+                        groupXfrm.h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
+                    }
+
+                    const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
+                    if (chOffNode) {
+                        childXfrm.x = -(parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL);
+                        childXfrm.y = -(parseInt(chOffNode.getAttribute("y")) / EMU_PER_PIXEL);
+                    }
+
                     groupXfrm.rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
                     groupXfrm.flipH = xfrmNode.getAttribute('flipH') === '1';
                     groupXfrm.flipV = xfrmNode.getAttribute('flipV') === '1';
@@ -1966,8 +1982,10 @@
             }
 
             const konvaGroup = new Konva.Group({
-                x: groupXfrm.x,
-                y: groupXfrm.y,
+                x: groupXfrm.x + groupXfrm.w / 2,
+                y: groupXfrm.y + groupXfrm.h / 2,
+                offsetX: groupXfrm.w / 2,
+                offsetY: groupXfrm.h / 2,
             });
             konvaGroup.rotation(groupXfrm.rot);
             if (groupXfrm.flipH) konvaGroup.scaleX(-1);
@@ -1977,11 +1995,11 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                    await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                    await processGroupShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
                 } else if (tagName === 'pic') {
-                    await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, masterPlaceholders, layoutPlaceholders, slideContext);
+                    await processPicture(element, konvaGroup, imageMap, childXfrm, masterPlaceholders, layoutPlaceholders, slideContext);
                 }
             }
         }
@@ -2430,12 +2448,41 @@
             return { width: pos.width, height: pos.height };
         }
 
+        async function processShapeTree(elements, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap) {
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const parentXfrm = { x: 0, y: 0 };
+
+            for (const element of elements) {
+                const tagName = element.localName;
+                if (tagName === 'sp' || tagName === 'cxnSp') {
+                    await processShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum);
+                } else if (tagName === 'grpSp') {
+                    await processGroupShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum);
+                } else if (tagName === 'graphicFrame') {
+                    const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
+                    if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
+                        await processTable(element, layer, slideContext);
+                    } else if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/chart') {
+                        const chartRelId = graphicData.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/chart", "chart")[0].getAttribute("r:id");
+                        if (chartRelId && slideRels && slideRels[chartRelId]) {
+                            const chartPath = resolvePath('ppt/slides', slideRels[chartRelId].target);
+                            const chartXml = await getNormalizedXmlString(entriesMap, chartPath);
+                            if (chartXml) {
+                                const chartData = parseChart(chartXml);
+                                await renderChart(element, layer, chartData);
+                            }
+                        }
+                    }
+                } else if (tagName === 'pic') {
+                    await processPicture(element, layer, imageMap, parentXfrm, masterPlaceholders, layoutPlaceholders, slideContext);
+                }
+            }
+        }
+
         async function renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
             activeCharts = []; // Clear previously rendered charts
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const listCounters = {};
             const stage = new Konva.Stage({
@@ -2474,45 +2521,16 @@
 
             if (showMasterShapes) {
                 if (masterStaticShapes) {
-                    for (const shape of masterStaticShapes) {
-                        await processShape(shape, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
-                    }
+                    await processShapeTree(masterStaticShapes, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap);
                 }
                  if (layoutStaticShapes) {
-                    for (const shape of layoutStaticShapes) {
-                        await processShape(shape, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
-                    }
+                    await processShapeTree(layoutStaticShapes, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap);
                 }
             }
 
             const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
             if (spTreeNode) {
-                for (const element of spTreeNode.children) {
-                    const tagName = element.localName;
-                    if (tagName === 'sp' || tagName === 'cxnSp') {
-                        await processShape(element, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
-                    } else if (tagName === 'grpSp') {
-                        await processGroupShape(element, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
-                    } else if (tagName === 'graphicFrame') {
-                        const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
-                        if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
-                            await processTable(element, mainLayer, slideContext);
-                        } else if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/chart') {
-                            const chartRelId = graphicData.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/chart", "chart")[0].getAttribute("r:id");
-                            if (chartRelId && slideRels[chartRelId]) {
-                                const chartPath = resolvePath('ppt/slides', slideRels[chartRelId].target);
-                                console.log(`Found chart with relId ${chartRelId}, path: ${chartPath}`);
-                                const chartXml = await getNormalizedXmlString(entriesMap, chartPath);
-                                if (chartXml) {
-                                    const chartData = parseChart(chartXml);
-                                    await renderChart(element, mainLayer, chartData);
-                                }
-                            }
-                        }
-                    } else if (tagName === 'pic') {
-                        await processPicture(element, mainLayer, imageMap, { x: 0, y: 0 }, masterPlaceholders, layoutPlaceholders, slideContext);
-                    }
-                }
+                await processShapeTree(spTreeNode.children, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap);
             }
 
             const resizeStage = () => {
