@@ -1416,24 +1416,25 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const bodyPrNode = txBodyNode ? txBodyNode.getElementsByTagNameNS(DML_NS, 'bodyPr')[0] : null;
 
-            // Default values from the specification, converted to pixels.
-            const defaults = {
-                anchor: 't', // top
-                lIns: 91440 / EMU_PER_PIXEL,
-                tIns: 91440 / EMU_PER_PIXEL,
-                rIns: 91440 / EMU_PER_PIXEL,
-                bIns: 91440 / EMU_PER_PIXEL,
-            };
+            if (!bodyPrNode) return {};
 
-            if (!bodyPrNode) return defaults;
+            const props = {};
+            const anchor = bodyPrNode.getAttribute('anchor');
+            if (anchor) props.anchor = anchor;
 
-            return {
-                anchor: bodyPrNode.getAttribute('anchor') || defaults.anchor,
-                lIns: parseInt(bodyPrNode.getAttribute('lIns') || (defaults.lIns * EMU_PER_PIXEL)) / EMU_PER_PIXEL,
-                tIns: parseInt(bodyPrNode.getAttribute('tIns') || (defaults.tIns * EMU_PER_PIXEL)) / EMU_PER_PIXEL,
-                rIns: parseInt(bodyPrNode.getAttribute('rIns') || (defaults.rIns * EMU_PER_PIXEL)) / EMU_PER_PIXEL,
-                bIns: parseInt(bodyPrNode.getAttribute('bIns') || (defaults.bIns * EMU_PER_PIXEL)) / EMU_PER_PIXEL,
-            };
+            const lIns = bodyPrNode.getAttribute('lIns');
+            if (lIns) props.lIns = parseInt(lIns) / EMU_PER_PIXEL;
+
+            const tIns = bodyPrNode.getAttribute('tIns');
+            if (tIns) props.tIns = parseInt(tIns) / EMU_PER_PIXEL;
+
+            const rIns = bodyPrNode.getAttribute('rIns');
+            if (rIns) props.rIns = parseInt(rIns) / EMU_PER_PIXEL;
+
+            const bIns = bodyPrNode.getAttribute('bIns');
+            if (bIns) props.bIns = parseInt(bIns) / EMU_PER_PIXEL;
+
+            return props;
         }
 
         function parseParagraphProperties(pPrNode) {
@@ -1643,9 +1644,10 @@
             };
 
             let startY = paddedPos.y;
-            if (bodyPr.anchor === 'ctr') {
+            const anchor = bodyPr.anchor || 't';
+            if (anchor === 'ctr') {
                 startY += (paddedPos.height - layout.totalHeight) / 2;
-            } else if (bodyPr.anchor === 'b') {
+            } else if (anchor === 'b') {
                 startY += paddedPos.height - layout.totalHeight;
             }
 
@@ -1895,6 +1897,13 @@
                 const inheritedBodyPr = layoutPh ? layoutPh.bodyPr : {};
 
                 const finalBodyPr = { ...inheritedBodyPr, ...slideBodyPr };
+
+                if (phType === 'title' || phType === 'ctrTitle' || phType === 'body') {
+                    console.log(`[Slide ${slideNum}] Vertical Align Debug for ${phType} (${phKey}):`);
+                    console.log("  > Inherited bodyPr:", JSON.stringify(inheritedBodyPr));
+                    console.log("  > Slide shape bodyPr:", JSON.stringify(slideBodyPr));
+                    console.log("  > Final bodyPr:", JSON.stringify(finalBodyPr));
+                }
 
                 const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height } });
                 layer.add(textGroup);
