@@ -531,9 +531,17 @@
                     defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
 
-                if (phType === 'body' && !slideLevelProps.align && finalProps.align === 'ctr') {
-                    finalProps.align = 'l';
-                }
+                console.log(`--- Text Style Debug ---
+                Placeholder Key: ${phKey}
+                Placeholder Type: ${phType}
+                Paragraph Text: "${pNode.textContent.trim()}"
+                --- Style Inheritance ---`);
+                console.log(`- Default (Master txStyles):`, defaultLevelProps);
+                console.log(`- Master Placeholder (${phKey}):`, masterListStyle);
+                console.log(`- Layout Placeholder (${phKey}):`, layoutListStyle);
+                console.log(`- Slide-level Props:`, slideLevelProps);
+                console.log(`--- Final Merged Properties ---`, finalProps);
+
 
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
@@ -1520,12 +1528,9 @@
 
                 if (ph) {
                     // This shape is a placeholder, so create an entry for it.
-                    let type = ph.getAttribute('type');
+                    const type = ph.getAttribute('type');
                     const idx = ph.getAttribute('idx');
-                    if (!type && idx) {
-                        type = 'body'; // Default to body if idx exists but type doesn't
-                    }
-                    const key = idx ? `${type}_${idx}` : type;
+                    const key = idx ? `idx_${idx}` : type;
 
                     const xfrmNode = sp.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                     if (xfrmNode) {
@@ -1652,12 +1657,12 @@
                 if (placeholder) {
                     phType = placeholder.getAttribute('type');
                     const phIdx = placeholder.getAttribute('idx');
+                    phKey = phIdx ? `idx_${phIdx}` : phType;
 
                     // If no type is specified but an index is, it's usually a body/content placeholder.
                     if ( !phType && phIdx ) {
                         phType = 'body';
                     }
-                    phKey = phIdx ? `${phType}_${phIdx}` : phType;
                 }
             }
 
