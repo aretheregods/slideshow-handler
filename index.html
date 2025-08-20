@@ -1903,11 +1903,6 @@
 
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
 
-                // Force title, ctrTitle, and subTitle to be vertically centered, overriding any value from the file.
-                if (phType === 'subTitle' || phType === 'ctrTitle' || phType === 'title') {
-                    finalBodyPr.anchor = 'ctr';
-                }
-
                 const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height } });
                 layer.add(textGroup);
                 await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, finalBodyPr);
