@@ -1938,6 +1938,7 @@
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
             let groupXfrm = { x: parentXfrm.x, y: parentXfrm.y, rot: 0, flipH: false, flipV: false };
             let groupProps = null;
+            let childXfrm = { x: 0, y: 0 }; // This will be the base transform for all children of this group
 
             if (grpSpPrNode) {
                 groupProps = parseGroupShapeProperties(grpSpPrNode, slideContext);
@@ -1948,6 +1949,13 @@
                         groupXfrm.x += parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
                         groupXfrm.y += parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
                     }
+
+                    const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
+                    if (chOffNode) {
+                        childXfrm.x = - (parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL);
+                        childXfrm.y = - (parseInt(chOffNode.getAttribute("y")) / EMU_PER_PIXEL);
+                    }
+
                     groupXfrm.rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
                     groupXfrm.flipH = xfrmNode.getAttribute('flipH') === '1';
                     groupXfrm.flipV = xfrmNode.getAttribute('flipV') === '1';
@@ -1977,11 +1985,11 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                    await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, { x: 0, y: 0 }, defaultTextStyles, slideNum);
+                    await processGroupShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
                 } else if (tagName === 'pic') {
-                    await processPicture(element, konvaGroup, imageMap, { x: 0, y: 0 }, masterPlaceholders, layoutPlaceholders, slideContext);
+                    await processPicture(element, konvaGroup, imageMap, childXfrm, masterPlaceholders, layoutPlaceholders, slideContext);
                 }
             }
         }
