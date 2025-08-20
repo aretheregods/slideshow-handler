@@ -1312,33 +1312,52 @@
             }
 
             // --- Stroke Parsing ---
-            const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
-            if (lnNode) {
-                properties.rawStrokeNode = lnNode.outerHTML;
-                properties.stroke = parseLineProperties(lnNode, slideContext);
-            } else {
-                const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
-                if (styleNode) {
-                    const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
-                    if (lnRefNode) {
-                        properties.rawStrokeNode = lnRefNode.outerHTML;
-                        const idx = parseInt(lnRefNode.getAttribute('idx'));
-                        if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
-                            const themeLine = slideContext.theme.formatScheme.lines[idx - 1];
-                            if (themeLine.type === 'solid') {
-                                const strokeProps = { ...themeLine };
-                                const lnRefColorObj = parseColor(lnRefNode);
-                                if (lnRefColorObj) {
-                                    strokeProps.color = resolveColor(lnRefColorObj, slideContext);
-                                } else {
-                                    strokeProps.color = resolveColor(themeLine.color, slideContext);
-                                }
-                                properties.stroke = strokeProps;
-                            }
+            let finalStroke = null;
+
+            const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
+            if (styleNode) {
+                const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
+                if (lnRefNode) {
+                    properties.rawStrokeNode = lnRefNode.outerHTML;
+                    const idx = parseInt(lnRefNode.getAttribute('idx'));
+                    const themeLineStyle = (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1])
+                        ? slideContext.theme.formatScheme.lines[idx - 1]
+                        : null;
+
+                    if (themeLineStyle && themeLineStyle.type === 'solid') {
+                        const strokeProps = { ...themeLineStyle };
+                        const lnRefColorObj = parseColor(lnRefNode);
+
+                        if (lnRefColorObj) {
+                            strokeProps.color = resolveColor(lnRefColorObj, slideContext);
+                        } else if (themeLineStyle.color) {
+                            strokeProps.color = resolveColor(themeLineStyle.color, slideContext);
                         }
+                        finalStroke = strokeProps;
                     }
                 }
             }
+
+            const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
+            if (lnNode) {
+                if (properties.rawStrokeNode) {
+                    properties.rawStrokeNode += lnNode.outerHTML;
+                } else {
+                    properties.rawStrokeNode = lnNode.outerHTML;
+                }
+                const directProps = parseLineProperties(lnNode, slideContext);
+
+                if (directProps === null) { // This means <a:noFill/>, so no line
+                    finalStroke = null;
+                } else if (finalStroke) {
+                    // Merge, direct properties take precedence
+                    finalStroke = { ...finalStroke, ...directProps };
+                } else {
+                    finalStroke = directProps;
+                }
+            }
+
+            properties.stroke = finalStroke;
 
             // --- Default Fill Logic ---
             if (properties.fill === null && shapeNode.localName !== 'cxnSp') {
@@ -1527,37 +1546,40 @@
                         const idx = ph.getAttribute('idx');
                         const key = idx ? `idx_${idx}` : type;
 
+                        let pos = null;
                         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                         if (xfrmNode) {
                             const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
                             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                             if (offNode && extNode) {
-                                const pos = {
+                                pos = {
                                     x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
                                     y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
                                     width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
                                     height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                                 };
-                                let listStyle = null;
-                                let bodyPr = {};
-                                const txBodyNode = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-                                if (txBodyNode) {
-                                    const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
-                                    if (lstStyleNode) {
-                                        listStyle = parseTextStyle(lstStyleNode);
-                                    }
-                                    bodyPr = parseBodyProperties(txBodyNode);
-                                }
-
-                                const tempSlideContext = {
-                                    theme: theme,
-                                    colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
-                                };
-                                const shapeProps = parseShapeProperties(shapeNode, tempSlideContext, "layout/master");
-
-                                placeholders[key] = { pos, type, listStyle, shapeProps, bodyPr };
                             }
                         }
+
+                        let listStyle = null;
+                        let bodyPr = {};
+                        const txBodyNode = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+                        if (txBodyNode) {
+                            const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+                            if (lstStyleNode) {
+                                listStyle = parseTextStyle(lstStyleNode);
+                            }
+                            bodyPr = parseBodyProperties(txBodyNode);
+                        }
+
+                        const tempSlideContext = {
+                            theme: theme,
+                            colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
+                        };
+                        const shapeProps = parseShapeProperties(shapeNode, tempSlideContext, "layout/master");
+
+                        placeholders[key] = { pos, type, listStyle, shapeProps, bodyPr };
+
                         if (type === 'pic') {
                             staticShapes.push(shapeNode);
                         }
@@ -1672,10 +1694,14 @@
             } else if (phKey && (layoutPlaceholders?.[phKey] || masterPlaceholders?.[phKey])) {
                 const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
                 const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
-                // Layout position overrides master position.
-                const placeholder = layoutPh || masterPh;
-                if (placeholder) {
-                    pos = { ...placeholder.pos };
+
+                if (layoutPh && layoutPh.pos) {
+                    pos = { ...layoutPh.pos };
+                } else if (masterPh && masterPh.pos) {
+                    pos = { ...masterPh.pos };
+                }
+
+                if (pos) {
                     pos.x += parentXfrm.x;
                     pos.y += parentXfrm.y;
                 }
@@ -1715,6 +1741,10 @@
                 stroke: finalStroke,
             };
             // --- END INHERITANCE LOGIC ---
+
+            const cNvPrNode = shape.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+            const shapeName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unnamed Shape';
+            console.log(`[processShape] FINAL POS for ${shapeName}:`, pos);
 
             if (shapeProps && shapeProps.geometry?.type === 'custom') {
                 // This debug log is removed to avoid console spam and potential errors.
@@ -1987,10 +2017,9 @@
                 offsetX: groupXfrm.w / 2,
                 offsetY: groupXfrm.h / 2,
             });
-            // EXPERIMENT: Disable group transforms to test rendering
-            // konvaGroup.rotation(groupXfrm.rot);
-            // if (groupXfrm.flipH) konvaGroup.scaleX(-1);
-            // if (groupXfrm.flipV) konvaGroup.scaleY(-1);
+            konvaGroup.rotation(groupXfrm.rot);
+            if (groupXfrm.flipH) konvaGroup.scaleX(-1);
+            if (groupXfrm.flipV) konvaGroup.scaleY(-1);
             layer.add(konvaGroup);
 
             for (const element of group.children) {
