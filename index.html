@@ -471,6 +471,28 @@
             return { width: 960, height: 720 }; // Default size
         }
 
+        function resolveFontFamily(finalRunProps, phType, slideContext) {
+            const fontAlias = finalRunProps.font;
+            const theme = slideContext.theme;
+
+            if (fontAlias) {
+                if (fontAlias === '+mj-lt') {
+                    return theme?.fontScheme?.major || 'Arial';
+                }
+                if (fontAlias === '+mn-lt') {
+                    return theme?.fontScheme?.minor || 'Arial';
+                }
+                return fontAlias; // It's a specific font like 'Calibri'
+            }
+
+            // No font in run, so fallback to placeholder type
+            if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
+                return theme?.fontScheme?.major || 'Arial';
+            }
+
+            return theme?.fontScheme?.minor || 'Arial';
+        }
+
         function getAutoNumberingChar(scheme, number) {
             switch (scheme) {
                 case 'alphaLcParenBoth': return `(${String.fromCharCode(96 + number)})`;
@@ -1539,11 +1561,7 @@
 
                         const fontSize = finalRunProps.size || 18;
                         const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
-                        let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
-                        if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
-                            fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
-                        }
-                        // Note: This does not yet handle theme font aliases like '+mj-lt' from rPr.
+                        const fontFamily = resolveFontFamily(finalRunProps, phType, slideContext);
 
                         const tempText = new Konva.Text({
                             text: text,
@@ -1609,11 +1627,14 @@
                 startY += paddedPos.height - textBlockHeight;
             }
 
-            const lstStyle = txBody.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
             let currentY = startY;
-            let paragraphMaxHeight = 0;
+            let paragraphMaxHeight = 0; // Height of the previously rendered paragraph
 
             for (const pNode of paragraphs) {
+                currentY += paragraphMaxHeight;
+                paragraphMaxHeight = 0;
+
+                // --- 1. Get Paragraph Properties ---
                 const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
                 const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
                 let defaultStyle = defaultTextStyles.other;
@@ -1630,96 +1651,105 @@
                     defRPr: { ...defaultLevelProps.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
 
+                const align = pPrNode?.getAttribute('algn') || 'l';
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
-                let currentX = paddedPos.x + indent;
-                let bulletOffset = 0;
+                const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
+                const effectiveWidth = paddedPos.width - indent - bulletOffset;
 
-                currentY += paragraphMaxHeight;
-                paragraphMaxHeight = 0;
+                // --- 2. Pre-calculate lines for the paragraph ---
+                const lines = [];
+                let currentLine = { runs: [], width: 0, height: 0 };
+                const runsAndBreaks = Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName));
 
-                if (lstStyle && finalProps.bullet.type && finalProps.bullet.type !== 'none') {
+                for (const childNode of runsAndBreaks) {
+                    if (childNode.localName === 'br') {
+                        if (currentLine.runs.length > 0) lines.push(currentLine);
+                        currentLine = { runs: [], width: 0, height: 0 };
+                        continue;
+                    }
+
+                    const text = childNode.textContent;
+                    if (!text) continue;
+
+                    const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                    const finalRunProps = { ...finalProps.defRPr };
+                    if (rPr) {
+                        if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
+                        if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
+                        if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
+                        const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                        if (solidFill) finalRunProps.color = parseColor(solidFill);
+                        const latinFontNode = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                        if (latinFontNode && latinFontNode.getAttribute('typeface')) finalRunProps.font = latinFontNode.getAttribute('typeface');
+                    }
+
+                    const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
+                    const fontSize = finalRunProps.size || 18;
+                    const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
+                    const fontFamily = resolveFontFamily(finalRunProps, phType, slideContext);
+
+                    const textEl = new Konva.Text({ text, fontSize, fontFamily, fontStyle, fill: textColor });
+                    const textWidth = textEl.width();
+
+                    if (currentLine.width + textWidth > effectiveWidth && currentLine.runs.length > 0) {
+                        lines.push(currentLine);
+                        currentLine = { runs: [], width: 0, height: 0 };
+                    }
+
+                    currentLine.runs.push(textEl);
+                    currentLine.width += textWidth;
+                    currentLine.height = Math.max(currentLine.height, textEl.height());
+                }
+                if (currentLine.runs.length > 0) lines.push(currentLine);
+
+                // --- 3. Render the paragraph (bullets and lines) ---
+                const paragraphStartY = currentY;
+
+                // Render bullet (if any)
+                if (bulletOffset > 0) {
                     let bulletEl;
                     const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
                     const bulletFontSize = finalProps.defRPr.size || 18;
+                    const bulletY = paragraphStartY;
 
                     if (finalProps.bullet.type === 'char') {
-                        bulletEl = new Konva.Text({ x: currentX, y: currentY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
+                        bulletEl = new Konva.Text({ x: paddedPos.x + indent, y: bulletY, text: finalProps.bullet.char, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
                     } else if (finalProps.bullet.type === 'auto') {
                         if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
                         const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
-                        bulletEl = new Konva.Text({ x: currentX, y: currentY, text: bulletChar, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
+                        bulletEl = new Konva.Text({ x: paddedPos.x + indent, y: bulletY, text: bulletChar, fontSize: bulletFontSize, fontFamily: finalProps.bullet.font || 'Arial', fill: bulletColor });
                     } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
                         const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
-                        bulletEl = new Konva.Image({ x: currentX, y: currentY, image: imageObj, width: 16, height: 16 });
+                        bulletEl = new Konva.Image({ x: paddedPos.x + indent, y: bulletY, image: imageObj, width: 16, height: 16 });
                     }
 
-                    if (bulletEl) {
-                        textGroup.add(bulletEl);
-                        bulletOffset = BULLET_OFFSET;
-                        currentX += bulletOffset;
-                    }
+                    if (bulletEl) textGroup.add(bulletEl);
                 }
 
-                for (const childNode of pNode.childNodes) {
-                    if (childNode.localName === 'r' || childNode.localName === 'fld') {
-                        const text = childNode.textContent;
-                        if (!text) continue;
-
-                        const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                        const finalRunProps = { ...finalProps.defRPr };
-                        if (rPr) {
-                            if (rPr.getAttribute('sz')) finalRunProps.size = parseInt(rPr.getAttribute('sz')) / 100;
-                            if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
-                            if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
-                            const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                            if (solidFill) finalRunProps.color = parseColor(solidFill);
-                            const latinFontNode = rPr.getElementsByTagNameNS( DML_NS, 'latin' )[ 0 ];
-                            if ( latinFontNode && latinFontNode.getAttribute( 'typeface' ) ) {
-                                finalRunProps.font = latinFontNode.getAttribute( 'typeface' );
-                            }
-                        }
-
-                        const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
-                        const fontSize = finalRunProps.size || 18;
-                        const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
-                        let fontFamily = slideContext.theme?.fontScheme?.minor || 'Arial';
-                        if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') {
-                            fontFamily = slideContext.theme?.fontScheme?.major || 'Arial';
-                        }
-
-                        const tempText = new Konva.Text({
-                            text: text,
-                            fontSize: fontSize,
-                            fontFamily: fontFamily,
-                            fontStyle: fontStyle,
-                        });
-                        const textWidth = tempText.getTextWidth();
-
-                        if (currentX + textWidth > paddedPos.x + paddedPos.width && currentX > paddedPos.x + indent) {
-                            currentY += paragraphMaxHeight || LINE_HEIGHT;
-                            currentX = paddedPos.x + indent + bulletOffset;
-                            paragraphMaxHeight = 0;
-                        }
-
-                        const textEl = new Konva.Text({
-                            x: currentX,
-                            y: currentY,
-                            text: text,
-                            fontSize: fontSize,
-                            fontFamily: fontFamily,
-                            fontStyle: fontStyle,
-                            fill: textColor,
-                            width: paddedPos.width - (currentX - paddedPos.x),
-                        });
-                        textGroup.add(textEl);
-                        currentX += textEl.getTextWidth();
-                        paragraphMaxHeight = Math.max(paragraphMaxHeight, textEl.height());
-                    } else if (childNode.localName === 'br') {
-                        currentY += paragraphMaxHeight || LINE_HEIGHT;
-                        currentX = paddedPos.x + indent + bulletOffset;
-                        paragraphMaxHeight = 0;
+                // Render lines
+                let paragraphRenderHeight = 0;
+                for (const line of lines) {
+                    let lineXOffset = 0;
+                    if (align === 'ctr') {
+                        lineXOffset = (effectiveWidth - line.width) / 2;
+                    } else if (align === 'r') {
+                        lineXOffset = effectiveWidth - line.width;
                     }
+
+                    let currentX = paddedPos.x + indent + bulletOffset + lineXOffset;
+
+                    for (const textRun of line.runs) {
+                        textRun.x(currentX);
+                        textRun.y(currentY);
+                        textGroup.add(textRun);
+                        currentX += textRun.width();
+                    }
+
+                    const lineHeight = line.height || LINE_HEIGHT;
+                    currentY += lineHeight;
+                    paragraphRenderHeight += lineHeight;
                 }
+                paragraphMaxHeight = paragraphRenderHeight;
             }
         }
 
