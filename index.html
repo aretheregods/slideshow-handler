@@ -1312,33 +1312,52 @@
             }
 
             // --- Stroke Parsing ---
-            const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
-            if (lnNode) {
-                properties.rawStrokeNode = lnNode.outerHTML;
-                properties.stroke = parseLineProperties(lnNode, slideContext);
-            } else {
-                const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
-                if (styleNode) {
-                    const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
-                    if (lnRefNode) {
-                        properties.rawStrokeNode = lnRefNode.outerHTML;
-                        const idx = parseInt(lnRefNode.getAttribute('idx'));
-                        if (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1]) {
-                            const themeLine = slideContext.theme.formatScheme.lines[idx - 1];
-                            if (themeLine.type === 'solid') {
-                                const strokeProps = { ...themeLine };
-                                const lnRefColorObj = parseColor(lnRefNode);
-                                if (lnRefColorObj) {
-                                    strokeProps.color = resolveColor(lnRefColorObj, slideContext);
-                                } else {
-                                    strokeProps.color = resolveColor(themeLine.color, slideContext);
-                                }
-                                properties.stroke = strokeProps;
-                            }
+            let finalStroke = null;
+
+            const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
+            if (styleNode) {
+                const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
+                if (lnRefNode) {
+                    properties.rawStrokeNode = lnRefNode.outerHTML;
+                    const idx = parseInt(lnRefNode.getAttribute('idx'));
+                    const themeLineStyle = (idx > 0 && slideContext.theme.formatScheme.lines[idx - 1])
+                        ? slideContext.theme.formatScheme.lines[idx - 1]
+                        : null;
+
+                    if (themeLineStyle && themeLineStyle.type === 'solid') {
+                        const strokeProps = { ...themeLineStyle };
+                        const lnRefColorObj = parseColor(lnRefNode);
+
+                        if (lnRefColorObj) {
+                            strokeProps.color = resolveColor(lnRefColorObj, slideContext);
+                        } else if (themeLineStyle.color) {
+                            strokeProps.color = resolveColor(themeLineStyle.color, slideContext);
                         }
+                        finalStroke = strokeProps;
                     }
                 }
             }
+
+            const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
+            if (lnNode) {
+                if (properties.rawStrokeNode) {
+                    properties.rawStrokeNode += lnNode.outerHTML;
+                } else {
+                    properties.rawStrokeNode = lnNode.outerHTML;
+                }
+                const directProps = parseLineProperties(lnNode, slideContext);
+
+                if (directProps === null) { // This means <a:noFill/>, so no line
+                    finalStroke = null;
+                } else if (finalStroke) {
+                    // Merge, direct properties take precedence
+                    finalStroke = { ...finalStroke, ...directProps };
+                } else {
+                    finalStroke = directProps;
+                }
+            }
+
+            properties.stroke = finalStroke;
 
             // --- Default Fill Logic ---
             if (properties.fill === null && shapeNode.localName !== 'cxnSp') {
@@ -1714,7 +1733,6 @@
                 fill: finalFill,
                 stroke: finalStroke,
             };
-
             // --- END INHERITANCE LOGIC ---
 
             if (shapeProps && shapeProps.geometry?.type === 'custom') {
@@ -1993,8 +2011,7 @@
             if (groupXfrm.flipV) konvaGroup.scaleY(-1);
             layer.add(konvaGroup);
 
-            const children = Array.from(group.children).reverse();
-            for (const element of children) {
+            for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
                     await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
