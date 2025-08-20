@@ -1701,17 +1701,10 @@
 
             const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
             const isTextPlaceholder = phKey && txBody;
-            const shapeName = shape.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name') || 'Unnamed Shape';
 
             let finalFill;
             if (isTextPlaceholder) {
-                console.log(`%c--- Debugging Fill for Text Placeholder: "${shapeName}" (phKey: ${phKey}) ---`, "color: yellow; font-weight: bold;");
-                console.log("Master Raw Fill Node:", masterShapeProps.rawFillNode || "Not Found");
-                console.log("Layout Raw Fill Node:", layoutShapeProps.rawFillNode || "Not Found");
-                console.log("Slide Raw Fill Node:", slideShapeProps.rawFillNode || "Not Found");
                 finalFill = slideShapeProps.fill ?? 'none';
-                console.log("Final Computed Fill:", JSON.stringify(finalFill));
-                console.log("-------------------------------------------------");
             } else {
                 finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
             }
@@ -2268,7 +2261,17 @@
             const txBodyNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
             if (!txBodyNode) return;
 
-            const bodyPr = parseBodyProperties(txBodyNode);
+            const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
+            const bodyPrFromTxBody = parseBodyProperties(txBodyNode);
+
+            const bodyPrFromTcPr = {};
+            if (tcPrNode) {
+                const anchor = tcPrNode.getAttribute('anchor');
+                if (anchor) bodyPrFromTcPr.anchor = anchor;
+            }
+
+            const bodyPr = { ...bodyPrFromTxBody, ...bodyPrFromTcPr };
+
             const pos = {
                 x: cellX,
                 y: cellY,
@@ -2289,9 +2292,10 @@
 
             const listCounters = {};
             const defaultTextStyles = { title: {}, body: {}, other: {} };
+            const masterPlaceholders = {};
             const layoutPlaceholders = {};
 
-            await processParagraphs(textGroup, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, layoutPlaceholders, bodyPr);
+            await processParagraphs(textGroup, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, bodyPr);
         }
 
         async function processPicture(picNode, layer, imageMap, parentXfrm, masterPlaceholders, layoutPlaceholders, slideContext) {
