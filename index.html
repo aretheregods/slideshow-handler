@@ -531,6 +531,19 @@
                     defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
 
+                let alignSource = 'Default';
+                if (finalProps.align) {
+                    if (slideLevelProps.align) {
+                        alignSource = 'Slide';
+                    } else if (layoutListStyle.align) {
+                        alignSource = 'Layout';
+                    } else if (masterListStyle.align) {
+                        alignSource = 'Master';
+                    } else if (defaultLevelProps.align) {
+                        alignSource = 'Theme';
+                    }
+                }
+
                 console.log(`--- Text Style Debug ---
                 Placeholder Key: ${phKey}
                 Placeholder Type: ${phType}
@@ -541,6 +554,7 @@
                 console.log(`- Layout Placeholder (${phKey}):`, layoutListStyle);
                 console.log(`- Slide-level Props:`, slideLevelProps);
                 console.log(`--- Final Merged Properties ---`, finalProps);
+                console.log(`--> Alignment ('${finalProps.align || 'l'}') sourced from: ${alignSource}`);
 
 
                 const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
