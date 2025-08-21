@@ -1642,7 +1642,6 @@
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-            const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
             const shapeName = nvPr?.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name');
             console.group(`JULES_LOG: Processing Shape: ${shapeName || shape.localName}`);
             let phKey = null, phType = null;
