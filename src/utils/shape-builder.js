@@ -110,8 +110,48 @@ export class ShapeBuilder {
                     konvaShape = new Konva.Ellipse({ radiusX: pos.width / 2, radiusY: pos.height / 2, x: pos.width / 2, y: pos.height / 2 });
                     break;
                 case 'line':
-                    konvaShape = new Konva.Line({ points: [0, 0, pos.width, pos.height] });
-                    break;
+                    // For lines, we bake the scaling into the points themselves
+                    // to prevent the stroke width from being scaled.
+                    const transform = new Konva.Transform(finalMatrix.m);
+                    const decomposed = transform.decompose();
+
+                    const scaleMatrix = new Matrix();
+                    scaleMatrix.scale(decomposed.scaleX, decomposed.scaleY);
+
+                    const p1 = scaleMatrix.transformPoint(0, 0);
+                    const p2 = scaleMatrix.transformPoint(pos.width, pos.height);
+
+                    konvaShape = new Konva.Line({
+                        points: [p1.x, p1.y, p2.x, p2.y]
+                    });
+
+                    // Apply only rotation and translation to the shape itself
+                    konvaShape.x(decomposed.x);
+                    konvaShape.y(decomposed.y);
+                    konvaShape.rotation(decomposed.rotation);
+
+                    // Since we baked in the scaling, we don't apply it to the shape
+                    // and we don't need to manually un-scale the stroke width.
+                    if (shapeProps.stroke) {
+                        konvaShape.stroke(shapeProps.stroke.color);
+                        konvaShape.strokeWidth(shapeProps.stroke.width || 1);
+                        if (shapeProps.stroke.dash) {
+                            konvaShape.dash(shapeProps.stroke.dash);
+                        }
+                        if (shapeProps.stroke.join) {
+                            konvaShape.lineJoin(shapeProps.stroke.join);
+                        }
+                        if (shapeProps.stroke.cap) {
+                            let lineCap = 'butt';
+                            if (shapeProps.stroke.cap === 'rnd') lineCap = 'round';
+                            if (shapeProps.stroke.cap === 'sq') lineCap = 'square';
+                            konvaShape.lineCap(lineCap);
+                        }
+                    } else {
+                        konvaShape.strokeEnabled(false);
+                    }
+                    this.layer.add(konvaShape);
+                    return { konvaShape, pos, phKey, phType }; // Return early to skip the generic logic
                 case 'arc':
                     const arcPath = `M 0,${pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.width},0`;
                     konvaShape = new Konva.Path({ data: arcPath });
