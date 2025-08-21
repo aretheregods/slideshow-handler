@@ -1606,23 +1606,27 @@
 
                 if (bulletOffset > 0 && line.isFirstLineOfParagraph) {
                     const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
-                    const bulletFontSize = finalProps.defRPr.size || 18;
-                    const bulletY = startY + line.startY;
+
+                    const firstRunSize = line.runs.length > 0 ? line.runs[0].size : (finalProps.defRPr.size || 18 * PT_TO_PX);
+                    const bulletBaselineY = startY + line.startY + firstRunSize;
 
                     if (finalProps.bullet.type === 'char') {
+                        const bulletFontSize = finalProps.defRPr.size || (18 * PT_TO_PX);
                         renderer.ctx.fillStyle = bulletColor;
                         renderer.ctx.font = `${bulletFontSize}px ${finalProps.bullet.font || 'Arial'}`;
-                        renderer.ctx.fillText(finalProps.bullet.char, line.x - bulletOffset, bulletY);
+                        renderer.ctx.fillText(finalProps.bullet.char, line.x - bulletOffset, bulletBaselineY);
                     } else if (finalProps.bullet.type === 'auto') {
                         const level = finalProps.level || 0;
                         if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
                         const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
+                        const bulletFontSize = finalProps.defRPr.size || (18 * PT_TO_PX);
                         renderer.ctx.fillStyle = bulletColor;
                         renderer.ctx.font = `${bulletFontSize}px ${finalProps.bullet.font || 'Arial'}`;
-                        renderer.ctx.fillText(bulletChar, line.x - bulletOffset, bulletY);
+                        renderer.ctx.fillText(bulletChar, line.x - bulletOffset, bulletBaselineY);
                     } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
                         const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
-                        renderer.ctx.drawImage(imageObj, line.x - bulletOffset, bulletY, 16, 16);
+                        const imageY = bulletBaselineY - 8;
+                        renderer.ctx.drawImage(imageObj, line.x - bulletOffset, imageY, 16, 16);
                     }
                 }
 
