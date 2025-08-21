@@ -87,6 +87,8 @@ export class ShapeBuilder {
         const finalMatrix = parentMatrix.clone().multiply(localMatrix);
 
         let konvaShape;
+        const txBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+
         if (shapeProps && shapeProps.geometry) {
              const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
              switch (geomType) {
@@ -159,6 +161,9 @@ export class ShapeBuilder {
                     }
                     break;
              }
+        } else if (txBody) {
+            // This is a shapeless textbox. Create a transparent rectangle to host the text.
+            konvaShape = new Konva.Rect({ width: pos.width, height: pos.height, fill: 'transparent' });
         }
 
         if (konvaShape) {
