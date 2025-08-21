@@ -50,7 +50,7 @@ export class ShapeBuilder {
         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
         if (xfrmNode) {
             if (shapeName === 'Title 23') console.log('[DEBUG] Found <xfrm> on shape itself.');
-            const offNode = xfrmNode.getElementsByTagName('a:off')[0];
+            const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
             if (offNode && extNode) {
                 const x = parseInt(offNode.getAttribute("x")) / 12700;
