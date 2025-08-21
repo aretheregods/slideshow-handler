@@ -14,26 +14,29 @@ export class ShapeBuilder {
         const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
         const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-        const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
-        let cNvPr, phKey = null, phType = null, shapeName = 'Unknown';
-        if (nvPr) {
-            cNvPr = nvPr.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
-            if (cNvPr) shapeName = cNvPr.getAttribute('name');
+        const nvSpPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'nvSpPr')[0];
+        let phKey = null, phType = null, shapeName = 'Unknown';
+        if (nvSpPrNode) {
+            const cNvPrNode = nvSpPrNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+            if (cNvPrNode) {
+                shapeName = cNvPrNode.getAttribute('name');
+            }
 
-            const placeholder = nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0];
-            if (placeholder) {
-                phType = placeholder.getAttribute('type');
-                const phIdx = placeholder.getAttribute('idx');
-                phKey = phIdx ? `idx_${phIdx}` : phType;
-                if (!phType && phIdx) {
-                    phType = 'body';
+            const nvPrNode = nvSpPrNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
+            if (nvPrNode) {
+                const placeholder = nvPrNode.getElementsByTagNameNS(PML_NS, 'ph')[0];
+                if (placeholder) {
+                    phType = placeholder.getAttribute('type');
+                    const phIdx = placeholder.getAttribute('idx');
+                    phKey = phIdx ? `idx_${phIdx}` : phType;
+                    if (!phType && phIdx) {
+                        phType = 'body';
+                    }
                 }
             }
         }
 
-        if (shapeName === 'Title 23') {
-            console.log(`[DEBUG] Processing shape: ${shapeName}, phKey: ${phKey}, phType: ${phType}`);
-        }
+        console.log(`[DEBUG] Processing shape: "${shapeName}", phKey: ${phKey}, phType: ${phType}`);
 
         let localMatrix = new Matrix();
         let pos;
