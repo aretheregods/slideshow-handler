@@ -1636,7 +1636,7 @@
             }
         }
 
-        async function processShape(shape, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum) {
+        async function processShape(shape, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
 
             const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
@@ -1658,8 +1658,17 @@
             const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
             const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
             const slideShapeProps = parseShapeProperties(shape, slideContext, slideNum);
-            const finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
+            let finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
             const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
+
+            if (shape.getAttribute('useBgFill') === '1') {
+                if (finalBg && finalBg.type === 'color') {
+                    finalFill = { type: 'solid', color: finalBg.value };
+                } else {
+                    finalFill = 'none'; // Or handle image backgrounds if necessary
+                }
+            }
+
             const shapeProps = {
                 geometry: slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry,
                 fill: finalFill,
@@ -1727,7 +1736,7 @@
             return properties;
         }
 
-        async function processGroupShape(group, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum) {
+        async function processGroupShape(group, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -1798,11 +1807,11 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum);
+                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum);
+                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg);
                 } else if (tagName === 'pic') {
-                    await processPicture(element, renderer, imageMap, finalMatrixForChildren.clone(), masterPlaceholders, layoutPlaceholders, slideContext);
+                    await processPicture(element, renderer, imageMap, finalMatrixForChildren.clone(), masterPlaceholders, layoutPlaceholders, slideContext, finalBg);
                 }
             }
         }
@@ -2120,7 +2129,7 @@
             renderer.ctx.restore();
         }
 
-        async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext) {
+        async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -2239,15 +2248,15 @@
             }
         }
 
-        async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix) {
+        async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix, finalBg) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             for (const element of elements) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum);
+                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum);
+                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg);
                 } else if (tagName === 'graphicFrame') {
                     const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                     if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
@@ -2264,7 +2273,7 @@
                         }
                     }
                 } else if (tagName === 'pic') {
-                    await processPicture(element, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext);
+                    await processPicture(element, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg);
                 }
             }
         }
@@ -2293,16 +2302,16 @@
             const initialMatrix = new Matrix();
             if (showMasterShapes) {
                 if (masterStaticShapes) {
-                    await processShapeTree(masterStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone());
+                    await processShapeTree(masterStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg);
                 }
                  if (layoutStaticShapes) {
-                    await processShapeTree(layoutStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone());
+                    await processShapeTree(layoutStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg);
                 }
             }
 
             const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
             if (spTreeNode) {
-                await processShapeTree(spTreeNode.children, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, initialMatrix.clone());
+                await processShapeTree(spTreeNode.children, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, initialMatrix.clone(), finalBg);
             }
 
             const resizeCanvas = () => {
