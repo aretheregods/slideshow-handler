@@ -191,6 +191,7 @@ export class ShapeBuilder {
             if (shapeProps.stroke) {
                 konvaShape.stroke(shapeProps.stroke.color);
                 konvaShape.strokeWidth(shapeProps.stroke.width || 1);
+                konvaShape.setAttr('vectorEffect', 'non-scaling-stroke');
                 if (shapeProps.stroke.dash) {
                     konvaShape.dash(shapeProps.stroke.dash);
                 }
