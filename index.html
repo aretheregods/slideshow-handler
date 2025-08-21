@@ -1139,6 +1139,18 @@
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
+            // Check for a master color map override, which implies the background is inherited.
+            const sldNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'sld')[0];
+            if (sldNode) {
+                const clrMapOvrNode = sldNode.getElementsByTagNameNS(PML_NS, 'clrMapOvr')[0];
+                if (clrMapOvrNode) {
+                    const masterClrMappingNode = clrMapOvrNode.getElementsByTagNameNS(DML_NS, 'masterClrMapping')[0];
+                    if (masterClrMappingNode) {
+                        return null; // This slide should inherit the background from the master.
+                    }
+                }
+            }
+
             const bgNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'bg')[0];
             if (!bgNode) return null;
 
