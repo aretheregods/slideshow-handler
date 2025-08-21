@@ -75,6 +75,7 @@ export const ShapeType = {
 
 /**
  * @typedef {object} BaseShape
+ * @property {string} [name]
  * @property {ShapeType} type
  * @property {Transform} transform
  * @property {Geometry} geometry
@@ -149,8 +150,15 @@ function getTransformationMatrix(transform, geometry) {
  * @returns {KonvaNode}
  */
 function createKonvaShape(shape, parentMatrix) {
+  console.group(`JULES_LOG: Processing Shape: ${shape.name || shape.type}`);
+  console.log('Shape Data:', shape);
+
   const localMatrix = getTransformationMatrix(shape.transform, shape.geometry);
   const finalMatrix = Matrix.multiply(parentMatrix, localMatrix);
+
+  console.log('Parent Matrix:', JSON.stringify(parentMatrix, null, 2));
+  console.log('Local Matrix:', JSON.stringify(localMatrix, null, 2));
+  console.log('Final Matrix:', JSON.stringify(finalMatrix, null, 2));
 
   if (shape.type === ShapeType.Group) {
     const groupNode = new Konva.Group();
@@ -161,11 +169,15 @@ function createKonvaShape(shape, parentMatrix) {
   }
 
   const decomposed = decompose(finalMatrix);
+  console.log('Decomposed Transform:', decomposed);
+
   const baseConfig = {
     ...decomposed,
     width: shape.geometry.w,
     height: shape.geometry.h,
   };
+
+  console.groupEnd();
 
   switch (shape.type) {
     case ShapeType.Line:
