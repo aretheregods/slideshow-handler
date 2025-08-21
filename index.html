@@ -1636,10 +1636,15 @@
         }
 
         async function processShape(shape, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum) {
+            const nvPr = shape.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", 'nvPr')[0];
+            const shapeName = nvPr?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", 'cNvPr')[0]?.getAttribute('name');
+            console.group(`JULES_LOG: Processing Shape: ${shapeName || shape.localName}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
+            const shapeName = nvPr?.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name');
+            console.group(`JULES_LOG: Processing Shape: ${shapeName || shape.localName}`);
             let phKey = null, phType = null;
             if (nvPr) {
                 const placeholder = nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0];
@@ -1682,6 +1687,12 @@
 
             // Calculate the final position of the shape's center.
             const centerPoint = Matrix.transformPoint({ x: geometry.w / 2, y: geometry.h / 2 }, finalMatrix);
+
+            console.log('Parent Matrix:', JSON.stringify(parentMatrix, null, 2));
+            console.log('Local Transform:', transform);
+            console.log('Final Matrix:', JSON.stringify(finalMatrix, null, 2));
+            console.log('Center Point:', centerPoint);
+            console.log('Decomposed:', decomposed);
 
             const konvaConfig = {
                 x: centerPoint.x,
@@ -1742,6 +1753,7 @@
                 const textPos = { x: 0, y: 0, width: geometry.w, height: geometry.h };
                 await processParagraphs(textGroup, txBody, textPos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, finalBodyPr);
             }
+            console.groupEnd();
         }
 
         function parseGroupShapeProperties(grpSpPrNode, slideContext) {
@@ -1787,6 +1799,11 @@
         async function processGroupShape(group, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, slideRels, entriesMap) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+            const nvPr = group.getElementsByTagNameNS(PML_NS, 'nvSpPr')[0];
+            const groupName = nvPr?.getElementsByTagNameNS(PML_NS, 'cNvPr')[0]?.getAttribute('name');
+            console.group(`JULES_LOG: Processing Group: ${groupName || 'Unnamed Group'}`);
+            console.log('Incoming Parent Matrix:', JSON.stringify(parentMatrix, null, 2));
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
             const xfrmNode = grpSpPrNode ? grpSpPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0] : null;
@@ -1840,6 +1857,10 @@
             if (spTreeNode) {
                  await processShapeTree(spTreeNode.children, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, finalMatrixForChildren);
             }
+
+            console.log('Group Local Matrix:', JSON.stringify(localMatrix, null, 2));
+            console.log('Final Matrix for Children:', JSON.stringify(finalMatrixForChildren, null, 2));
+            console.groupEnd();
         }
 
         function getCellBorders(cellNode, slideContext) {
