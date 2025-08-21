@@ -1669,10 +1669,10 @@
             const shapeBuilder = new ShapeBuilder(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders);
 
             renderer.ctx.save();
-            const { shape, pos } = shapeBuilder.build(shape, parentMatrix, shapeProps);
+            const { pos } = shapeBuilder.build(shape, parentMatrix, shapeProps);
 
             if (pos) {
-                const txBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+                const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
                 if (txBody) {
                     const slideBodyPr = parseBodyProperties(txBody);
                     const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
