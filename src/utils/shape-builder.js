@@ -36,7 +36,13 @@ export class ShapeBuilder {
             }
         }
 
-        console.log(`[DEBUG] Processing shape: "${shapeName}", phKey: ${phKey}, phType: ${phType}`);
+        const isConnector = shapeName.startsWith('Straight Connector');
+        if (isConnector) {
+            console.log(`[CONNECTOR DEBUG] Processing shape: "${shapeName}"`);
+            console.log('[CONNECTOR DEBUG] Parent Matrix:', parentMatrix.m);
+        } else {
+            console.log(`[DEBUG] Processing shape: "${shapeName}", phKey: ${phKey}, phType: ${phType}`);
+        }
 
         let localMatrix = new Matrix();
         let pos;
@@ -85,6 +91,11 @@ export class ShapeBuilder {
         if (!pos) return { konvaShape: null, pos: null, phKey, phType };
 
         const finalMatrix = parentMatrix.clone().multiply(localMatrix);
+
+        if (isConnector) {
+            console.log('[CONNECTOR DEBUG] Local Matrix:', localMatrix.m);
+            console.log('[CONNECTOR DEBUG] Final Matrix:', finalMatrix.m);
+        }
 
         let konvaShape;
         const txBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];

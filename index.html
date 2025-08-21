@@ -1753,6 +1753,13 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
+            const cNvPrNode = group.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+            const groupName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unknown Group';
+
+            if (groupName === 'Group 6') {
+                console.log(`[GROUP DEBUG] Processing group: "${groupName}"`);
+                console.log('[GROUP DEBUG] Parent Matrix:', parentMatrix.m);
+            }
 
             const finalMatrixForChildren = parentMatrix.clone();
 
@@ -1778,6 +1785,10 @@
                     const chW = chExtNode ? parseInt(chExtNode.getAttribute("cx")) / EMU_PER_PIXEL : 1; // Avoid divide by zero
                     const chH = chExtNode ? parseInt(chExtNode.getAttribute("cy")) / EMU_PER_PIXEL : 1;
 
+                    if (groupName === 'Group 6') {
+                        console.table({ x, y, w, h, chX, chY, chW, chH, rot, flipH, flipV });
+                    }
+
                     // Placement Matrix: Transforms the group's frame from local to parent space
                     const placementMatrix = new Matrix();
                     placementMatrix.translate(x, y);
@@ -1796,6 +1807,12 @@
                     // Combine them: Final = Parent * Placement * Mapping
                     finalMatrixForChildren.multiply(placementMatrix);
                     finalMatrixForChildren.multiply(mappingMatrix);
+
+                    if (groupName === 'Group 6') {
+                        console.log('[GROUP DEBUG] Placement Matrix:', placementMatrix.m);
+                        console.log('[GROUP DEBUG] Mapping Matrix:', mappingMatrix.m);
+                        console.log('[GROUP DEBUG] Final Matrix for Children:', finalMatrixForChildren.m);
+                    }
                 }
             }
 
