@@ -15,8 +15,11 @@ export class ShapeBuilder {
         const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
         const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
-        let phKey = null, phType = null;
+        let cNvPr, phKey = null, phType = null, shapeName = 'Unknown';
         if (nvPr) {
+            cNvPr = nvPr.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+            if (cNvPr) shapeName = cNvPr.getAttribute('name');
+
             const placeholder = nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0];
             if (placeholder) {
                 phType = placeholder.getAttribute('type');
@@ -28,11 +31,16 @@ export class ShapeBuilder {
             }
         }
 
+        if (shapeName === 'Title 23') {
+            console.log(`[DEBUG] Processing shape: ${shapeName}, phKey: ${phKey}, phType: ${phType}`);
+        }
+
         let localMatrix = new Matrix();
         let pos;
 
         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
         if (xfrmNode) {
+            if (shapeName === 'Title 23') console.log('[DEBUG] Found <xfrm> on shape itself.');
             const offNode = xfrmNode.getElementsByTagName('a:off')[0];
             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
             if (offNode && extNode) {
@@ -53,15 +61,22 @@ export class ShapeBuilder {
                 localMatrix.translate(-w / 2, -h / 2);
             }
         } else if (phKey && (this.layoutPlaceholders?.[phKey] || this.masterPlaceholders?.[phKey])) {
+            if (shapeName === 'Title 23') console.log(`[DEBUG] No <xfrm> on shape. Looking for placeholder with key: ${phKey}`);
             const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
             const masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
             const placeholder = layoutPh || masterPh;
             if (placeholder) {
+                if (shapeName === 'Title 23') console.log('[DEBUG] Found placeholder:', placeholder);
                 pos = { ...placeholder.pos };
                 localMatrix.translate(pos.x, pos.y);
+                if (shapeName === 'Title 23') console.log(`[DEBUG] Applied translation from placeholder: x=${pos.x}, y=${pos.y}`);
                 pos.x = 0;
                 pos.y = 0;
+            } else {
+                if (shapeName === 'Title 23') console.log('[DEBUG] Placeholder key found, but no matching placeholder in layout or master.');
             }
+        } else {
+            if (shapeName === 'Title 23') console.log('[DEBUG] No <xfrm> and no placeholder key. Cannot determine position.');
         }
 
         if (!pos) return { konvaShape: null, pos: null, phKey, phType };
