@@ -206,6 +206,48 @@
         } from "https://deno.land/x/zipjs/index.js";
         import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 
+        const Matrix = {
+            identity: () => [1, 0, 0, 1, 0, 0], // Konva 2D transform matrix
+
+            multiply: (m1, m2) => {
+                return [
+                    m1[0] * m2[0] + m1[2] * m2[1],
+                    m1[1] * m2[0] + m1[3] * m2[1],
+                    m1[0] * m2[2] + m1[2] * m2[3],
+                    m1[1] * m2[2] + m1[3] * m2[3],
+                    m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+                    m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
+                ];
+            },
+
+            translate: (x, y) => [1, 0, 0, 1, x, y],
+
+            rotate: (rad) => {
+                const cos = Math.cos(rad);
+                const sin = Math.sin(rad);
+                return [cos, sin, -sin, cos, 0, 0];
+            },
+
+            scale: (x, y) => [x, 0, 0, y, 0, 0],
+
+            decompose: (m) => {
+                const sx = Math.sqrt(m[0] * m[0] + m[1] * m[1]);
+                const sy = Math.sqrt(m[2] * m[2] + m[3] * m[3]);
+
+                // To get the rotation, we need to handle the case where scale is negative.
+                const sign = m[0] * m[3] - m[1] * m[2];
+                const rotation = Math.atan2(m[1], m[0]);
+
+                return {
+                    x: m[4],
+                    y: m[5],
+                    scaleX: sx,
+                    scaleY: sy * Math.sign(sign), // Preserve the sign of the determinant
+                    rotation: rotation * (180 / Math.PI), // Konva uses degrees
+                };
+            }
+        };
+
         const EMU_PER_PIXEL = 12700; // Standard conversion for 96 DPI
         const PT_TO_PX = .975; // Adjusted conversion for web rendering (90/72)
         const LINE_HEIGHT = 24; // A default line height in pixels for SVG text
@@ -1655,11 +1697,14 @@
             }
         }
 
-        async function processShape(shape, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
+        async function processShape(shape, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-            let pos = null;
+            let localMatrix = Matrix.identity();
+            let size = { width: 0, height: 0 };
+            let pos = { x: 0, y: 0, width: 0, height: 0 }; // Keep a `pos` for text box processing for now.
+
             const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
             let phKey = null, phType = null;
             if (nvPr) {
@@ -1668,176 +1713,95 @@
                     phType = placeholder.getAttribute('type');
                     const phIdx = placeholder.getAttribute('idx');
                     phKey = phIdx ? `idx_${phIdx}` : phType;
-
-                    // If no type is specified but an index is, it's usually a body/content placeholder.
-                    if ( !phType && phIdx ) {
-                        phType = 'body';
-                    }
                 }
             }
 
             const xfrmNode = shape.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
             if (xfrmNode) {
-                const offNode = xfrmNode.getElementsByTagName('a:off')[0];
-                const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
-                if (offNode && extNode) {
-                    pos = {
-                        x: (parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL) + parentXfrm.x,
-                        y: (parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL) + parentXfrm.y,
-                        width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
-                        height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
-                        rotation: parseInt(xfrmNode.getAttribute('rot') || '0') / 60000,
-                        flipH: xfrmNode.getAttribute('flipH') === '1',
-                        flipV: xfrmNode.getAttribute('flipV') === '1',
-                    };
-                }
+                const off = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                const ext = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+
+                const x = off ? parseInt(off.getAttribute('x')) / EMU_PER_PIXEL : 0;
+                const y = off ? parseInt(off.getAttribute('y')) / EMU_PER_PIXEL : 0;
+                size.width = ext ? parseInt(ext.getAttribute('cx')) / EMU_PER_PIXEL : 0;
+                size.height = ext ? parseInt(ext.getAttribute('cy')) / EMU_PER_PIXEL : 0;
+
+                const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000 * (Math.PI / 180);
+                const flipH = xfrmNode.getAttribute('flipH') === '1';
+                const flipV = xfrmNode.getAttribute('flipV') === '1';
+
+                // Transformation is applied around the center of the shape
+                localMatrix = Matrix.translate(x + size.width / 2, y + size.height / 2);
+                if (rot !== 0) localMatrix = Matrix.multiply(localMatrix, Matrix.rotate(rot));
+                if (flipH || flipV) localMatrix = Matrix.multiply(localMatrix, Matrix.scale(flipH ? -1 : 1, flipV ? -1 : 1));
+                // Translate back by half size because Konva rotates around the offset
+                localMatrix = Matrix.multiply(localMatrix, Matrix.translate(-size.width / 2, -size.height / 2));
+
             } else if (phKey && (layoutPlaceholders?.[phKey] || masterPlaceholders?.[phKey])) {
                 const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
                 const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
 
+                let phPos = null;
                 if (layoutPh && layoutPh.pos) {
-                    pos = { ...layoutPh.pos };
+                    phPos = { ...layoutPh.pos };
                 } else if (masterPh && masterPh.pos) {
-                    pos = { ...masterPh.pos };
+                    phPos = { ...masterPh.pos };
                 }
 
-                if (pos) {
-                    pos.x += parentXfrm.x;
-                    pos.y += parentXfrm.y;
-                }
-            } else if (phType === 'ctrTitle' && (layoutPlaceholders?.['title'] || masterPlaceholders?.['title'])) {
-                // Fallback for centered titles, which often use the standard 'title' placeholder
-                const layoutPh = layoutPlaceholders ? layoutPlaceholders['title'] : null;
-                const masterPh = masterPlaceholders ? masterPlaceholders['title'] : null;
-                const placeholder = layoutPh || masterPh;
-                if (placeholder) {
-                    pos = { ...placeholder.pos };
-                    pos.x += parentXfrm.x;
-                    pos.y += parentXfrm.y;
-                    phKey = 'title'; // Remap key for style inheritance
+                if (phPos) {
+                    size.width = phPos.width;
+                    size.height = phPos.height;
+                    localMatrix = Matrix.translate(phPos.x, phPos.y);
                 }
             }
 
-            if (!pos) return { width: 0, height: 0 };
+            const finalMatrix = Matrix.multiply(parentMatrix, localMatrix);
+            const finalTransform = Matrix.decompose(finalMatrix);
 
-            // --- INHERITANCE LOGIC ---
+            pos = { x: finalTransform.x, y: finalTransform.y, width: size.width * finalTransform.scaleX, height: size.height * finalTransform.scaleY };
+            if (size.width === 0 && size.height === 0) return { width: 0, height: 0 };
+
             const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
             const masterShapeProps = masterPh ? masterPh.shapeProps : {};
-
             const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
             const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
-
             const slideShapeProps = parseShapeProperties(shape, slideContext, slideNum);
-
-            const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-            const isTextPlaceholder = phKey && txBody;
-
             const finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
             const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
-
             const shapeProps = {
                 geometry: slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry,
                 fill: finalFill,
                 stroke: finalStroke,
             };
-            // --- END INHERITANCE LOGIC ---
-
-            if (shapeProps && shapeProps.geometry?.type === 'custom') {
-                // This debug log is removed to avoid console spam and potential errors.
-            }
 
             let konvaShape;
-
             if (shapeProps && shapeProps.geometry) {
                 const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
                 switch (geomType) {
                     case 'rect':
-                        konvaShape = new Konva.Rect({
-                            x: pos.x + pos.width / 2,
-                            y: pos.y + pos.height / 2,
-                            width: pos.width,
-                            height: pos.height,
-                            offsetX: pos.width / 2,
-                            offsetY: pos.height / 2,
-                        });
+                        konvaShape = new Konva.Rect({ width: size.width, height: size.height });
                         break;
                     case 'ellipse':
-                        konvaShape = new Konva.Ellipse({
-                            x: pos.x + pos.width / 2,
-                            y: pos.y + pos.height / 2,
-                            radiusX: pos.width / 2,
-                            radiusY: pos.height / 2
-                        });
+                        konvaShape = new Konva.Ellipse({ radiusX: size.width / 2, radiusY: size.height / 2 });
                         break;
                     case 'line':
-                        konvaShape = new Konva.Line({
-                            points: [-pos.width / 2, -pos.height / 2, pos.width / 2, pos.height / 2],
-                            x: pos.x + pos.width / 2,
-                            y: pos.y + pos.height / 2,
-                        });
-                        break;
-                    case 'arc':
-                        const arcPath = `M 0,${pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.width},0`;
-                        konvaShape = new Konva.Path({
-                            data: arcPath,
-                            x: pos.x + pos.width / 2,
-                            y: pos.y + pos.height / 2,
-                            offsetX: pos.width / 2,
-                            offsetY: pos.height / 2,
-                        });
-                        konvaShape.fillEnabled(false);
+                        konvaShape = new Konva.Line({ points: [0, 0, size.width, size.height] });
                         break;
                     case 'custom':
                         if (shapeProps.geometry.path) {
                             const pathData = shapeProps.geometry.path;
-                            const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
-                            const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
-
+                            const scaleX = pathData.w === 0 ? 1 : size.width / pathData.w;
+                            const scaleY = pathData.h === 0 ? 1 : size.height / pathData.h;
                             konvaShape = new Konva.Shape({
-                                x: pos.x + pos.width / 2,
-                                y: pos.y + pos.height / 2,
-                                width: pos.width,
-                                height: pos.height,
-                                offsetX: pos.width / 2,
-                                offsetY: pos.height / 2,
                                 sceneFunc: function (context, shape) {
                                     context.beginPath();
                                     pathData.commands.forEach(command => {
                                         switch (command.cmd) {
-                                            case 'moveTo': {
-                                                const p = command.points[0];
-                                                context.moveTo(p.x * scaleX, p.y * scaleY);
-                                                break;
-                                            }
-                                            case 'lnTo': {
-                                                const p = command.points[0];
-                                                context.lineTo(p.x * scaleX, p.y * scaleY);
-                                                break;
-                                            }
-                                            case 'cubicBezTo': {
-                                                const p1 = command.points[0];
-                                                const p2 = command.points[1];
-                                                const p3 = command.points[2];
-                                                context.bezierCurveTo(
-                                                    p1.x * scaleX, p1.y * scaleY,
-                                                    p2.x * scaleX, p2.y * scaleY,
-                                                    p3.x * scaleX, p3.y * scaleY
-                                                );
-                                                break;
-                                            }
-                                            case 'quadBezTo': {
-                                                const p1 = command.points[0];
-                                                const p2 = command.points[1];
-                                                context.quadraticCurveTo(
-                                                    p1.x * scaleX, p1.y * scaleY,
-                                                    p2.x * scaleX, p2.y * scaleY
-                                                );
-                                                break;
-                                            }
-                                            case 'close': {
-                                                context.closePath();
-                                                break;
-                                            }
+                                            case 'moveTo': context.moveTo(command.points[0].x * scaleX, command.points[0].y * scaleY); break;
+                                            case 'lnTo': context.lineTo(command.points[0].x * scaleX, command.points[0].y * scaleY); break;
+                                            case 'cubicBezTo': context.bezierCurveTo(command.points[0].x * scaleX, command.points[0].y * scaleY, command.points[1].x * scaleX, command.points[1].y * scaleY, command.points[2].x * scaleX, command.points[2].y * scaleY); break;
+                                            case 'quadBezTo': context.quadraticCurveTo(command.points[0].x * scaleX, command.points[0].y * scaleY, command.points[1].x * scaleX, command.points[1].y * scaleY); break;
+                                            case 'close': context.closePath(); break;
                                         }
                                     });
                                     context.fillStrokeShape(shape);
@@ -1848,17 +1812,14 @@
                 }
 
                 if (konvaShape) {
+                    konvaShape.x(finalTransform.x);
+                    konvaShape.y(finalTransform.y);
+                    konvaShape.rotation(finalTransform.rotation);
+                    konvaShape.scaleX(finalTransform.scaleX);
+                    konvaShape.scaleY(finalTransform.scaleY);
+
                     if (shapeProps.fill && shapeProps.fill !== 'none') {
-                        if (shapeProps.fill.type === 'solid') {
-                            konvaShape.fill(shapeProps.fill.color);
-                        } else if (shapeProps.fill.type === 'gradient') {
-                            const angleRad = shapeProps.fill.angle * Math.PI / 180;
-                            const x = pos.width / 2;
-                            const y = pos.height / 2;
-                            konvaShape.fillLinearGradientStartPoint({ x: x - Math.cos(angleRad) * x, y: y - Math.sin(angleRad) * y });
-                            konvaShape.fillLinearGradientEndPoint({ x: x + Math.cos(angleRad) * x, y: y + Math.sin(angleRad) * y });
-                            konvaShape.fillLinearGradientColorStops(shapeProps.fill.stops.flatMap(stop => [stop.pos, stop.color]));
-                        }
+                        if (shapeProps.fill.type === 'solid') konvaShape.fill(shapeProps.fill.color);
                     } else {
                         konvaShape.fillEnabled(false);
                     }
@@ -1866,17 +1827,9 @@
                     if (shapeProps.stroke && shapeProps.stroke !== 'none') {
                         konvaShape.stroke(shapeProps.stroke.color);
                         konvaShape.strokeWidth(shapeProps.stroke.width || 1);
-
-                        if (shapeProps.stroke.dash && shapeProps.stroke.dash.length > 0) {
-                            konvaShape.dash(shapeProps.stroke.dash);
-                        }
-
-                        if (shapeProps.stroke.join) {
-                            konvaShape.lineJoin(shapeProps.stroke.join); // 'miter', 'round', 'bevel'
-                        }
-
+                        if (shapeProps.stroke.dash) konvaShape.dash(shapeProps.stroke.dash);
+                        if (shapeProps.stroke.join) konvaShape.lineJoin(shapeProps.stroke.join);
                         if (shapeProps.stroke.cap) {
-                            // XML 'rnd' -> Konva 'round', 'sq' -> 'square', 'flat' -> 'butt'
                             let lineCap = 'butt';
                             if (shapeProps.stroke.cap === 'rnd') lineCap = 'round';
                             if (shapeProps.stroke.cap === 'sq') lineCap = 'square';
@@ -1885,25 +1838,16 @@
                     } else {
                         konvaShape.strokeEnabled(false);
                     }
-
-                    konvaShape.rotation(pos.rotation || 0);
-                    if (pos.flipH) konvaShape.scaleX(-1);
-                    if (pos.flipV) konvaShape.scaleY(-1);
-
                     layer.add(konvaShape);
                 }
             }
 
+            const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
             if (txBody) {
                 const slideBodyPr = parseBodyProperties(txBody);
-                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
-                const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
-
                 const masterBodyPr = masterPh ? masterPh.bodyPr : {};
                 const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
-
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-
                 const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height } });
                 layer.add(textGroup);
                 await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, finalBodyPr);
@@ -1951,82 +1895,58 @@
             return properties;
         }
 
-        async function processGroupShape(group, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
+        async function processGroupShape(group, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
-            let groupXfrm = {
-                x: parentXfrm.x,
-                y: parentXfrm.y,
-                rot: 0,
-                flipH: false,
-                flipV: false,
-                w: 0,
-                h: 0
-            };
-            let groupProps = null;
-            let childXfrm = { x: 0, y: 0 }; // This will be the base transform for all children of this group
+
+            let groupMatrix = Matrix.identity();
+            let childMatrix = Matrix.identity();
 
             if (grpSpPrNode) {
-                groupProps = parseGroupShapeProperties(grpSpPrNode, slideContext);
                 const xfrmNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                 if (xfrmNode) {
-                    const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
-                    if (offNode) {
-                        groupXfrm.x += parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
-                        groupXfrm.y += parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
+                    const off = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                    const ext = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+                    const chOff = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
+                    const chExt = xfrmNode.getElementsByTagNameNS(DML_NS, 'chExt')[0];
+
+                    const x = off ? parseInt(off.getAttribute('x')) / EMU_PER_PIXEL : 0;
+                    const y = off ? parseInt(off.getAttribute('y')) / EMU_PER_PIXEL : 0;
+                    const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000 * (Math.PI / 180);
+                    const flipH = xfrmNode.getAttribute('flipH') === '1';
+                    const flipV = xfrmNode.getAttribute('flipV') === '1';
+
+                    groupMatrix = Matrix.translate(x, y);
+                    if (rot !== 0) groupMatrix = Matrix.multiply(groupMatrix, Matrix.rotate(rot));
+                    if (flipH || flipV) groupMatrix = Matrix.multiply(groupMatrix, Matrix.scale(flipH ? -1 : 1, flipV ? -1 : 1));
+
+                    if (chOff && chExt && ext) {
+                        const chOff_x = parseInt(chOff.getAttribute('x')) / EMU_PER_PIXEL;
+                        const chOff_y = parseInt(chOff.getAttribute('y')) / EMU_PER_PIXEL;
+                        const chExt_w = parseInt(chExt.getAttribute('cx')) / EMU_PER_PIXEL;
+                        const chExt_h = parseInt(chExt.getAttribute('cy')) / EMU_PER_PIXEL;
+                        const ext_w = parseInt(ext.getAttribute('cx')) / EMU_PER_PIXEL;
+                        const ext_h = parseInt(ext.getAttribute('cy')) / EMU_PER_PIXEL;
+
+                        let childTranslate = Matrix.translate(-chOff_x, -chOff_y);
+                        let childScale = Matrix.scale(chExt_w ? ext_w / chExt_w : 1, chExt_h ? ext_h / chExt_h : 1);
+                        childMatrix = Matrix.multiply(childScale, childTranslate);
                     }
-
-                    const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
-                    if (extNode) {
-                        groupXfrm.w = parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL;
-                        groupXfrm.h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
-                    }
-
-                    // EXPERIMENT: Ignore chOff for now
-                    // const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
-                    // if (chOffNode) {
-                    //     childXfrm.x = -(parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL);
-                    //     childXfrm.y = -(parseInt(chOffNode.getAttribute("y")) / EMU_PER_PIXEL);
-                    // }
-
-                    groupXfrm.rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
-                    groupXfrm.flipH = xfrmNode.getAttribute('flipH') === '1';
-                    groupXfrm.flipV = xfrmNode.getAttribute('flipV') === '1';
                 }
             }
 
-            if (groupProps && groupProps.fill && groupProps.ext) {
-                const bgRect = new Konva.Rect({
-                    x: groupXfrm.x,
-                    y: groupXfrm.y,
-                    width: groupProps.ext.width,
-                    height: groupProps.ext.height,
-                    fill: groupProps.fill.color,
-                });
-                layer.add(bgRect);
-            }
-
-            const konvaGroup = new Konva.Group({
-                x: groupXfrm.x + groupXfrm.w / 2,
-                y: groupXfrm.y + groupXfrm.h / 2,
-                offsetX: groupXfrm.w / 2,
-                offsetY: groupXfrm.h / 2,
-            });
-            konvaGroup.rotation(groupXfrm.rot);
-            if (groupXfrm.flipH) konvaGroup.scaleX(-1);
-            if (groupXfrm.flipV) konvaGroup.scaleY(-1);
-            layer.add(konvaGroup);
+            const finalMatrixForChildren = Matrix.multiply(Matrix.multiply(parentMatrix, groupMatrix), childMatrix);
 
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
+                    await processShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren, defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
+                    await processGroupShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren, defaultTextStyles, slideNum);
                 } else if (tagName === 'pic') {
-                    await processPicture(element, konvaGroup, imageMap, childXfrm, masterPlaceholders, layoutPlaceholders, slideContext);
+                    await processPicture(element, layer, imageMap, finalMatrixForChildren, masterPlaceholders, layoutPlaceholders, slideContext);
                 }
             }
         }
@@ -2354,7 +2274,7 @@
             await processParagraphs(textGroup, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, bodyPr);
         }
 
-        async function processPicture(picNode, layer, imageMap, parentXfrm, masterPlaceholders, layoutPlaceholders, slideContext) {
+        async function processPicture(picNode, layer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -2372,8 +2292,8 @@
                 const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                 if (offNode && extNode) {
                     pos = {
-                        x: (parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL) + parentXfrm.x,
-                        y: (parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL) + parentXfrm.y,
+                        x: (parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL),
+                        y: (parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL),
                         width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
                         height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                     };
@@ -2390,8 +2310,6 @@
 
                 if (placeholder) {
                     pos = { ...placeholder.pos }; // Clone from layout/master
-                    pos.x += parentXfrm.x;
-                    pos.y += parentXfrm.y;
                 }
             }
 
@@ -2477,14 +2395,14 @@
 
         async function processShapeTree(elements, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-            const parentXfrm = { x: 0, y: 0 };
+            const parentMatrix = Matrix.identity();
 
             for (const element of elements) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum);
+                    await processShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum);
+                    await processGroupShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum);
                 } else if (tagName === 'graphicFrame') {
                     const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                     if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
@@ -2501,7 +2419,7 @@
                         }
                     }
                 } else if (tagName === 'pic') {
-                    await processPicture(element, layer, imageMap, parentXfrm, masterPlaceholders, layoutPlaceholders, slideContext);
+                    await processPicture(element, layer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext);
                 }
             }
         }
