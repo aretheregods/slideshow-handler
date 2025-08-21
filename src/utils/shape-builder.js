@@ -1,87 +1,111 @@
 import Konva from 'konva';
-import * as Matrix from './matrix';
+import * as Matrix from './matrix.js';
 
-// --- Type Definitions ---
-// Since src/types/shape.ts does not exist, defining types here.
+// --- Type Definitions (JSDoc) ---
 
-export enum ShapeType {
-  Group = 'group',
-  Line = 'line',
-  Text = 'text',
-  Rect = 'rect',
-  Ellipse = 'ellipse',
-}
+/**
+ * @typedef {import('./matrix.js').Matrix} Matrix
+ * @typedef {import('./matrix.js').Point} Point
+ * @typedef {import('konva/lib/Node').Node} KonvaNode
+ * @typedef {import('konva/lib/shapes/Group').Group} KonvaGroup
+ * @typedef {import('konva/lib/shapes/Line').Line} KonvaLine
+ * @typedef {import('konva/lib/shapes/Text').Text} KonvaText
+ * @typedef {import('konva/lib/shapes/Rect').Rect} KonvaRect
+ */
 
-export interface Transform {
-  x?: number;
-  y?: number;
-  rot?: number;
-  flipV?: boolean;
-  flipH?: boolean;
-}
+/**
+ * @enum {string}
+ */
+export const ShapeType = {
+  Group: 'group',
+  Line: 'line',
+  Text: 'text',
+  Rect: 'rect',
+  Ellipse: 'ellipse',
+};
 
-export interface Geometry {
-  w?: number;
-  h?: number;
-}
+/**
+ * @typedef {object} Transform
+ * @property {number} [x=0]
+ * @property {number} [y=0]
+ * @property {number} [rot=0]
+ * @property {boolean} [flipV=false]
+ * @property {boolean} [flipH=false]
+ */
 
-export interface Stroke {
-    color?: string;
-    width?: number;
-}
+/**
+ * @typedef {object} Geometry
+ * @property {number} [w=0]
+ * @property {number} [h=0]
+ */
 
-export interface ShapeStyle {
-    stroke?: Stroke;
-    fill?: string;
-}
+/**
+ * @typedef {object} Stroke
+ * @property {string} [color]
+ * @property {number} [width]
+ */
 
-export interface Bullet {
-    char: string;
-    style?: TextStyle;
-}
+/**
+ * @typedef {object} ShapeStyle
+ * @property {Stroke} [stroke]
+ * @property {string} [fill]
+ */
 
-export interface Paragraph {
-    text: string;
-    style?: TextStyle;
-    bullet?: Bullet;
-}
+/**
+ * @typedef {object} TextStyle
+ * @property {string} [fontFamily]
+ * @property {number} [fontSize]
+ * @property {string} [color]
+ * @property {boolean} [bold]
+ * @property {boolean} [italic]
+ */
 
-export interface TextStyle {
-    fontFamily?: string;
-    fontSize?: number;
-    color?: string;
-    bold?: boolean;
-    italic?: boolean;
-}
+/**
+ * @typedef {object} Bullet
+ * @property {string} char
+ * @property {TextStyle} [style]
+ */
 
-export interface BaseShape {
-  type: ShapeType;
-  transform: Transform;
-  geometry: Geometry;
-  style?: ShapeStyle;
-}
+/**
+ * @typedef {object} Paragraph
+ * @property {string} text
+ * @property {TextStyle} [style]
+ * @property {Bullet} [bullet]
+ */
 
-export interface GroupShape extends BaseShape {
-  type: ShapeType.Group;
-  shapes: Shape[];
-}
+/**
+ * @typedef {object} BaseShape
+ * @property {ShapeType} type
+ * @property {Transform} transform
+ * @property {Geometry} geometry
+ * @property {ShapeStyle} [style]
+ */
 
-export interface LineShape extends BaseShape {
-  type: ShapeType.Line;
-  points: { x: number; y: number }[];
-}
+/**
+ * @typedef {BaseShape & { type: 'group', shapes: Shape[] }} GroupShape
+ */
 
-export interface TextShape extends BaseShape {
-  type: ShapeType.Text;
-  paragraphs: Paragraph[];
-}
+/**
+ * @typedef {BaseShape & { type: 'line', points: Point[] }} LineShape
+ */
 
-export type Shape = GroupShape | LineShape | TextShape | BaseShape;
+/**
+ * @typedef {BaseShape & { type: 'text', paragraphs: Paragraph[] }} TextShape
+ */
+
+/**
+ * @typedef {GroupShape | LineShape | TextShape | BaseShape} Shape
+ */
 
 
 // --- Transformation Logic ---
 
-function decompose(matrix: Matrix.Matrix) {
+/**
+ * Decomposes a matrix into components that can be used by Konva.
+ * @param {Matrix} matrix
+ * @returns {{x: number, y: number, rotation: number, scaleX: number, scaleY: number}}
+ */
+function decompose(matrix) {
   const a = matrix[0][0], b = matrix[0][1], c = matrix[0][2];
   const d = matrix[1][0], e = matrix[1][1], f = matrix[1][2];
   const tx = c, ty = f;
@@ -93,7 +117,13 @@ function decompose(matrix: Matrix.Matrix) {
   return { x: tx, y: ty, rotation: rotationDeg, scaleX, scaleY };
 }
 
-function getTransformationMatrix(transform: Transform, geometry: Geometry): Matrix.Matrix {
+/**
+ * Calculates the local transformation matrix for a shape.
+ * @param {Transform} transform
+ * @param {Geometry} geometry
+ * @returns {Matrix}
+ */
+function getTransformationMatrix(transform, geometry) {
   const { x = 0, y = 0, rot = 0, flipV = false, flipH = false } = transform;
   const { w = 0, h = 0 } = geometry;
   const centerX = w / 2, centerY = h / 2;
@@ -112,13 +142,19 @@ function getTransformationMatrix(transform: Transform, geometry: Geometry): Matr
 
 // --- Shape Creation Logic ---
 
-function createKonvaShape(shape: Shape, parentMatrix: Matrix.Matrix): Konva.Node {
+/**
+ * Creates a Konva shape from a shape definition.
+ * @param {Shape} shape
+ * @param {Matrix} parentMatrix
+ * @returns {KonvaNode}
+ */
+function createKonvaShape(shape, parentMatrix) {
   const localMatrix = getTransformationMatrix(shape.transform, shape.geometry);
   const finalMatrix = Matrix.multiply(parentMatrix, localMatrix);
 
   if (shape.type === ShapeType.Group) {
     const groupNode = new Konva.Group();
-    (shape as GroupShape).shapes.forEach(childShape => {
+    shape.shapes.forEach(childShape => {
       groupNode.add(createKonvaShape(childShape, finalMatrix));
     });
     return groupNode;
@@ -135,22 +171,20 @@ function createKonvaShape(shape: Shape, parentMatrix: Matrix.Matrix): Konva.Node
     case ShapeType.Line:
       return new Konva.Line({
         ...baseConfig,
-        points: (shape as LineShape).points.flatMap(p => [p.x, p.y]),
-        stroke: (shape as LineShape).style?.stroke?.color || 'black',
-        strokeWidth: (shape as LineShape).style?.stroke?.width || 1,
+        points: shape.points.flatMap(p => [p.x, p.y]),
+        stroke: shape.style?.stroke?.color || 'black',
+        strokeWidth: shape.style?.stroke?.width || 1,
         strokeScaleEnabled: false,
       });
 
     case ShapeType.Text:
-      const textShape = shape as TextShape;
       const textBoxGroup = new Konva.Group(baseConfig);
       let currentY = 0;
 
-      textShape.paragraphs.forEach(p => {
+      shape.paragraphs.forEach(p => {
         const paraGroup = new Konva.Group({ y: currentY });
         const fontSize = p.style?.fontSize || 12;
         const bulletIndent = 20;
-        const lineHeight = fontSize * 1.2;
 
         if (p.bullet) {
           const bulletNode = new Konva.Text({
@@ -177,7 +211,6 @@ function createKonvaShape(shape: Shape, parentMatrix: Matrix.Matrix): Konva.Node
         paraGroup.add(textNode);
         textBoxGroup.add(paraGroup);
 
-        // Use textNode's height for more accurate line positioning
         currentY += textNode.height();
       });
       return textBoxGroup;
@@ -193,7 +226,12 @@ function createKonvaShape(shape: Shape, parentMatrix: Matrix.Matrix): Konva.Node
   }
 }
 
-export function buildShapes(shapes: Shape[]): Konva.Node[] {
+/**
+ * Builds an array of Konva shapes from shape definitions.
+ * @param {Shape[]} shapes
+ * @returns {KonvaNode[]}
+ */
+export function buildShapes(shapes) {
   const identityMatrix = Matrix.identity();
   return shapes.map(shape => createKonvaShape(shape, identityMatrix));
 }
