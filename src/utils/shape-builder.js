@@ -1,9 +1,9 @@
 import { Matrix } from './matrix.js';
-import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
+import { CanvasRenderer } from './canvas-renderer.js';
 
 export class ShapeBuilder {
-    constructor(layer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders) {
-        this.layer = layer;
+    constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders) {
+        this.renderer = renderer;
         this.slideContext = slideContext;
         this.imageMap = imageMap;
         this.masterPlaceholders = masterPlaceholders;
@@ -88,7 +88,7 @@ export class ShapeBuilder {
             if (shapeName === 'Title 23') console.log('[DEBUG] No <xfrm> and no placeholder key. Cannot determine position.');
         }
 
-        if (!pos) return { konvaShape: null, pos: null, phKey, phType };
+        if (!pos) return { shape: null, pos: null, phKey, phType };
 
         const finalMatrix = parentMatrix.clone().multiply(localMatrix);
 
@@ -97,65 +97,35 @@ export class ShapeBuilder {
             console.log('[CONNECTOR DEBUG] Final Matrix:', finalMatrix.m);
         }
 
-        let konvaShape;
+        this.renderer.setTransform(finalMatrix);
+
         const txBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
 
         if (shapeProps && shapeProps.geometry) {
              const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
              switch (geomType) {
                 case 'rect':
-                    konvaShape = new Konva.Rect({ width: pos.width, height: pos.height });
+                    this.renderer.drawRect(0, 0, pos.width, pos.height, {
+                        fill: shapeProps.fill?.color,
+                        stroke: shapeProps.stroke,
+                    });
                     break;
                 case 'ellipse':
-                    konvaShape = new Konva.Ellipse({ radiusX: pos.width / 2, radiusY: pos.height / 2, x: pos.width / 2, y: pos.height / 2 });
+                    this.renderer.drawEllipse(pos.width / 2, pos.height / 2, pos.width / 2, pos.height / 2, {
+                        fill: shapeProps.fill?.color,
+                        stroke: shapeProps.stroke,
+                    });
                     break;
                 case 'line':
-                    // For lines, we bake the scaling into the points themselves
-                    // to prevent the stroke width from being scaled.
-                    const transform = new Konva.Transform(finalMatrix.m);
-                    const decomposed = transform.decompose();
-
-                    const scaleMatrix = new Matrix();
-                    scaleMatrix.scale(decomposed.scaleX, decomposed.scaleY);
-
-                    const p1 = scaleMatrix.transformPoint(0, 0);
-                    const p2 = scaleMatrix.transformPoint(pos.width, pos.height);
-
-                    konvaShape = new Konva.Line({
-                        points: [p1.x, p1.y, p2.x, p2.y]
+                    this.renderer.drawLine(0, 0, pos.width, pos.height, {
+                        stroke: shapeProps.stroke,
                     });
-
-                    // Apply only rotation and translation to the shape itself
-                    konvaShape.x(decomposed.x);
-                    konvaShape.y(decomposed.y);
-                    konvaShape.rotation(decomposed.rotation);
-
-                    // Since we baked in the scaling, we don't apply it to the shape
-                    // and we don't need to manually un-scale the stroke width.
-                    if (shapeProps.stroke) {
-                        konvaShape.stroke(shapeProps.stroke.color);
-                        konvaShape.strokeWidth(shapeProps.stroke.width || 1);
-                        if (shapeProps.stroke.dash) {
-                            konvaShape.dash(shapeProps.stroke.dash);
-                        }
-                        if (shapeProps.stroke.join) {
-                            konvaShape.lineJoin(shapeProps.stroke.join);
-                        }
-                        if (shapeProps.stroke.cap) {
-                            let lineCap = 'butt';
-                            if (shapeProps.stroke.cap === 'rnd') lineCap = 'round';
-                            if (shapeProps.stroke.cap === 'sq') lineCap = 'square';
-                            konvaShape.lineCap(lineCap);
-                        }
-                    } else {
-                        konvaShape.strokeEnabled(false);
-                    }
-                    this.layer.add(konvaShape);
-                    return { konvaShape, pos, phKey, phType }; // Return early to skip the generic logic
+                    break;
                 case 'arc':
                     const arcPath = `M 0,${pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.width},0`;
-                    konvaShape = new Konva.Path({ data: arcPath });
-                    konvaShape.fillEnabled(false);
+                    this.renderer.drawPath(arcPath, {
+                        stroke: shapeProps.stroke,
+                    });
                     break;
                 case 'custom':
                     if (shapeProps.geometry.path) {
@@ -163,93 +133,50 @@ export class ShapeBuilder {
                         const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
                         const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
 
-                        konvaShape = new Konva.Shape({
-                            width: pos.width,
-                            height: pos.height,
-                            sceneFunc: function (context, shape) {
-                                context.beginPath();
-                                pathData.commands.forEach(command => {
-                                    switch (command.cmd) {
-                                        case 'moveTo': {
-                                            const p = command.points[0];
-                                            context.moveTo(p.x * scaleX, p.y * scaleY);
-                                            break;
-                                        }
-                                        case 'lnTo': {
-                                            const p = command.points[0];
-                                            context.lineTo(p.x * scaleX, p.y * scaleY);
-                                            break;
-                                        }
-                                        case 'cubicBezTo': {
-                                            const p1 = command.points[0];
-                                            const p2 = command.points[1];
-                                            const p3 = command.points[2];
-                                            context.bezierCurveTo(
-                                                p1.x * scaleX, p1.y * scaleY,
-                                                p2.x * scaleX, p2.y * scaleY,
-                                                p3.x * scaleX, p3.y * scaleY
-                                            );
-                                            break;
-                                        }
-                                        case 'quadBezTo': {
-                                            const p1 = command.points[0];
-                                            const p2 = command.points[1];
-                                            context.quadraticCurveTo(
-                                                p1.x * scaleX, p1.y * scaleY,
-                                                p2.x * scaleX, p2.y * scaleY
-                                            );
-                                            break;
-                                        }
-                                        case 'close': {
-                                            context.closePath();
-                                            break;
-                                        }
-                                    }
-                                });
-                                context.fillStrokeShape(shape);
+                        let pathString = '';
+                        pathData.commands.forEach(command => {
+                            switch (command.cmd) {
+                                case 'moveTo': {
+                                    const p = command.points[0];
+                                    pathString += `M ${p.x * scaleX} ${p.y * scaleY} `;
+                                    break;
+                                }
+                                case 'lnTo': {
+                                    const p = command.points[0];
+                                    pathString += `L ${p.x * scaleX} ${p.y * scaleY} `;
+                                    break;
+                                }
+                                case 'cubicBezTo': {
+                                    const p1 = command.points[0];
+                                    const p2 = command.points[1];
+                                    const p3 = command.points[2];
+                                    pathString += `C ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} ${p3.x * scaleX} ${p3.y * scaleY} `;
+                                    break;
+                                }
+                                case 'quadBezTo': {
+                                    const p1 = command.points[0];
+                                    const p2 = command.points[1];
+                                    pathString += `Q ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} `;
+                                    break;
+                                }
+                                case 'close': {
+                                    pathString += 'Z ';
+                                    break;
+                                }
                             }
+                        });
+                        this.renderer.drawPath(pathString, {
+                            fill: shapeProps.fill?.color,
+                            stroke: shapeProps.stroke,
                         });
                     }
                     break;
              }
         } else if (txBody) {
             // This is a shapeless textbox. Create a transparent rectangle to host the text.
-            konvaShape = new Konva.Rect({ width: pos.width, height: pos.height, fill: 'transparent' });
+            this.renderer.drawRect(0, 0, pos.width, pos.height, { fill: 'transparent' });
         }
 
-        if (konvaShape) {
-            const transform = new Konva.Transform(finalMatrix.m);
-            const decomposed = transform.decompose();
-            konvaShape.setAttrs(decomposed);
-
-            if (shapeProps.fill && shapeProps.fill.type === 'solid') {
-                konvaShape.fill(shapeProps.fill.color);
-            } else {
-                konvaShape.fillEnabled(false);
-            }
-
-            if (shapeProps.stroke) {
-                const scaleX = Math.sqrt(finalMatrix.m[0] * finalMatrix.m[0] + finalMatrix.m[1] * finalMatrix.m[1]);
-                konvaShape.stroke(shapeProps.stroke.color);
-                konvaShape.strokeWidth((shapeProps.stroke.width || 1) / scaleX);
-                if (shapeProps.stroke.dash) {
-                    konvaShape.dash(shapeProps.stroke.dash);
-                }
-                if (shapeProps.stroke.join) {
-                    konvaShape.lineJoin(shapeProps.stroke.join);
-                }
-                if (shapeProps.stroke.cap) {
-                    let lineCap = 'butt';
-                    if (shapeProps.stroke.cap === 'rnd') lineCap = 'round';
-                    if (shapeProps.stroke.cap === 'sq') lineCap = 'square';
-                    konvaShape.lineCap(lineCap);
-                }
-            } else {
-                konvaShape.strokeEnabled(false);
-            }
-            this.layer.add(konvaShape);
-        }
-
-        return { konvaShape, pos, phKey, phType };
+        return { pos, phKey, phType };
     }
 }
