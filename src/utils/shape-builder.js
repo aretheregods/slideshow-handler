@@ -1,249 +1,180 @@
+import { Matrix } from './matrix.js';
 import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
-import * as Matrix from './matrix.js';
 
-// --- Type Definitions (JSDoc) ---
+export class ShapeBuilder {
+    constructor(layer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders) {
+        this.layer = layer;
+        this.slideContext = slideContext;
+        this.imageMap = imageMap;
+        this.masterPlaceholders = masterPlaceholders;
+        this.layoutPlaceholders = layoutPlaceholders;
+    }
 
-/**
- * @typedef {import('./matrix.js').Matrix} Matrix
- * @typedef {import('./matrix.js').Point} Point
- * @typedef {import('konva/lib/Node').Node} KonvaNode
- * @typedef {import('konva/lib/shapes/Group').Group} KonvaGroup
- * @typedef {import('konva/lib/shapes/Line').Line} KonvaLine
- * @typedef {import('konva/lib/shapes/Text').Text} KonvaText
- * @typedef {import('konva/lib/shapes/Rect').Rect} KonvaRect
- */
+    build(shapeNode, parentMatrix, shapeProps) {
+        const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+        const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-/**
- * @enum {string}
- */
-export const ShapeType = {
-  Group: 'group',
-  Line: 'line',
-  Text: 'text',
-  Rect: 'rect',
-  Ellipse: 'ellipse',
-};
-
-/**
- * @typedef {object} Transform
- * @property {number} [x=0]
- * @property {number} [y=0]
- * @property {number} [rot=0]
- * @property {boolean} [flipV=false]
- * @property {boolean} [flipH=false]
- */
-
-/**
- * @typedef {object} Geometry
- * @property {number} [w=0]
- * @property {number} [h=0]
- */
-
-/**
- * @typedef {object} Stroke
- * @property {string} [color]
- * @property {number} [width]
- */
-
-/**
- * @typedef {object} ShapeStyle
- * @property {Stroke} [stroke]
- * @property {string} [fill]
- */
-
-/**
- * @typedef {object} TextStyle
- * @property {string} [fontFamily]
- * @property {number} [fontSize]
- * @property {string} [color]
- * @property {boolean} [bold]
- * @property {boolean} [italic]
- */
-
-/**
- * @typedef {object} Bullet
- * @property {string} char
- * @property {TextStyle} [style]
- */
-
-/**
- * @typedef {object} Paragraph
- * @property {string} text
- * @property {TextStyle} [style]
- * @property {Bullet} [bullet]
- */
-
-/**
- * @typedef {object} BaseShape
- * @property {string} [name]
- * @property {ShapeType} type
- * @property {Transform} transform
- * @property {Geometry} geometry
- * @property {ShapeStyle} [style]
- */
-
-/**
- * @typedef {BaseShape & { type: 'group', shapes: Shape[] }} GroupShape
- */
-
-/**
- * @typedef {BaseShape & { type: 'line', points: Point[] }} LineShape
- */
-
-/**
- * @typedef {BaseShape & { type: 'text', paragraphs: Paragraph[] }} TextShape
- */
-
-/**
- * @typedef {GroupShape | LineShape | TextShape | BaseShape} Shape
- */
-
-
-// --- Transformation Logic ---
-
-/**
- * Decomposes a matrix into components that can be used by Konva.
- * @param {Matrix} matrix
- * @returns {{x: number, y: number, rotation: number, scaleX: number, scaleY: number}}
- */
-export function decompose(matrix) {
-  const a = matrix[0][0], b = matrix[0][1], c = matrix[0][2];
-  const d = matrix[1][0], e = matrix[1][1], f = matrix[1][2];
-  const tx = c, ty = f;
-  const scaleX = Math.sqrt(a * a + d * d);
-  const rotationRad = Math.atan2(d, a);
-  const rotationDeg = rotationRad * (180 / Math.PI);
-  const det = a * e - b * d;
-  const scaleY = det / scaleX;
-  return { x: tx, y: ty, rotation: rotationDeg, scaleX, scaleY };
-}
-
-/**
- * Calculates the local transformation matrix for a shape.
- * @param {Transform} transform
- * @param {Geometry} geometry
- * @returns {Matrix}
- */
-export function getTransformationMatrix(transform, geometry) {
-  const { x = 0, y = 0, rot = 0, flipV = false, flipH = false } = transform;
-  const { w = 0, h = 0 } = geometry;
-  const centerX = w / 2, centerY = h / 2;
-
-  let m = Matrix.translate(x, y);
-  const centerTransform = [
-    Matrix.translate(centerX, centerY),
-    Matrix.rotate(rot),
-    Matrix.scale(flipH ? -1 : 1, flipV ? -1 : 1),
-    Matrix.translate(-centerX, -centerY),
-  ].reduce(Matrix.multiply);
-  m = Matrix.multiply(m, centerTransform);
-  return m;
-}
-
-
-// --- Shape Creation Logic ---
-
-/**
- * Creates a Konva shape from a shape definition.
- * @param {Shape} shape
- * @param {Matrix} parentMatrix
- * @returns {KonvaNode}
- */
-function createKonvaShape(shape, parentMatrix) {
-  console.group(`JULES_LOG: Processing Shape: ${shape.name || shape.type}`);
-  console.log('Shape Data:', shape);
-
-  const localMatrix = getTransformationMatrix(shape.transform, shape.geometry);
-  const finalMatrix = Matrix.multiply(parentMatrix, localMatrix);
-
-  console.log('Parent Matrix:', JSON.stringify(parentMatrix, null, 2));
-  console.log('Local Matrix:', JSON.stringify(localMatrix, null, 2));
-  console.log('Final Matrix:', JSON.stringify(finalMatrix, null, 2));
-
-  if (shape.type === ShapeType.Group) {
-    const groupNode = new Konva.Group();
-    shape.shapes.forEach(childShape => {
-      groupNode.add(createKonvaShape(childShape, finalMatrix));
-    });
-    return groupNode;
-  }
-
-  const decomposed = decompose(finalMatrix);
-  console.log('Decomposed Transform:', decomposed);
-
-  const baseConfig = {
-    ...decomposed,
-    width: shape.geometry.w,
-    height: shape.geometry.h,
-  };
-
-  console.groupEnd();
-
-  switch (shape.type) {
-    case ShapeType.Line:
-      return new Konva.Line({
-        ...baseConfig,
-        points: shape.points.flatMap(p => [p.x, p.y]),
-        stroke: shape.style?.stroke?.color || 'black',
-        strokeWidth: shape.style?.stroke?.width || 1,
-        strokeScaleEnabled: false,
-      });
-
-    case ShapeType.Text:
-      const textBoxGroup = new Konva.Group(baseConfig);
-      let currentY = 0;
-
-      shape.paragraphs.forEach(p => {
-        const paraGroup = new Konva.Group({ y: currentY });
-        const fontSize = p.style?.fontSize || 12;
-        const bulletIndent = 20;
-
-        if (p.bullet) {
-          const bulletNode = new Konva.Text({
-            text: p.bullet.char,
-            fontSize: p.bullet.style?.fontSize || fontSize,
-            fontFamily: p.bullet.style?.fontFamily || p.style?.fontFamily || 'Arial',
-            fill: p.bullet.style?.color || p.style?.color || 'black',
-            x: 0,
-            y: 0,
-          });
-          paraGroup.add(bulletNode);
+        const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
+        let phKey = null, phType = null;
+        if (nvPr) {
+            const placeholder = nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0];
+            if (placeholder) {
+                phType = placeholder.getAttribute('type');
+                const phIdx = placeholder.getAttribute('idx');
+                phKey = phIdx ? `idx_${phIdx}` : phType;
+                if (!phType && phIdx) {
+                    phType = 'body';
+                }
+            }
         }
 
-        const textNode = new Konva.Text({
-          text: p.text,
-          fontSize: fontSize,
-          fontFamily: p.style?.fontFamily || 'Arial',
-          fill: p.style?.color || 'black',
-          x: p.bullet ? bulletIndent : 0,
-          y: 0,
-          width: (shape.geometry.w || 200) - (p.bullet ? bulletIndent : 0),
-          wrap: 'word',
-        });
-        paraGroup.add(textNode);
-        textBoxGroup.add(paraGroup);
+        let localMatrix = new Matrix();
+        let pos;
 
-        currentY += textNode.height();
-      });
-      return textBoxGroup;
+        const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
+        if (xfrmNode) {
+            const offNode = xfrmNode.getElementsByTagName('a:off')[0];
+            const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+            if (offNode && extNode) {
+                const x = parseInt(offNode.getAttribute("x")) / 12700;
+                const y = parseInt(offNode.getAttribute("y")) / 12700;
+                const w = parseInt(extNode.getAttribute("cx")) / 12700;
+                const h = parseInt(extNode.getAttribute("cy")) / 12700;
+                const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
+                const flipH = xfrmNode.getAttribute('flipH') === '1';
+                const flipV = xfrmNode.getAttribute('flipV') === '1';
 
-    default:
-      return new Konva.Rect({
-        ...baseConfig,
-        fill: shape.style?.fill || 'grey',
-        stroke: shape.style?.stroke?.color,
-        strokeWidth: shape.style?.stroke?.width,
-        opacity: 0.8,
-      });
-  }
-}
+                pos = { x: 0, y: 0, width: w, height: h };
 
-/**
- * Builds an array of Konva shapes from shape definitions.
- * @param {Shape[]} shapes
- * @returns {KonvaNode[]}
- */
-export function buildShapes(shapes) {
-  const identityMatrix = Matrix.identity();
-  return shapes.map(shape => createKonvaShape(shape, identityMatrix));
+                localMatrix.translate(x, y);
+                localMatrix.translate(w / 2, h / 2);
+                localMatrix.rotate(rot * Math.PI / 180);
+                localMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+                localMatrix.translate(-w / 2, -h / 2);
+            }
+        } else if (phKey && (this.layoutPlaceholders?.[phKey] || this.masterPlaceholders?.[phKey])) {
+            const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
+            const masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
+            const placeholder = layoutPh || masterPh;
+            if (placeholder) {
+                pos = { ...placeholder.pos };
+                localMatrix.translate(pos.x, pos.y);
+                pos.x = 0;
+                pos.y = 0;
+            }
+        }
+
+        if (!pos) return { konvaShape: null, pos: null, phKey, phType };
+
+        const finalMatrix = parentMatrix.clone().multiply(localMatrix);
+
+        let konvaShape;
+        if (shapeProps && shapeProps.geometry) {
+             const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
+             switch (geomType) {
+                case 'rect':
+                    konvaShape = new Konva.Rect({ width: pos.width, height: pos.height });
+                    break;
+                case 'ellipse':
+                    konvaShape = new Konva.Ellipse({ radiusX: pos.width / 2, radiusY: pos.height / 2, x: pos.width / 2, y: pos.height / 2 });
+                    break;
+                case 'line':
+                    konvaShape = new Konva.Line({ points: [0, 0, pos.width, pos.height] });
+                    break;
+                case 'arc':
+                    const arcPath = `M 0,${pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.width},0`;
+                    konvaShape = new Konva.Path({ data: arcPath });
+                    konvaShape.fillEnabled(false);
+                    break;
+                case 'custom':
+                    if (shapeProps.geometry.path) {
+                        const pathData = shapeProps.geometry.path;
+                        const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
+                        const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
+
+                        konvaShape = new Konva.Shape({
+                            width: pos.width,
+                            height: pos.height,
+                            sceneFunc: function (context, shape) {
+                                context.beginPath();
+                                pathData.commands.forEach(command => {
+                                    switch (command.cmd) {
+                                        case 'moveTo': {
+                                            const p = command.points[0];
+                                            context.moveTo(p.x * scaleX, p.y * scaleY);
+                                            break;
+                                        }
+                                        case 'lnTo': {
+                                            const p = command.points[0];
+                                            context.lineTo(p.x * scaleX, p.y * scaleY);
+                                            break;
+                                        }
+                                        case 'cubicBezTo': {
+                                            const p1 = command.points[0];
+                                            const p2 = command.points[1];
+                                            const p3 = command.points[2];
+                                            context.bezierCurveTo(
+                                                p1.x * scaleX, p1.y * scaleY,
+                                                p2.x * scaleX, p2.y * scaleY,
+                                                p3.x * scaleX, p3.y * scaleY
+                                            );
+                                            break;
+                                        }
+                                        case 'quadBezTo': {
+                                            const p1 = command.points[0];
+                                            const p2 = command.points[1];
+                                            context.quadraticCurveTo(
+                                                p1.x * scaleX, p1.y * scaleY,
+                                                p2.x * scaleX, p2.y * scaleY
+                                            );
+                                            break;
+                                        }
+                                        case 'close': {
+                                            context.closePath();
+                                            break;
+                                        }
+                                    }
+                                });
+                                context.fillStrokeShape(shape);
+                            }
+                        });
+                    }
+                    break;
+             }
+        }
+
+        if (konvaShape) {
+            const transform = new Konva.Transform(finalMatrix.m);
+            const decomposed = transform.decompose();
+            konvaShape.setAttrs(decomposed);
+
+            if (shapeProps.fill && shapeProps.fill.type === 'solid') {
+                konvaShape.fill(shapeProps.fill.color);
+            } else {
+                konvaShape.fillEnabled(false);
+            }
+
+            if (shapeProps.stroke) {
+                konvaShape.stroke(shapeProps.stroke.color);
+                konvaShape.strokeWidth(shapeProps.stroke.width || 1);
+                if (shapeProps.stroke.dash) {
+                    konvaShape.dash(shapeProps.stroke.dash);
+                }
+                if (shapeProps.stroke.join) {
+                    konvaShape.lineJoin(shapeProps.stroke.join);
+                }
+                if (shapeProps.stroke.cap) {
+                    let lineCap = 'butt';
+                    if (shapeProps.stroke.cap === 'rnd') lineCap = 'round';
+                    if (shapeProps.stroke.cap === 'sq') lineCap = 'square';
+                    konvaShape.lineCap(lineCap);
+                }
+            } else {
+                konvaShape.strokeEnabled(false);
+            }
+            this.layer.add(konvaShape);
+        }
+
+        return { konvaShape, pos, phKey, phType };
+    }
 }

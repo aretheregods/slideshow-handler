@@ -205,6 +205,8 @@
             ZipWriter,
         } from "https://deno.land/x/zipjs/index.js";
         import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
+        import { Matrix } from './src/utils/matrix.js';
+        import { ShapeBuilder } from './src/utils/shape-builder.js';
 
         const EMU_PER_PIXEL = 12700; // Standard conversion for 96 DPI
         const PT_TO_PX = .975; // Adjusted conversion for web rendering (90/72)
@@ -1633,11 +1635,9 @@
             }
         }
 
-        async function processShape(shape, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
+        async function processShape(shape, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-            let pos = null;
             const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
             let phKey = null, phType = null;
             if (nvPr) {
@@ -1646,243 +1646,66 @@
                     phType = placeholder.getAttribute('type');
                     const phIdx = placeholder.getAttribute('idx');
                     phKey = phIdx ? `idx_${phIdx}` : phType;
-
-                    // If no type is specified but an index is, it's usually a body/content placeholder.
-                    if ( !phType && phIdx ) {
+                    if (!phType && phIdx) {
                         phType = 'body';
                     }
                 }
             }
 
-            const xfrmNode = shape.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
-            if (xfrmNode) {
-                const offNode = xfrmNode.getElementsByTagName('a:off')[0];
-                const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
-                if (offNode && extNode) {
-                    pos = {
-                        x: (parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL) + parentXfrm.x,
-                        y: (parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL) + parentXfrm.y,
-                        width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
-                        height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
-                        rotation: parseInt(xfrmNode.getAttribute('rot') || '0') / 60000,
-                        flipH: xfrmNode.getAttribute('flipH') === '1',
-                        flipV: xfrmNode.getAttribute('flipV') === '1',
-                    };
-                }
-            } else if (phKey && (layoutPlaceholders?.[phKey] || masterPlaceholders?.[phKey])) {
-                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
-                const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
-                // Layout position overrides master position.
-                const placeholder = layoutPh || masterPh;
-                if (placeholder) {
-                    pos = { ...placeholder.pos };
-                    pos.x += parentXfrm.x;
-                    pos.y += parentXfrm.y;
-                }
-            } else if (phType === 'ctrTitle' && (layoutPlaceholders?.['title'] || masterPlaceholders?.['title'])) {
-                // Fallback for centered titles, which often use the standard 'title' placeholder
-                const layoutPh = layoutPlaceholders ? layoutPlaceholders['title'] : null;
-                const masterPh = masterPlaceholders ? masterPlaceholders['title'] : null;
-                const placeholder = layoutPh || masterPh;
-                if (placeholder) {
-                    pos = { ...placeholder.pos };
-                    pos.x += parentXfrm.x;
-                    pos.y += parentXfrm.y;
-                    phKey = 'title'; // Remap key for style inheritance
-                }
-            }
-
-            if (!pos) return { width: 0, height: 0 };
-
-            // --- INHERITANCE LOGIC ---
             const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
             const masterShapeProps = masterPh ? masterPh.shapeProps : {};
-
             const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
             const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
-
             const slideShapeProps = parseShapeProperties(shape, slideContext, slideNum);
-
-            const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-            const isTextPlaceholder = phKey && txBody;
-
             const finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
             const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
-
             const shapeProps = {
                 geometry: slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry,
                 fill: finalFill,
                 stroke: finalStroke,
             };
-            // --- END INHERITANCE LOGIC ---
 
-            if (shapeProps && shapeProps.geometry?.type === 'custom') {
-                // This debug log is removed to avoid console spam and potential errors.
-            }
+            const shapeBuilder = new ShapeBuilder(layer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders);
+            const { konvaShape, pos } = shapeBuilder.build(shape, parentMatrix, shapeProps);
 
-            let konvaShape;
+            if (konvaShape) {
+                const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+                if (txBody) {
+                    // Create a container group to hold both the shape and its text
+                    const containerGroup = new Konva.Group();
 
-            if (shapeProps && shapeProps.geometry) {
-                const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
-                switch (geomType) {
-                    case 'rect':
-                        konvaShape = new Konva.Rect({
-                            x: pos.x + pos.width / 2,
-                            y: pos.y + pos.height / 2,
-                            width: pos.width,
-                            height: pos.height,
-                            offsetX: pos.width / 2,
-                            offsetY: pos.height / 2,
-                        });
-                        break;
-                    case 'ellipse':
-                        konvaShape = new Konva.Ellipse({
-                            x: pos.x + pos.width / 2,
-                            y: pos.y + pos.height / 2,
-                            radiusX: pos.width / 2,
-                            radiusY: pos.height / 2
-                        });
-                        break;
-                    case 'line':
-                        konvaShape = new Konva.Line({
-                            points: [-pos.width / 2, -pos.height / 2, pos.width / 2, pos.height / 2],
-                            x: pos.x + pos.width / 2,
-                            y: pos.y + pos.height / 2,
-                        });
-                        break;
-                    case 'arc':
-                        const arcPath = `M 0,${pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.width},0`;
-                        konvaShape = new Konva.Path({
-                            data: arcPath,
-                            x: pos.x + pos.width / 2,
-                            y: pos.y + pos.height / 2,
-                            offsetX: pos.width / 2,
-                            offsetY: pos.height / 2,
-                        });
-                        konvaShape.fillEnabled(false);
-                        break;
-                    case 'custom':
-                        if (shapeProps.geometry.path) {
-                            const pathData = shapeProps.geometry.path;
-                            const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
-                            const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
+                    // Transfer the transformation from the shape to the container group
+                    const transform = new Konva.Transform(konvaShape.getTransform().getMatrix());
+                    containerGroup.setAttrs(transform.decompose());
 
-                            konvaShape = new Konva.Shape({
-                                x: pos.x + pos.width / 2,
-                                y: pos.y + pos.height / 2,
-                                width: pos.width,
-                                height: pos.height,
-                                offsetX: pos.width / 2,
-                                offsetY: pos.height / 2,
-                                sceneFunc: function (context, shape) {
-                                    context.beginPath();
-                                    pathData.commands.forEach(command => {
-                                        switch (command.cmd) {
-                                            case 'moveTo': {
-                                                const p = command.points[0];
-                                                context.moveTo(p.x * scaleX, p.y * scaleY);
-                                                break;
-                                            }
-                                            case 'lnTo': {
-                                                const p = command.points[0];
-                                                context.lineTo(p.x * scaleX, p.y * scaleY);
-                                                break;
-                                            }
-                                            case 'cubicBezTo': {
-                                                const p1 = command.points[0];
-                                                const p2 = command.points[1];
-                                                const p3 = command.points[2];
-                                                context.bezierCurveTo(
-                                                    p1.x * scaleX, p1.y * scaleY,
-                                                    p2.x * scaleX, p2.y * scaleY,
-                                                    p3.x * scaleX, p3.y * scaleY
-                                                );
-                                                break;
-                                            }
-                                            case 'quadBezTo': {
-                                                const p1 = command.points[0];
-                                                const p2 = command.points[1];
-                                                context.quadraticCurveTo(
-                                                    p1.x * scaleX, p1.y * scaleY,
-                                                    p2.x * scaleX, p2.y * scaleY
-                                                );
-                                                break;
-                                            }
-                                            case 'close': {
-                                                context.closePath();
-                                                break;
-                                            }
-                                        }
-                                    });
-                                    context.fillStrokeShape(shape);
-                                }
-                            });
-                        }
-                        break;
-                }
+                    // Reset the shape's own transform, as it's now handled by the group
+                    konvaShape.x(0);
+                    konvaShape.y(0);
+                    konvaShape.rotation(0);
+                    konvaShape.scaleX(1);
+                    konvaShape.scaleY(1);
 
-                if (konvaShape) {
-                    if (shapeProps.fill && shapeProps.fill !== 'none') {
-                        if (shapeProps.fill.type === 'solid') {
-                            konvaShape.fill(shapeProps.fill.color);
-                        } else if (shapeProps.fill.type === 'gradient') {
-                            const angleRad = shapeProps.fill.angle * Math.PI / 180;
-                            const x = pos.width / 2;
-                            const y = pos.height / 2;
-                            konvaShape.fillLinearGradientStartPoint({ x: x - Math.cos(angleRad) * x, y: y - Math.sin(angleRad) * y });
-                            konvaShape.fillLinearGradientEndPoint({ x: x + Math.cos(angleRad) * x, y: y + Math.sin(angleRad) * y });
-                            konvaShape.fillLinearGradientColorStops(shapeProps.fill.stops.flatMap(stop => [stop.pos, stop.color]));
-                        }
-                    } else {
-                        konvaShape.fillEnabled(false);
-                    }
+                    // Move the shape from the main layer into our container group
+                    konvaShape.remove();
+                    containerGroup.add(konvaShape);
 
-                    if (shapeProps.stroke && shapeProps.stroke !== 'none') {
-                        konvaShape.stroke(shapeProps.stroke.color);
-                        konvaShape.strokeWidth(shapeProps.stroke.width || 1);
+                    // Add the container to the layer
+                    layer.add(containerGroup);
 
-                        if (shapeProps.stroke.dash && shapeProps.stroke.dash.length > 0) {
-                            konvaShape.dash(shapeProps.stroke.dash);
-                        }
+                    // Process and add the text paragraphs to the container group
+                    const slideBodyPr = parseBodyProperties(txBody);
+                    const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
+                    const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+                    const masterBodyPr = masterPh ? masterPh.bodyPr : {};
+                    const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
+                    const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
+                    await processParagraphs(containerGroup, txBody, { x: 0, y: 0, width: pos.width, height: pos.height }, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, finalBodyPr);
 
-                        if (shapeProps.stroke.join) {
-                            konvaShape.lineJoin(shapeProps.stroke.join); // 'miter', 'round', 'bevel'
-                        }
-
-                        if (shapeProps.stroke.cap) {
-                            // XML 'rnd' -> Konva 'round', 'sq' -> 'square', 'flat' -> 'butt'
-                            let lineCap = 'butt';
-                            if (shapeProps.stroke.cap === 'rnd') lineCap = 'round';
-                            if (shapeProps.stroke.cap === 'sq') lineCap = 'square';
-                            konvaShape.lineCap(lineCap);
-                        }
-                    } else {
-                        konvaShape.strokeEnabled(false);
-                    }
-
-                    konvaShape.rotation(pos.rotation || 0);
-                    if (pos.flipH) konvaShape.scaleX(-1);
-                    if (pos.flipV) konvaShape.scaleY(-1);
-
-                    layer.add(konvaShape);
+                    // Return the container group's client rect for layout purposes
+                    return containerGroup.getClientRect({ relativeTo: layer.getStage() });
                 }
             }
-
-            if (txBody) {
-                const slideBodyPr = parseBodyProperties(txBody);
-                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
-                const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
-
-                const masterBodyPr = masterPh ? masterPh.bodyPr : {};
-                const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
-
-                const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-
-                const textGroup = new Konva.Group({ clip: { x: pos.x, y: pos.y, width: pos.width, height: pos.height } });
-                layer.add(textGroup);
-                await processParagraphs(textGroup, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, finalBodyPr);
-            }
-            return konvaShape ? konvaShape.getClientRect() : { width: 0, height: 0 };
+            return konvaShape ? konvaShape.getClientRect({ relativeTo: layer.getStage() }) : { width: 0, height: 0 };
         }
 
         function parseGroupShapeProperties(grpSpPrNode, slideContext) {
@@ -1925,81 +1748,65 @@
             return properties;
         }
 
-        async function processGroupShape(group, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum) {
+        async function processGroupShape(group, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
-            let groupXfrm = {
-                x: parentXfrm.x,
-                y: parentXfrm.y,
-                rot: 0,
-                flipH: false,
-                flipV: false,
-                w: 0,
-                h: 0
-            };
-            let groupProps = null;
-            let childXfrm = { x: 0, y: 0 }; // This will be the base transform for all children of this group
+
+            const finalMatrixForChildren = parentMatrix.clone();
 
             if (grpSpPrNode) {
-                groupProps = parseGroupShapeProperties(grpSpPrNode, slideContext);
                 const xfrmNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                 if (xfrmNode) {
+                    // Group's position and orientation on the parent canvas
                     const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
-                    if (offNode) {
-                        groupXfrm.x += parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
-                        groupXfrm.y += parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
-                    }
-
                     const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
-                    if (extNode) {
-                        groupXfrm.w = parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL;
-                        groupXfrm.h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
-                    }
+                    const x = offNode ? parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL : 0;
+                    const y = offNode ? parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL : 0;
+                    const w = extNode ? parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL : 0;
+                    const h = extNode ? parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL : 0;
+                    const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
+                    const flipH = xfrmNode.getAttribute('flipH') === '1';
+                    const flipV = xfrmNode.getAttribute('flipV') === '1';
 
+                    // Bounding box for the child elements
                     const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
-                    if (chOffNode) {
-                        childXfrm.x = -(parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL);
-                        childXfrm.y = -(parseInt(chOffNode.getAttribute("y")) / EMU_PER_PIXEL);
-                    }
+                    const chExtNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chExt')[0];
+                    const chX = chOffNode ? parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL : 0;
+                    const chY = chOffNode ? parseInt(chOffNode.getAttribute("y")) / EMU_PER_PIXEL : 0;
+                    const chW = chExtNode ? parseInt(chExtNode.getAttribute("cx")) / EMU_PER_PIXEL : 1; // Avoid divide by zero
+                    const chH = chExtNode ? parseInt(chExtNode.getAttribute("cy")) / EMU_PER_PIXEL : 1;
 
-                    groupXfrm.rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
-                    groupXfrm.flipH = xfrmNode.getAttribute('flipH') === '1';
-                    groupXfrm.flipV = xfrmNode.getAttribute('flipV') === '1';
+                    // Placement Matrix: Transforms the group's frame from local to parent space
+                    const placementMatrix = new Matrix();
+                    placementMatrix.translate(x, y);
+                    placementMatrix.translate(w / 2, h / 2);
+                    placementMatrix.rotate(rot * Math.PI / 180);
+                    placementMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+                    placementMatrix.translate(-w / 2, -h / 2);
+
+                    // Mapping Matrix: Maps children from their virtual canvas to the group's frame
+                    const scaleX = w / chW;
+                    const scaleY = h / chH;
+                    const mappingMatrix = new Matrix();
+                    mappingMatrix.scale(scaleX, scaleY);
+                    mappingMatrix.translate(-chX, -chY);
+
+                    // Combine them: Final = Parent * Placement * Mapping
+                    finalMatrixForChildren.multiply(placementMatrix);
+                    finalMatrixForChildren.multiply(mappingMatrix);
                 }
             }
-
-            if (groupProps && groupProps.fill && groupProps.ext) {
-                const bgRect = new Konva.Rect({
-                    x: groupXfrm.x,
-                    y: groupXfrm.y,
-                    width: groupProps.ext.width,
-                    height: groupProps.ext.height,
-                    fill: groupProps.fill.color,
-                });
-                layer.add(bgRect);
-            }
-
-            const konvaGroup = new Konva.Group({
-                x: groupXfrm.x + groupXfrm.w / 2,
-                y: groupXfrm.y + groupXfrm.h / 2,
-                offsetX: groupXfrm.w / 2,
-                offsetY: groupXfrm.h / 2,
-            });
-            konvaGroup.rotation(groupXfrm.rot);
-            if (groupXfrm.flipH) konvaGroup.scaleX(-1);
-            if (groupXfrm.flipV) konvaGroup.scaleY(-1);
-            layer.add(konvaGroup);
 
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
+                    await processShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, konvaGroup, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, childXfrm, defaultTextStyles, slideNum);
+                    await processGroupShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum);
                 } else if (tagName === 'pic') {
-                    await processPicture(element, konvaGroup, imageMap, childXfrm, masterPlaceholders, layoutPlaceholders, slideContext);
+                    await processPicture(element, layer, imageMap, finalMatrixForChildren.clone(), masterPlaceholders, layoutPlaceholders, slideContext);
                 }
             }
         }
@@ -2122,30 +1929,41 @@
             return null;
         }
 
-        async function processTable(graphicFrame, layer, slideContext) {
+        async function processTable(graphicFrame, layer, slideContext, parentMatrix) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
 
-            // 1. Get position and size of the graphic frame
             const xfrmNode = graphicFrame.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
-            let pos = {
-                x: 0,
-                y: 0,
-                width: 0,
-                height: 0
-            };
+            let pos = { x: 0, y: 0, width: 0, height: 0 };
+            const localMatrix = new Matrix();
+
             if (xfrmNode) {
                 const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
                 const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                 if (offNode && extNode) {
-                    pos = {
-                        x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
-                        y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
-                        width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
-                        height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
-                    };
+                    const x = parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
+                    const y = parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
+                    const w = parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL;
+                    const h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
+                    const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
+                    const flipH = xfrmNode.getAttribute('flipH') === '1';
+                    const flipV = xfrmNode.getAttribute('flipV') === '1';
+
+                    pos = { x: 0, y: 0, width: w, height: h }; // Position is now relative to the container
+
+                    localMatrix.translate(x, y);
+                    localMatrix.translate(w / 2, h / 2);
+                    localMatrix.rotate(rot * Math.PI / 180);
+                    localMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+                    localMatrix.translate(-w / 2, -h / 2);
                 }
             }
+
+            const finalMatrix = parentMatrix.clone().multiply(localMatrix);
+            const tableContainer = new Konva.Group();
+            const transform = new Konva.Transform(finalMatrix.m);
+            tableContainer.setAttrs(transform.decompose());
+            layer.add(tableContainer);
 
             const tblNode = graphicFrame.getElementsByTagNameNS(DML_NS, 'tbl')[0];
             if (!tblNode) return {
@@ -2238,7 +2056,7 @@
                         height: cellHeight,
                         fill: fillColor || 'transparent',
                     });
-                    layer.add(cellRect);
+                    tableContainer.add(cellRect);
 
                     // Draw borders using a strategy to avoid double-drawing
                     const borders = getCellBorders(cellNode, slideContext);
@@ -2258,12 +2076,12 @@
                                 strokeWidth: borderStyle.width,
                                 listening: false, // Make lines non-interactive
                             });
-                            layer.add(border);
+                            tableContainer.add(border);
                         }
                     }
 
                     // Render text content
-                    await processCellText(cellNode, layer, cellX, cellY, cellWidth, cellHeight, slideContext);
+                    await processCellText(cellNode, tableContainer, cellX, cellY, cellWidth, cellHeight, slideContext);
                 }
             }
 
@@ -2327,16 +2145,17 @@
             await processParagraphs(textGroup, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, bodyPr);
         }
 
-        async function processPicture(picNode, layer, imageMap, parentXfrm, masterPlaceholders, layoutPlaceholders, slideContext) {
+        async function processPicture(picNode, layer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-            let pos = null;
+            let localMatrix = new Matrix();
+            let pos;
+
             const nvPicPrNode = picNode.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0];
             const nvPrNode = nvPicPrNode ? nvPicPrNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0] : null;
             const phNode = nvPrNode ? nvPrNode.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
 
-            // 1. Try to get transform from the picture element itself
             const spPrNode = picNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
             const xfrmNode = spPrNode ? spPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0] : null;
 
@@ -2344,124 +2163,126 @@
                 const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
                 const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                 if (offNode && extNode) {
-                    pos = {
-                        x: (parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL) + parentXfrm.x,
-                        y: (parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL) + parentXfrm.y,
-                        width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
-                        height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
-                    };
+                    const x = parseInt(offNode.getAttribute("x")) / 12700;
+                    const y = parseInt(offNode.getAttribute("y")) / 12700;
+                    const w = parseInt(extNode.getAttribute("cx")) / 12700;
+                    const h = parseInt(extNode.getAttribute("cy")) / 12700;
+                    const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
+                    const flipH = xfrmNode.getAttribute('flipH') === '1';
+                    const flipV = xfrmNode.getAttribute('flipV') === '1';
+
+                    pos = { width: w, height: h };
+
+                    localMatrix.translate(x, y);
+                    localMatrix.translate(w / 2, h / 2);
+                    localMatrix.rotate(rot * Math.PI / 180);
+                    localMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+                    localMatrix.translate(-w / 2, -h / 2);
                 }
-            } else if (phNode && (layoutPlaceholders || masterPlaceholders)) {
-                // 2. If no transform, get it from the layout or master placeholder
+            } else if (phNode) {
                 const phType = phNode.getAttribute('type');
                 const phIdx = phNode.getAttribute('idx');
                 const phKey = phIdx ? `idx_${phIdx}` : phType;
 
                 const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
                 const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
-                const placeholder = layoutPh || masterPh; // Layout takes precedence
+                const placeholder = layoutPh || masterPh;
 
                 if (placeholder) {
-                    pos = { ...placeholder.pos }; // Clone from layout/master
-                    pos.x += parentXfrm.x;
-                    pos.y += parentXfrm.y;
+                    pos = { ...placeholder.pos };
+                    localMatrix.translate(pos.x, pos.y);
                 }
             }
 
             if (!pos) return { width: 0, height: 0 };
 
-            // 3. Look up placeholder properties to get background fill
-            let placeholderProps = null;
-            if (phNode && (layoutPlaceholders || masterPlaceholders)) {
+            const finalMatrix = parentMatrix.clone().multiply(localMatrix);
+            const transform = new Konva.Transform(finalMatrix.m);
+            const decomposed = transform.decompose();
+
+            const pictureGroup = new Konva.Group();
+            pictureGroup.setAttrs(decomposed);
+            layer.add(pictureGroup);
+
+            if (phNode) {
                 const phType = phNode.getAttribute('type');
                 const phIdx = phNode.getAttribute('idx');
                 const phKey = phIdx ? `idx_${phIdx}` : phType;
                 const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
                 const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
 
-                // Merge properties: layout overrides master
-                const masterShapeProps = masterPh ? masterPh.shapeProps : null;
-                const layoutShapeProps = layoutPh ? layoutPh.shapeProps : null;
+                const masterShapeProps = masterPh ? masterPh.shapeProps : {};
+                const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
 
-                placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
-            }
+                const placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
 
-            // 4. Create a group for the picture and its potential background
-            const pictureGroup = new Konva.Group({ x: pos.x, y: pos.y });
-            layer.add(pictureGroup);
+                if (placeholderProps) {
+                    const rectConfig = {
+                        width: pos.width,
+                        height: pos.height,
+                    };
 
-            // 5. Draw background and border from placeholder if they exist
-            if (placeholderProps) {
-                const rectConfig = {
-                    width: pos.width,
-                    height: pos.height,
-                };
+                    let shouldDrawRect = false;
 
-                let shouldDrawRect = false;
-
-                if (placeholderProps.fill && placeholderProps.fill !== 'none' && placeholderProps.fill.type === 'solid') {
-                    rectConfig.fill = placeholderProps.fill.color;
-                    shouldDrawRect = true;
-                }
-
-                if (placeholderProps.stroke && placeholderProps.stroke !== 'none') {
-                    rectConfig.stroke = placeholderProps.stroke.color;
-                    rectConfig.strokeWidth = placeholderProps.stroke.width || 1;
-                    if (placeholderProps.stroke.dash) {
-                        rectConfig.dash = placeholderProps.stroke.dash;
+                    if (placeholderProps.fill && placeholderProps.fill !== 'none' && placeholderProps.fill.type === 'solid') {
+                        rectConfig.fill = placeholderProps.fill.color;
+                        shouldDrawRect = true;
                     }
-                    shouldDrawRect = true;
-                }
 
-                if (shouldDrawRect) {
-                    const bgRect = new Konva.Rect(rectConfig);
-                    pictureGroup.add(bgRect);
+                    if (placeholderProps.stroke && placeholderProps.stroke !== 'none') {
+                        rectConfig.stroke = placeholderProps.stroke.color;
+                        rectConfig.strokeWidth = placeholderProps.stroke.width || 1;
+                        if (placeholderProps.stroke.dash) {
+                            rectConfig.dash = placeholderProps.stroke.dash;
+                        }
+                        shouldDrawRect = true;
+                    }
+
+                    if (shouldDrawRect) {
+                        const bgRect = new Konva.Rect(rectConfig);
+                        pictureGroup.add(bgRect);
+                    }
                 }
-                // TODO: Handle other fill types like gradients
             }
 
-            // 6. Get image relationship ID from blipFill -> blip
             const blipFillNode = picNode.getElementsByTagNameNS(PML_NS, 'blipFill')[0];
             if (!blipFillNode) return { width: pos.width, height: pos.height };
-
             const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
             if (!blipNode) return { width: pos.width, height: pos.height };
-
             const relId = blipNode.getAttribute('r:embed');
             if (!relId || !imageMap[relId]) return { width: pos.width, height: pos.height };
 
-            // 7. Create and add Konva Image to the group
             try {
                 const imageObj = await createImage(imageMap[relId]);
                 const konvaImage = new Konva.Image({
-                    x: 0, // Position is relative to the group
-                    y: 0,
                     image: imageObj,
                     width: pos.width,
                     height: pos.height,
+                    x: 0,
+                    y: 0,
                 });
                 pictureGroup.add(konvaImage);
+
+                return { width: pos.width, height: pos.height };
             } catch (e) {
                 console.error("Error creating image", e);
+                return { width: 0, height: 0 };
             }
-
-            return { width: pos.width, height: pos.height };
         }
 
-        async function processShapeTree(elements, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap) {
+        async function processShapeTree(elements, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-            const parentXfrm = { x: 0, y: 0 };
 
             for (const element of elements) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum);
+                    await processShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentXfrm, defaultTextStyles, slideNum);
+                    await processGroupShape(element, layer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum);
                 } else if (tagName === 'graphicFrame') {
                     const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                     if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
-                        await processTable(element, layer, slideContext);
+                        await processTable(element, layer, slideContext, parentMatrix.clone());
                     } else if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/chart') {
                         const chartRelId = graphicData.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/chart", "chart")[0].getAttribute("r:id");
                         if (chartRelId && slideRels && slideRels[chartRelId]) {
@@ -2469,18 +2290,17 @@
                             const chartXml = await getNormalizedXmlString(entriesMap, chartPath);
                             if (chartXml) {
                                 const chartData = parseChart(chartXml);
-                                await renderChart(element, layer, chartData);
+                                await renderChart(element, layer, chartData, parentMatrix.clone());
                             }
                         }
                     }
                 } else if (tagName === 'pic') {
-                    await processPicture(element, layer, imageMap, parentXfrm, masterPlaceholders, layoutPlaceholders, slideContext);
+                    await processPicture(element, layer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext);
                 }
             }
         }
 
         async function renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
-            activeCharts = []; // Clear previously rendered charts
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
 
@@ -2519,18 +2339,19 @@
             const mainLayer = new Konva.Layer();
             stage.add(mainLayer);
 
+            const initialMatrix = new Matrix();
             if (showMasterShapes) {
                 if (masterStaticShapes) {
-                    await processShapeTree(masterStaticShapes, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap);
+                    await processShapeTree(masterStaticShapes, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone());
                 }
                  if (layoutStaticShapes) {
-                    await processShapeTree(layoutStaticShapes, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap);
+                    await processShapeTree(layoutStaticShapes, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone());
                 }
             }
 
             const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
             if (spTreeNode) {
-                await processShapeTree(spTreeNode.children, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap);
+                await processShapeTree(spTreeNode.children, mainLayer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, initialMatrix.clone());
             }
 
             const resizeStage = () => {
