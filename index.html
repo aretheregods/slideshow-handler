@@ -1798,8 +1798,8 @@
                     placementMatrix.translate(-w / 2, -h / 2);
 
                     // Mapping Matrix: Maps children from their virtual canvas to the group's frame
-                    const scaleX = w / chW;
-                    const scaleY = h / chH;
+                    const scaleX = (chW === 0) ? 1 : w / chW;
+                    const scaleY = (chH === 0) ? 1 : h / chH;
                     const mappingMatrix = new Matrix();
                     mappingMatrix.scale(scaleX, scaleY);
                     mappingMatrix.translate(-chX, -chY);
