@@ -1,4 +1,4 @@
-import Konva from 'konva';
+import Konva from 'https://cdn.jsdelivr.net/npm/konva@9.3.6/+esm';
 import * as Matrix from './matrix.js';
 
 // --- Type Definitions (JSDoc) ---
