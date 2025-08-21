@@ -189,9 +189,9 @@ export class ShapeBuilder {
             }
 
             if (shapeProps.stroke) {
+                const scaleX = Math.sqrt(finalMatrix.m[0] * finalMatrix.m[0] + finalMatrix.m[1] * finalMatrix.m[1]);
                 konvaShape.stroke(shapeProps.stroke.color);
-                konvaShape.strokeWidth(shapeProps.stroke.width || 1);
-                konvaShape.setAttr('vectorEffect', 'non-scaling-stroke');
+                konvaShape.strokeWidth((shapeProps.stroke.width || 1) / scaleX);
                 if (shapeProps.stroke.dash) {
                     konvaShape.dash(shapeProps.stroke.dash);
                 }
