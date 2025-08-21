@@ -106,7 +106,7 @@ export const ShapeType = {
  * @param {Matrix} matrix
  * @returns {{x: number, y: number, rotation: number, scaleX: number, scaleY: number}}
  */
-function decompose(matrix) {
+export function decompose(matrix) {
   const a = matrix[0][0], b = matrix[0][1], c = matrix[0][2];
   const d = matrix[1][0], e = matrix[1][1], f = matrix[1][2];
   const tx = c, ty = f;
@@ -124,7 +124,7 @@ function decompose(matrix) {
  * @param {Geometry} geometry
  * @returns {Matrix}
  */
-function getTransformationMatrix(transform, geometry) {
+export function getTransformationMatrix(transform, geometry) {
   const { x = 0, y = 0, rot = 0, flipV = false, flipH = false } = transform;
   const { w = 0, h = 0 } = geometry;
   const centerX = w / 2, centerY = h / 2;
