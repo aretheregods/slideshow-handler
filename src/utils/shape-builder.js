@@ -2,13 +2,14 @@ import { Matrix } from './matrix.js';
 import { CanvasRenderer } from './canvas-renderer.js';
 
 export class ShapeBuilder {
-    constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, emuPerPixel) {
+    constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, emuPerPixel, slideSize) {
         this.renderer = renderer;
         this.slideContext = slideContext;
         this.imageMap = imageMap;
         this.masterPlaceholders = masterPlaceholders;
         this.layoutPlaceholders = layoutPlaceholders;
         this.emuPerPixel = emuPerPixel;
+        this.slideSize = slideSize;
     }
 
     build(shapeNode, parentMatrix, shapeProps) {
@@ -85,6 +86,12 @@ export class ShapeBuilder {
 
             if (placeholder && placeholder.pos) {
                 pos = { ...placeholder.pos };
+
+                // Special handling for footers to stretch across the slide
+                if (phType === 'ftr') {
+                    pos.width = this.slideSize.width - (pos.x * 2);
+                }
+
                 localMatrix.translate(pos.x, pos.y);
                 pos.x = 0;
                 pos.y = 0;
