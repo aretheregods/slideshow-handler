@@ -42,6 +42,7 @@ export class ShapeBuilder {
 
         let localMatrix = new Matrix();
         let pos;
+        let flipH = false, flipV = false;
 
         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
         if (xfrmNode) {
@@ -53,8 +54,8 @@ export class ShapeBuilder {
                 const w = parseInt(extNode.getAttribute("cx")) / this.emuPerPixel;
                 const h = parseInt(extNode.getAttribute("cy")) / this.emuPerPixel;
                 const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
-                const flipH = xfrmNode.getAttribute('flipH') === '1';
-                const flipV = xfrmNode.getAttribute('flipV') === '1';
+                flipH = xfrmNode.getAttribute('flipH') === '1';
+                flipV = xfrmNode.getAttribute('flipV') === '1';
 
                 pos = { x: 0, y: 0, width: w, height: h };
 
@@ -150,14 +151,18 @@ export class ShapeBuilder {
                     const arcRadiusX = pos.width / 2;
                     const arcRadiusY = pos.height / 2;
 
-                    const arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
-                    const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+                    const arcStart = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                    const arcEnd = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
 
                     const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
+                    let arcSweepFlag = arcSweepAngle >= 0 ? "0" : "1";
+                    if (flipH ^ flipV) {
+                        arcSweepFlag = arcSweepFlag === "0" ? "1" : "0";
+                    }
 
                     const arcPath = [
                         "M", arcStart.x, arcStart.y,
-                        "A", arcRadiusX, arcRadiusY, 0, arcLargeArcFlag, 1, arcEnd.x, arcEnd.y,
+                        "A", arcRadiusX, arcRadiusY, 0, arcLargeArcFlag, arcSweepFlag, arcEnd.x, arcEnd.y,
                     ].join(" ");
 
                     this.renderer.drawPath(arcPath, {
@@ -322,18 +327,10 @@ export class ShapeBuilder {
     }
 
     polarToCartesian(centerX, centerY, radiusX, radiusY, angleInDegrees) {
-        const angleInRadians = (angleInDegrees - 180) * Math.PI / 180.0;
+        const angleInRadians = angleInDegrees * Math.PI / 180.0;
         return {
             x: centerX + (radiusX * Math.cos(angleInRadians)),
             y: centerY + (radiusY * Math.sin(angleInRadians))
-        };
-    }
-
-    polarToCartesianForArc(centerX, centerY, radiusX, radiusY, angleInDegrees) {
-        const angleInRadians = angleInDegrees * Math.PI / 180.0;
-        return {
-            x: centerX - (radiusX * Math.cos(angleInRadians)),
-            y: centerY - (radiusY * Math.sin(angleInRadians))
         };
     }
 }
