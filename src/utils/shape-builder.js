@@ -69,14 +69,17 @@ export class ShapeBuilder {
                 localMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
                 localMatrix.translate(-w / 2, -h / 2);
             }
-        } else if (phKey && (this.layoutPlaceholders?.[phKey] || this.masterPlaceholders?.[phKey])) {
-            const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
-            const masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
+        } else if (phKey) { // Simplified condition, as we'll handle the lookup inside
+            // First, try to find placeholders by specific key (e.g., idx_11)
+            let layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
+            let masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
 
-            if (phType === 'ftr') {
-                console.log(`[FOOTER DEBUG] Shape: "${shapeName}", phKey: ${phKey}`);
-                console.log('[FOOTER DEBUG] Layout Placeholder:', JSON.stringify(layoutPh, null, 2));
-                console.log('[FOOTER DEBUG] Master Placeholder:', JSON.stringify(masterPh, null, 2));
+            // If not found, fall back to generic type key (e.g., 'ftr')
+            if (!layoutPh && this.layoutPlaceholders?.[phType]) {
+                layoutPh = this.layoutPlaceholders[phType];
+            }
+            if (!masterPh && this.masterPlaceholders?.[phType]) {
+                masterPh = this.masterPlaceholders[phType];
             }
 
             // Prioritize layout placeholder only if it has position info. Otherwise, fallback to master.
@@ -87,8 +90,6 @@ export class ShapeBuilder {
                 localMatrix.translate(pos.x, pos.y);
                 pos.x = 0;
                 pos.y = 0;
-            } else if (phType === 'ftr') {
-                console.log(`[FOOTER DEBUG] No position found for footer placeholder "${shapeName}" in layout or master.`);
             }
         }
 
