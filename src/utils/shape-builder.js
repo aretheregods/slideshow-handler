@@ -50,7 +50,6 @@ export class ShapeBuilder {
 
         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
         if (xfrmNode) {
-            if (shapeName === 'Title 23') console.log('[DEBUG] Found <xfrm> on shape itself.');
             const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
             if (offNode && extNode) {
@@ -74,6 +73,12 @@ export class ShapeBuilder {
             const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
             const masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
 
+            if (phType === 'ftr') {
+                console.log(`[FOOTER DEBUG] Shape: "${shapeName}", phKey: ${phKey}`);
+                console.log('[FOOTER DEBUG] Layout Placeholder:', JSON.stringify(layoutPh, null, 2));
+                console.log('[FOOTER DEBUG] Master Placeholder:', JSON.stringify(masterPh, null, 2));
+            }
+
             // Prioritize layout placeholder only if it has position info. Otherwise, fallback to master.
             const placeholder = (layoutPh && layoutPh.pos) ? layoutPh : masterPh;
 
@@ -82,9 +87,9 @@ export class ShapeBuilder {
                 localMatrix.translate(pos.x, pos.y);
                 pos.x = 0;
                 pos.y = 0;
+            } else if (phType === 'ftr') {
+                console.log(`[FOOTER DEBUG] No position found for footer placeholder "${shapeName}" in layout or master.`);
             }
-        } else {
-            if (shapeName === 'Title 23') console.log('[DEBUG] No <xfrm> and no placeholder key. Cannot determine position.');
         }
 
         if (!pos) return { shape: null, pos: null, phKey, phType };
