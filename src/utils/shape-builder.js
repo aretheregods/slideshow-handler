@@ -193,8 +193,8 @@ export class ShapeBuilder {
                     const adj2 = avLst?.adj2 !== undefined ? avLst.adj2 : 10800000;
                     const adj3 = avLst?.adj3 !== undefined ? avLst.adj3 : 50000;
 
-                    const startAngle = adj1 / 120000;
-                    const sweepAngle = adj2 / 120000;
+                    const startAngle = adj1 / 60000;
+                    const sweepAngle = adj2 / 60000;
                     const endAngle = startAngle + sweepAngle;
 
                     const centerX = pos.width / 2;
@@ -206,18 +206,18 @@ export class ShapeBuilder {
                     const innerRadiusX = outerRadiusX * (1 - innerRadiusRatio);
                     const innerRadiusY = outerRadiusY * (1 - innerRadiusRatio);
 
-                    const outerStart = this.polarToCartesian(centerX, centerY, outerRadiusX, outerRadiusY, endAngle);
-                    const outerEnd = this.polarToCartesian(centerX, centerY, outerRadiusX, outerRadiusY, startAngle);
-                    const innerStart = this.polarToCartesian(centerX, centerY, innerRadiusX, innerRadiusY, endAngle);
-                    const innerEnd = this.polarToCartesian(centerX, centerY, innerRadiusX, innerRadiusY, startAngle);
+                    const outerStart = this.polarToCartesian(centerX, centerY, outerRadiusX, outerRadiusY, startAngle);
+                    const outerEnd = this.polarToCartesian(centerX, centerY, outerRadiusX, outerRadiusY, endAngle);
+                    const innerStart = this.polarToCartesian(centerX, centerY, innerRadiusX, innerRadiusY, startAngle);
+                    const innerEnd = this.polarToCartesian(centerX, centerY, innerRadiusX, innerRadiusY, endAngle);
 
                     const largeArcFlag = sweepAngle <= 180 ? "0" : "1";
 
                     const path = [
                         "M", outerStart.x, outerStart.y,
-                        "A", outerRadiusX, outerRadiusY, 0, largeArcFlag, 0, outerEnd.x, outerEnd.y,
+                        "A", outerRadiusX, outerRadiusY, 0, largeArcFlag, 1, outerEnd.x, outerEnd.y,
                         "L", innerEnd.x, innerEnd.y,
-                        "A", innerRadiusX, innerRadiusY, 0, largeArcFlag, 1, innerStart.x, innerStart.y,
+                        "A", innerRadiusX, innerRadiusY, 0, largeArcFlag, 0, innerStart.x, innerStart.y,
                         "Z"
                     ].join(" ");
 
