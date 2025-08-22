@@ -580,7 +580,10 @@
                     }
 
                     const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
-                    const fontSize = finalRunProps.size || (18 * PT_TO_PX);
+                    let fontSize = finalRunProps.size || (18 * PT_TO_PX);
+                    if (bodyPr.fontScale) {
+                        fontSize *= bodyPr.fontScale;
+                    }
                     const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
                     const fontFamily = resolveFontFamily(finalRunProps, phType, slideContext);
 
@@ -599,7 +602,11 @@
 
                         currentLine.runs.push({ text: word, width: wordWidth, font: tempCtx.font, color: textColor, size: fontSize });
                         currentLine.width += wordWidth;
-                        currentLine.height = Math.max(currentLine.height, fontSize * 1.2); // Approximate height
+                        let lineHeight = fontSize * 1.2; // Approximate height
+                        if (bodyPr.lnSpcReduction) {
+                            lineHeight *= (1 - bodyPr.lnSpcReduction);
+                        }
+                        currentLine.height = Math.max(currentLine.height, lineHeight);
                     }
                 }
                 pushCurrentLine(); // Push the last line of the paragraph
@@ -1390,6 +1397,18 @@
 
             const bIns = bodyPrNode.getAttribute('bIns');
             if (bIns) props.bIns = parseInt(bIns) / EMU_PER_PIXEL;
+
+            const normAutofitNode = bodyPrNode.getElementsByTagNameNS(DML_NS, 'normAutofit')[0];
+            if (normAutofitNode) {
+                const fontScale = normAutofitNode.getAttribute('fontScale');
+                if (fontScale) {
+                    props.fontScale = parseInt(fontScale) / 100000;
+                }
+                const lnSpcReduction = normAutofitNode.getAttribute('lnSpcReduction');
+                if (lnSpcReduction) {
+                    props.lnSpcReduction = parseInt(lnSpcReduction) / 100000;
+                }
+            }
 
             return props;
         }
