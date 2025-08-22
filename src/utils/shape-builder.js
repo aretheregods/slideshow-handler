@@ -2,13 +2,14 @@ import { Matrix } from './matrix.js';
 import { CanvasRenderer } from './canvas-renderer.js';
 
 export class ShapeBuilder {
-    constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, emuPerPixel) {
+    constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, emuPerPixel, slideSize) {
         this.renderer = renderer;
         this.slideContext = slideContext;
         this.imageMap = imageMap;
         this.masterPlaceholders = masterPlaceholders;
         this.layoutPlaceholders = layoutPlaceholders;
         this.emuPerPixel = emuPerPixel;
+        this.slideSize = slideSize;
     }
 
     build(shapeNode, parentMatrix, shapeProps) {
@@ -50,7 +51,6 @@ export class ShapeBuilder {
 
         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
         if (xfrmNode) {
-            if (shapeName === 'Title 23') console.log('[DEBUG] Found <xfrm> on shape itself.');
             const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
             if (offNode && extNode) {
@@ -70,23 +70,35 @@ export class ShapeBuilder {
                 localMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
                 localMatrix.translate(-w / 2, -h / 2);
             }
-        } else if (phKey && (this.layoutPlaceholders?.[phKey] || this.masterPlaceholders?.[phKey])) {
-            if (shapeName === 'Title 23') console.log(`[DEBUG] No <xfrm> on shape. Looking for placeholder with key: ${phKey}`);
-            const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
-            const masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
-            const placeholder = layoutPh || masterPh;
-            if (placeholder) {
-                if (shapeName === 'Title 23') console.log('[DEBUG] Found placeholder:', placeholder);
+        } else if (phKey) {
+            // Find layout placeholder by specific key or fall back to generic type
+            let layoutPh = this.layoutPlaceholders?.[phKey] || this.layoutPlaceholders?.[phType];
+
+            // Find master placeholder by specific key, or fall back to generic type, or search by type
+            let masterPh = this.masterPlaceholders?.[phKey] || this.masterPlaceholders?.[phType];
+            if (!masterPh) {
+                // Last resort: find the first placeholder on the master with a matching type
+                masterPh = Object.values(this.masterPlaceholders).find(p => p.type === phType);
+            }
+
+            // Prioritize layout placeholder only if it has position info. Otherwise, fallback to master.
+            const placeholder = (layoutPh && layoutPh.pos) ? layoutPh : masterPh;
+
+            if (placeholder && placeholder.pos) {
                 pos = { ...placeholder.pos };
+
+                // Special handling for footers to stretch across the slide
+                if (phType === 'ftr') {
+                    console.log('[WIDTH DEBUG] Original pos:', JSON.stringify(pos, null, 2));
+                    console.log('[WIDTH DEBUG] Slide size:', JSON.stringify(this.slideSize, null, 2));
+                    pos.width = this.slideSize.width - (pos.x * 2);
+                    console.log(`[WIDTH DEBUG] New calculated width: ${pos.width}`);
+                }
+
                 localMatrix.translate(pos.x, pos.y);
-                if (shapeName === 'Title 23') console.log(`[DEBUG] Applied translation from placeholder: x=${pos.x}, y=${pos.y}`);
                 pos.x = 0;
                 pos.y = 0;
-            } else {
-                if (shapeName === 'Title 23') console.log('[DEBUG] Placeholder key found, but no matching placeholder in layout or master.');
             }
-        } else {
-            if (shapeName === 'Title 23') console.log('[DEBUG] No <xfrm> and no placeholder key. Cannot determine position.');
         }
 
         if (!pos) return { shape: null, pos: null, phKey, phType };

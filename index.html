@@ -403,6 +403,8 @@
                     slideContainer.className = 'slide-viewer';
                     slideContainer.id = `slide-${ i + 1 }`;
                     slideContainer.style.aspectRatio = `${slideSize.width} / ${slideSize.height}`;
+                    slideContainer.style.width = `${slideSize.width}px`;
+                    slideContainer.style.height = `${slideSize.height}px`;
                     slideViewerContainer.appendChild( slideContainer );
 
                     // The renderSlide function now handles its own scaling.
@@ -1548,37 +1550,47 @@
                         const idx = ph.getAttribute('idx');
                         const key = idx ? `idx_${idx}` : type;
 
+                        // Always create a placeholder entry for shapes with a <p:ph> tag.
+                        // The position will be added only if it exists.
+                        const placeholderData = {
+                            pos: null,
+                            type: type,
+                            listStyle: null,
+                            shapeProps: {},
+                            bodyPr: {}
+                        };
+
                         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                         if (xfrmNode) {
                             const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
                             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                             if (offNode && extNode) {
-                                const pos = {
+                                placeholderData.pos = {
                                     x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
                                     y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
                                     width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
                                     height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                                 };
-                                let listStyle = null;
-                                let bodyPr = {};
-                                const txBodyNode = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-                                if (txBodyNode) {
-                                    const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
-                                    if (lstStyleNode) {
-                                        listStyle = parseTextStyle(lstStyleNode);
-                                    }
-                                    bodyPr = parseBodyProperties(txBodyNode);
-                                }
-
-                                const tempSlideContext = {
-                                    theme: theme,
-                                    colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
-                                };
-                                const shapeProps = parseShapeProperties(shapeNode, tempSlideContext, "layout/master");
-
-                                placeholders[key] = { pos, type, listStyle, shapeProps, bodyPr };
                             }
                         }
+
+                        const txBodyNode = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+                        if (txBodyNode) {
+                            const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+                            if (lstStyleNode) {
+                                placeholderData.listStyle = parseTextStyle(lstStyleNode);
+                            }
+                            placeholderData.bodyPr = parseBodyProperties(txBodyNode);
+                        }
+
+                        const tempSlideContext = {
+                            theme: theme,
+                            colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
+                        };
+                        placeholderData.shapeProps = parseShapeProperties(shapeNode, tempSlideContext, "layout/master");
+
+                        placeholders[key] = placeholderData;
+
                         if (type === 'pic') {
                             staticShapes.push(shapeNode);
                         }
@@ -1659,7 +1671,7 @@
             }
         }
 
-        async function processShape(shape, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg) {
+        async function processShape(shape, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
 
             const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
@@ -1676,9 +1688,10 @@
                 }
             }
 
-            const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
+            const masterPh = masterPlaceholders ? (masterPlaceholders[phKey] || Object.values(masterPlaceholders).find(p => p.type === phType)) : null;
+            const layoutPh = layoutPlaceholders ? (layoutPlaceholders[phKey] || layoutPlaceholders[phType]) : null;
+
             const masterShapeProps = masterPh ? masterPh.shapeProps : {};
-            const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
             const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
             const slideShapeProps = parseShapeProperties(shape, slideContext, slideNum);
             let finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
@@ -1698,7 +1711,7 @@
                 stroke: finalStroke,
             };
 
-            const shapeBuilder = new ShapeBuilder(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, EMU_PER_PIXEL);
+            const shapeBuilder = new ShapeBuilder(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, EMU_PER_PIXEL, slideSize);
 
             renderer.ctx.save();
             const { pos } = shapeBuilder.build(shape, parentMatrix, shapeProps);
@@ -1759,7 +1772,7 @@
             return properties;
         }
 
-        async function processGroupShape(group, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg) {
+        async function processGroupShape(group, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -1830,9 +1843,9 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg);
+                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg, slideSize);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg);
+                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg, slideSize);
                 } else if (tagName === 'pic') {
                     await processPicture(element, renderer, imageMap, finalMatrixForChildren.clone(), masterPlaceholders, layoutPlaceholders, slideContext, finalBg);
                 }
@@ -2271,15 +2284,15 @@
             }
         }
 
-        async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix, finalBg) {
+        async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix, finalBg, slideSize) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             for (const element of elements) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg);
+                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg);
+                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize);
                 } else if (tagName === 'graphicFrame') {
                     const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                     if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
@@ -2325,16 +2338,16 @@
             const initialMatrix = new Matrix();
             if (showMasterShapes) {
                 if (masterStaticShapes) {
-                    await processShapeTree(masterStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg);
+                    await processShapeTree(masterStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg, slideSize);
                 }
                  if (layoutStaticShapes) {
-                    await processShapeTree(layoutStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg);
+                    await processShapeTree(layoutStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg, slideSize);
                 }
             }
 
             const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
             if (spTreeNode) {
-                await processShapeTree(spTreeNode.children, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, initialMatrix.clone(), finalBg);
+                await processShapeTree(spTreeNode.children, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, initialMatrix.clone(), finalBg, slideSize);
             }
 
             const resizeCanvas = () => {
