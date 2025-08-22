@@ -330,10 +330,10 @@ export class ShapeBuilder {
     }
 
     polarToCartesianForArc(centerX, centerY, radiusX, radiusY, angleInDegrees) {
-        const angleInRadians = -angleInDegrees * Math.PI / 180.0;
+        const angleInRadians = angleInDegrees * Math.PI / 180.0;
         return {
-            x: centerX + (radiusX * Math.cos(angleInRadians)),
-            y: centerY + (radiusY * Math.sin(angleInRadians))
+            x: centerX - (radiusX * Math.cos(angleInRadians)),
+            y: centerY - (radiusY * Math.sin(angleInRadians))
         };
     }
 }
