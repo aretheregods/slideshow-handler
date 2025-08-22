@@ -187,6 +187,110 @@ export class ShapeBuilder {
                         });
                     }
                     break;
+                case 'blockArc':
+                    const avLst = shapeProps.geometry.adjustments;
+                    const adj1 = avLst?.adj1 !== undefined ? avLst.adj1 : 0;
+                    const adj2 = avLst?.adj2 !== undefined ? avLst.adj2 : 10800000;
+                    const adj3 = avLst?.adj3 !== undefined ? avLst.adj3 : 50000;
+
+                    const startAngle = adj1 / 60000;
+                    const sweepAngle = adj2 / 60000;
+                    const endAngle = startAngle + sweepAngle;
+
+                    const centerX = pos.width / 2;
+                    const centerY = pos.height / 2;
+                    const outerRadiusX = pos.width / 2;
+                    const outerRadiusY = pos.height / 2;
+
+                    const innerRadiusRatio = adj3 / 100000;
+                    const innerRadiusX = outerRadiusX * (1 - innerRadiusRatio);
+                    const innerRadiusY = outerRadiusY * (1 - innerRadiusRatio);
+
+                    const outerStart = this.polarToCartesian(centerX, centerY, outerRadiusX, outerRadiusY, startAngle);
+                    const outerEnd = this.polarToCartesian(centerX, centerY, outerRadiusX, outerRadiusY, endAngle);
+                    const innerStart = this.polarToCartesian(centerX, centerY, innerRadiusX, innerRadiusY, startAngle);
+                    const innerEnd = this.polarToCartesian(centerX, centerY, innerRadiusX, innerRadiusY, endAngle);
+
+                    const largeArcFlag = sweepAngle <= 180 ? "0" : "1";
+
+                    const path = [
+                        "M", outerStart.x, outerStart.y,
+                        "A", outerRadiusX, outerRadiusY, 0, largeArcFlag, 1, outerEnd.x, outerEnd.y,
+                        "L", innerEnd.x, innerEnd.y,
+                        "A", innerRadiusX, innerRadiusY, 0, largeArcFlag, 0, innerStart.x, innerStart.y,
+                        "Z"
+                    ].join(" ");
+
+                    this.renderer.drawPath(path, {
+                        fill: shapeProps.fill?.color,
+                        stroke: shapeProps.stroke,
+                    });
+                    break;
+                case 'roundRect':
+                    const adj_roundRect = shapeProps.geometry.adjustments?.adj !== undefined ? shapeProps.geometry.adjustments.adj : 16667;
+                    const cornerRadiusRatio = adj_roundRect / 100000;
+                    const cornerRadius = (Math.min(pos.width, pos.height) / 4) * cornerRadiusRatio;
+
+                    const path_roundRect = [
+                        "M", cornerRadius, 0,
+                        "L", pos.width - cornerRadius, 0,
+                        "A", cornerRadius, cornerRadius, 0, 0, 1, pos.width, cornerRadius,
+                        "L", pos.width, pos.height - cornerRadius,
+                        "A", cornerRadius, cornerRadius, 0, 0, 1, pos.width - cornerRadius, pos.height,
+                        "L", cornerRadius, pos.height,
+                        "A", cornerRadius, cornerRadius, 0, 0, 1, 0, pos.height - cornerRadius,
+                        "L", 0, cornerRadius,
+                        "A", cornerRadius, cornerRadius, 0, 0, 1, cornerRadius, 0,
+                        "Z"
+                    ].join(" ");
+
+                    this.renderer.drawPath(path_roundRect, {
+                        fill: shapeProps.fill?.color,
+                        stroke: shapeProps.stroke,
+                    });
+                    break;
+                case 'round1Rect':
+                case 'round2SameRect':
+                case 'round2DiagRect':
+                case 'snip1Rect':
+                case 'snip2SameRect':
+                case 'snip2DiagRect':
+                case 'snipRoundRect':
+                    const adj1_multi = shapeProps.geometry.adjustments?.adj1 !== undefined ? shapeProps.geometry.adjustments.adj1 : 16667;
+                    const adj2_multi = shapeProps.geometry.adjustments?.adj2 !== undefined ? shapeProps.geometry.adjustments.adj2 : 16667;
+                    const cornerRadius1 = Math.min(pos.width, pos.height) * (adj1_multi / 100000);
+                    const cornerRadius2 = Math.min(pos.width, pos.height) * (adj2_multi / 100000);
+
+                    let path_multi;
+                    switch(geomType) {
+                        case 'round1Rect':
+                            path_multi = `M 0 ${cornerRadius1} A ${cornerRadius1} ${cornerRadius1} 0 0 1 ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L 0 ${pos.height} Z`;
+                            break;
+                        case 'round2SameRect':
+                            path_multi = `M 0 ${cornerRadius1} A ${cornerRadius1} ${cornerRadius1} 0 0 1 ${cornerRadius1} 0 L ${pos.width - cornerRadius2} 0 A ${cornerRadius2} ${cornerRadius2} 0 0 1 ${pos.width} ${cornerRadius2} L ${pos.width} ${pos.height} L 0 ${pos.height} Z`;
+                            break;
+                        case 'round2DiagRect':
+                            path_multi = `M 0 ${cornerRadius1} A ${cornerRadius1} ${cornerRadius1} 0 0 1 ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height - cornerRadius2} A ${cornerRadius2} ${cornerRadius2} 0 0 1 ${pos.width - cornerRadius2} ${pos.height} L 0 ${pos.height} Z`;
+                            break;
+                        case 'snip1Rect':
+                            path_multi = `M ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L 0 ${pos.height} L 0 ${cornerRadius1} Z`;
+                            break;
+                        case 'snip2SameRect':
+                            path_multi = `M ${cornerRadius1} 0 L ${pos.width - cornerRadius2} 0 L ${pos.width} ${cornerRadius2} L ${pos.width} ${pos.height} L 0 ${pos.height} L 0 ${cornerRadius1} Z`;
+                            break;
+                        case 'snip2DiagRect':
+                            path_multi = `M ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height - cornerRadius2} L ${pos.width - cornerRadius2} ${pos.height} L 0 ${pos.height} L 0 ${cornerRadius1} Z`;
+                            break;
+                        case 'snipRoundRect':
+                            path_multi = `M ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L ${cornerRadius2} ${pos.height} A ${cornerRadius2} ${cornerRadius2} 0 0 1 0 ${pos.height - cornerRadius2} L 0 ${cornerRadius1} Z`;
+                            break;
+                    }
+
+                    this.renderer.drawPath(path_multi, {
+                        fill: shapeProps.fill?.color,
+                        stroke: shapeProps.stroke,
+                    });
+                    break;
              }
         } else if (txBody) {
             // This is a shapeless textbox. Create a transparent rectangle to host the text.
@@ -194,5 +298,13 @@ export class ShapeBuilder {
         }
 
         return { pos, phKey, phType };
+    }
+
+    polarToCartesian(centerX, centerY, radiusX, radiusY, angleInDegrees) {
+        const angleInRadians = (angleInDegrees - 180) * Math.PI / 180.0;
+        return {
+            x: centerX + (radiusX * Math.cos(angleInRadians)),
+            y: centerY + (radiusY * Math.sin(angleInRadians))
+        };
     }
 }
