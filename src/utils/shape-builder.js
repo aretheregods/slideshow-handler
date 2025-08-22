@@ -118,9 +118,24 @@ export class ShapeBuilder {
                     });
                     break;
                 case 'line':
-                    this.renderer.drawLine(0, 0, pos.width, pos.height, {
+                    const decomp = finalMatrix.decompose();
+                    if (decomp.scale.x === 0 || decomp.scale.y === 0) {
+                        break;
+                    }
+                    const noScaleMatrix = new Matrix();
+                    noScaleMatrix.translate(decomp.translation.x, decomp.translation.y);
+                    noScaleMatrix.rotate(decomp.rotation);
+
+                    this.renderer.setTransform(noScaleMatrix);
+
+                    const scaledWidth = pos.width * decomp.scale.x;
+                    const scaledHeight = pos.height * decomp.scale.y;
+
+                    this.renderer.drawLine(0, 0, scaledWidth, scaledHeight, {
                         stroke: shapeProps.stroke,
                     });
+
+                    this.renderer.setTransform(finalMatrix);
                     break;
                 case 'arc':
                     const arcPath = `M 0,${pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.width},0`;
