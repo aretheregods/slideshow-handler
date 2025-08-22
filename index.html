@@ -97,7 +97,7 @@
         /* --- Slide Viewer & Debug Styling --- */
         .slide-viewer {
             width: 100%;
-            height: auto;
+            height: 100%;
             border: 1px solid #e5e7eb;
             background-color: #fff;
             box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -1606,23 +1606,27 @@
 
                 if (bulletOffset > 0 && line.isFirstLineOfParagraph) {
                     const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext);
-                    const bulletFontSize = finalProps.defRPr.size || 18;
-                    const bulletY = startY + line.startY;
+
+                    const firstRunSize = line.runs.length > 0 ? line.runs[0].size : (finalProps.defRPr.size || 18 * PT_TO_PX);
+                    const bulletBaselineY = startY + line.startY + firstRunSize;
 
                     if (finalProps.bullet.type === 'char') {
+                        const bulletFontSize = finalProps.defRPr.size || (18 * PT_TO_PX);
                         renderer.ctx.fillStyle = bulletColor;
                         renderer.ctx.font = `${bulletFontSize}px ${finalProps.bullet.font || 'Arial'}`;
-                        renderer.ctx.fillText(finalProps.bullet.char, line.x - bulletOffset, bulletY);
+                        renderer.ctx.fillText(finalProps.bullet.char, line.x - bulletOffset, bulletBaselineY);
                     } else if (finalProps.bullet.type === 'auto') {
                         const level = finalProps.level || 0;
                         if (!listCounters[level]) listCounters[level] = finalProps.bullet.startAt || 1;
                         const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]++);
+                        const bulletFontSize = finalProps.defRPr.size || (18 * PT_TO_PX);
                         renderer.ctx.fillStyle = bulletColor;
                         renderer.ctx.font = `${bulletFontSize}px ${finalProps.bullet.font || 'Arial'}`;
-                        renderer.ctx.fillText(bulletChar, line.x - bulletOffset, bulletY);
+                        renderer.ctx.fillText(bulletChar, line.x - bulletOffset, bulletBaselineY);
                     } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && imageMap[finalProps.bullet.relId]) {
                         const imageObj = await createImage(imageMap[finalProps.bullet.relId]);
-                        renderer.ctx.drawImage(imageObj, line.x - bulletOffset, bulletY, 16, 16);
+                        const imageY = bulletBaselineY - 8;
+                        renderer.ctx.drawImage(imageObj, line.x - bulletOffset, imageY, 16, 16);
                     }
                 }
 
@@ -1675,7 +1679,7 @@
                 stroke: finalStroke,
             };
 
-            const shapeBuilder = new ShapeBuilder(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders);
+            const shapeBuilder = new ShapeBuilder(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, EMU_PER_PIXEL);
 
             renderer.ctx.save();
             const { pos } = shapeBuilder.build(shape, parentMatrix, shapeProps);
@@ -2147,10 +2151,10 @@
                 const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
                 const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                 if (offNode && extNode) {
-                    const x = parseInt(offNode.getAttribute("x")) / 12700;
-                    const y = parseInt(offNode.getAttribute("y")) / 12700;
-                    const w = parseInt(extNode.getAttribute("cx")) / 12700;
-                    const h = parseInt(extNode.getAttribute("cy")) / 12700;
+                    const x = parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
+                    const y = parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
+                    const w = parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL;
+                    const h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
                     const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
                     const flipH = xfrmNode.getAttribute('flipH') === '1';
                     const flipV = xfrmNode.getAttribute('flipV') === '1';
