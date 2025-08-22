@@ -39,12 +39,6 @@ export class ShapeBuilder {
         }
 
         const isConnector = shapeName.startsWith('Straight Connector');
-        if (isConnector) {
-            console.log(`[CONNECTOR DEBUG] Processing shape: "${shapeName}"`);
-            console.log('[CONNECTOR DEBUG] Parent Matrix:', parentMatrix.m);
-        } else {
-            console.log(`[DEBUG] Processing shape: "${shapeName}", phKey: ${phKey}, phType: ${phType}`);
-        }
 
         let localMatrix = new Matrix();
         let pos;
@@ -105,14 +99,17 @@ export class ShapeBuilder {
 
         const finalMatrix = parentMatrix.clone().multiply(localMatrix);
 
-        if (isConnector) {
-            console.log('[CONNECTOR DEBUG] Local Matrix:', localMatrix.m);
-            console.log('[CONNECTOR DEBUG] Final Matrix:', finalMatrix.m);
-        }
 
         this.renderer.setTransform(finalMatrix);
 
         const txBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+
+        if (shapeName === 'Straight Connector 11' || shapeName === 'Arc 21') {
+            console.log(`[DEBUG] Shape: ${shapeName}`);
+            console.log(`[DEBUG] Position:`, JSON.stringify(pos, null, 2));
+            console.log(`[DEBUG] Final Matrix:`, finalMatrix.m);
+            console.log(`[DEBUG] Stroke Properties:`, JSON.stringify(shapeProps.stroke, null, 2));
+        }
 
         if (shapeProps && shapeProps.geometry) {
              const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
@@ -155,6 +152,11 @@ export class ShapeBuilder {
                     const arcSweepAngle = (arcAdj?.adj2 !== undefined ? arcAdj.adj2 : 5400000) / 60000;
                     const arcEndAngle = arcStartAngle + arcSweepAngle;
 
+                    if (shapeName === 'Arc 21') {
+                        console.log(`[DEBUG] Arc Start Angle: ${arcStartAngle}`);
+                        console.log(`[DEBUG] Arc Sweep Angle: ${arcSweepAngle}`);
+                    }
+
                     const arcCenterX = pos.width / 2;
                     const arcCenterY = pos.height / 2;
                     const arcRadiusX = pos.width / 2;
@@ -169,6 +171,10 @@ export class ShapeBuilder {
                         "M", arcStart.x, arcStart.y,
                         "A", arcRadiusX, arcRadiusY, 0, arcLargeArcFlag, 1, arcEnd.x, arcEnd.y,
                     ].join(" ");
+
+                    if (shapeName === 'Arc 21') {
+                        console.log(`[DEBUG] Arc Path: ${arcPath}`);
+                    }
 
                     this.renderer.drawPath(arcPath, {
                         stroke: shapeProps.stroke,
