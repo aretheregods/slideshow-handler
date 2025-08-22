@@ -69,17 +69,15 @@ export class ShapeBuilder {
                 localMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
                 localMatrix.translate(-w / 2, -h / 2);
             }
-        } else if (phKey) { // Simplified condition, as we'll handle the lookup inside
-            // First, try to find placeholders by specific key (e.g., idx_11)
-            let layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
-            let masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
+        } else if (phKey) {
+            // Find layout placeholder by specific key or fall back to generic type
+            let layoutPh = this.layoutPlaceholders?.[phKey] || this.layoutPlaceholders?.[phType];
 
-            // If not found, fall back to generic type key (e.g., 'ftr')
-            if (!layoutPh && this.layoutPlaceholders?.[phType]) {
-                layoutPh = this.layoutPlaceholders[phType];
-            }
-            if (!masterPh && this.masterPlaceholders?.[phType]) {
-                masterPh = this.masterPlaceholders[phType];
+            // Find master placeholder by specific key, or fall back to generic type, or search by type
+            let masterPh = this.masterPlaceholders?.[phKey] || this.masterPlaceholders?.[phType];
+            if (!masterPh) {
+                // Last resort: find the first placeholder on the master with a matching type
+                masterPh = Object.values(this.masterPlaceholders).find(p => p.type === phType);
             }
 
             // Prioritize layout placeholder only if it has position info. Otherwise, fallback to master.

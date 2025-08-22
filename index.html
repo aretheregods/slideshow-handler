@@ -2312,11 +2312,6 @@
         }
 
         async function renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
-            if (slideNum === 2) {
-                console.log(`[DIAGNOSTIC LOG FOR SLIDE ${slideNum}]`);
-                console.log('[DIAGNOSTIC] Master Placeholders:', JSON.stringify(masterPlaceholders, null, 2));
-                console.log('[DIAGNOSTIC] Layout Placeholders:', JSON.stringify(layoutPlaceholders, null, 2));
-            }
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
 
