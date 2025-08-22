@@ -141,7 +141,7 @@ export class ShapeBuilder {
                     break;
                 case 'arc':
                     const arcAdj = shapeProps.geometry.adjustments;
-                    const arcStartAngle = (arcAdj?.adj1 !== undefined ? arcAdj.adj1 : 90) / 60000;
+                    const arcStartAngle = (arcAdj?.adj1 !== undefined ? arcAdj.adj1 : 0) / 60000;
                     const arcSweepAngle = (arcAdj?.adj2 !== undefined ? arcAdj.adj2 : 5400000) / 60000;
                     const arcEndAngle = arcStartAngle + arcSweepAngle;
 
@@ -150,8 +150,8 @@ export class ShapeBuilder {
                     const arcRadiusX = pos.width / 2;
                     const arcRadiusY = pos.height / 2;
 
-                    const arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
-                    const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+                    const arcStart = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                    const arcEnd = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
 
                     const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
 
@@ -323,14 +323,6 @@ export class ShapeBuilder {
 
     polarToCartesian(centerX, centerY, radiusX, radiusY, angleInDegrees) {
         const angleInRadians = (angleInDegrees - 180) * Math.PI / 180.0;
-        return {
-            x: centerX + (radiusX * Math.cos(angleInRadians)),
-            y: centerY + (radiusY * Math.sin(angleInRadians))
-        };
-    }
-
-    polarToCartesianForArc(centerX, centerY, radiusX, radiusY, angleInDegrees) {
-        const angleInRadians = angleInDegrees * Math.PI / 180.0;
         return {
             x: centerX + (radiusX * Math.cos(angleInRadians)),
             y: centerY + (radiusY * Math.sin(angleInRadians))
