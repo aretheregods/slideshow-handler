@@ -1301,7 +1301,23 @@
 
             const prstGeomNode = spPrNode.getElementsByTagNameNS(DML_NS, 'prstGeom')[0];
             if (prstGeomNode) {
-                properties.geometry = { type: 'preset', preset: prstGeomNode.getAttribute('prst') };
+                const avLstNode = prstGeomNode.getElementsByTagNameNS(DML_NS, 'avLst')[0];
+                const adjustments = {};
+                if (avLstNode) {
+                    const gdNodes = avLstNode.getElementsByTagNameNS(DML_NS, 'gd');
+                    for (const gdNode of gdNodes) {
+                        const name = gdNode.getAttribute('name');
+                        const fmla = gdNode.getAttribute('fmla');
+                        if (fmla.startsWith('val ')) {
+                            adjustments[name] = parseInt(fmla.substring(4));
+                        }
+                    }
+                }
+                properties.geometry = {
+                    type: 'preset',
+                    preset: prstGeomNode.getAttribute('prst'),
+                    adjustments: adjustments,
+                };
             }
 
             const custGeomNode = spPrNode.getElementsByTagNameNS(DML_NS, 'custGeom')[0];

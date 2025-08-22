@@ -150,7 +150,26 @@ export class ShapeBuilder {
                     this.renderer.setTransform(finalMatrix);
                     break;
                 case 'arc':
-                    const arcPath = `M 0,${pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.width},0`;
+                    const arcAdj = shapeProps.geometry.adjustments;
+                    const arcStartAngle = (arcAdj?.adj1 !== undefined ? arcAdj.adj1 : 16200000) / 60000;
+                    const arcSweepAngle = (arcAdj?.adj2 !== undefined ? arcAdj.adj2 : 5400000) / 60000;
+                    const arcEndAngle = arcStartAngle + arcSweepAngle;
+
+                    const arcCenterX = pos.width / 2;
+                    const arcCenterY = pos.height / 2;
+                    const arcRadiusX = pos.width / 2;
+                    const arcRadiusY = pos.height / 2;
+
+                    const arcStart = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                    const arcEnd = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+
+                    const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
+
+                    const arcPath = [
+                        "M", arcStart.x, arcStart.y,
+                        "A", arcRadiusX, arcRadiusY, 0, arcLargeArcFlag, 1, arcEnd.x, arcEnd.y,
+                    ].join(" ");
+
                     this.renderer.drawPath(arcPath, {
                         stroke: shapeProps.stroke,
                     });
