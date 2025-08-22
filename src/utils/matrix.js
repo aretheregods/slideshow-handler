@@ -45,4 +45,18 @@ export class Matrix {
             y: this.m[1] * x + this.m[3] * y + this.m[5],
         };
     }
+
+    decompose() {
+        const m = this.m;
+        const a = m[0], b = m[1], c = m[2], d = m[3], e = m[4], f = m[5];
+        const det = a * d - b * c;
+        const sx = Math.sqrt(a * a + b * b);
+        const rotation = Math.atan2(b, a);
+
+        return {
+            translation: { x: e, y: f },
+            rotation: rotation,
+            scale: { x: sx, y: det / sx }
+        };
+    }
 }
