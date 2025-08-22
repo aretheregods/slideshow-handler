@@ -1665,6 +1665,10 @@
             let finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
             const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
 
+            if (phKey === 'idx_1') {
+                finalFill = { type: 'solid', color: 'red' };
+            }
+
             if (shape.getAttribute('useBgFill') === '1') {
                 if (finalBg && finalBg.type === 'color') {
                     finalFill = { type: 'solid', color: finalBg.value };
