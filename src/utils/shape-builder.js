@@ -229,7 +229,7 @@ export class ShapeBuilder {
                 case 'roundRect':
                     const adj_roundRect = shapeProps.geometry.adjustments?.adj !== undefined ? shapeProps.geometry.adjustments.adj : 16667;
                     const cornerRadiusRatio = adj_roundRect / 100000;
-                    const cornerRadius = (Math.min(pos.width, pos.height) / 2) * cornerRadiusRatio;
+                    const cornerRadius = (Math.min(pos.width, pos.height) / 4) * cornerRadiusRatio;
 
                     const path_roundRect = [
                         "M", cornerRadius, 0,
