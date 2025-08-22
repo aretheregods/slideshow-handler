@@ -65,10 +65,6 @@ export class ShapeBuilder {
                 pos = { x: 0, y: 0, width: w, height: h };
 
                 localMatrix.translate(x, y);
-                localMatrix.translate(w / 2, h / 2);
-                localMatrix.rotate(rot * Math.PI / 180);
-                localMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-                localMatrix.translate(-w / 2, -h / 2);
             }
         } else if (phKey && (this.layoutPlaceholders?.[phKey] || this.masterPlaceholders?.[phKey])) {
             if (shapeName === 'Title 23') console.log(`[DEBUG] No <xfrm> on shape. Looking for placeholder with key: ${phKey}`);
