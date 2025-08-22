@@ -97,7 +97,7 @@
         /* --- Slide Viewer & Debug Styling --- */
         .slide-viewer {
             width: 100%;
-            height: auto;
+            height: 100%;
             border: 1px solid #e5e7eb;
             background-color: #fff;
             box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -1664,10 +1664,6 @@
             const slideShapeProps = parseShapeProperties(shape, slideContext, slideNum);
             let finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
             const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
-
-            if (phKey === 'idx_1') {
-                finalFill = { type: 'solid', color: 'red' };
-            }
 
             if (shape.getAttribute('useBgFill') === '1') {
                 if (finalBg && finalBg.type === 'color') {
