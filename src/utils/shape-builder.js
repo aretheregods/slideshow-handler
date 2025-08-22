@@ -71,29 +71,17 @@ export class ShapeBuilder {
                 localMatrix.translate(-w / 2, -h / 2);
             }
         } else if (phKey && (this.layoutPlaceholders?.[phKey] || this.masterPlaceholders?.[phKey])) {
-            if (shapeName === 'Title 23') console.log(`[DEBUG] No <xfrm> on shape. Looking for placeholder with key: ${phKey}`);
             const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
             const masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
 
-            if (phType === 'ftr' || phType === 'sldNum' || phType === 'dt') {
-                console.log(`[DEBUG] Placeholder probe for shape: "${shapeName}", type: ${phType}, key: ${phKey}`);
-                console.log('[DEBUG] Layout Placeholder:', JSON.stringify(layoutPh, null, 2));
-                console.log('[DEBUG] Master Placeholder:', JSON.stringify(masterPh, null, 2));
-            }
+            // Prioritize layout placeholder only if it has position info. Otherwise, fallback to master.
+            const placeholder = (layoutPh && layoutPh.pos) ? layoutPh : masterPh;
 
-            const placeholder = layoutPh || masterPh;
             if (placeholder && placeholder.pos) {
-                if (shapeName === 'Title 23') console.log('[DEBUG] Found placeholder:', placeholder);
                 pos = { ...placeholder.pos };
                 localMatrix.translate(pos.x, pos.y);
-                if (shapeName === 'Title 23') console.log(`[DEBUG] Applied translation from placeholder: x=${pos.x}, y=${pos.y}`);
                 pos.x = 0;
                 pos.y = 0;
-            } else {
-                if (phType === 'ftr' || phType === 'sldNum' || phType === 'dt') {
-                    console.log(`[DEBUG] No position data found for placeholder "${shapeName}" in layout or master.`);
-                }
-                if (shapeName === 'Title 23') console.log('[DEBUG] Placeholder key found, but no matching placeholder in layout or master.');
             }
         } else {
             if (shapeName === 'Title 23') console.log('[DEBUG] No <xfrm> and no placeholder key. Cannot determine position.');

@@ -1548,37 +1548,47 @@
                         const idx = ph.getAttribute('idx');
                         const key = idx ? `idx_${idx}` : type;
 
+                        // Always create a placeholder entry for shapes with a <p:ph> tag.
+                        // The position will be added only if it exists.
+                        const placeholderData = {
+                            pos: null,
+                            type: type,
+                            listStyle: null,
+                            shapeProps: {},
+                            bodyPr: {}
+                        };
+
                         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
                         if (xfrmNode) {
                             const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
                             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                             if (offNode && extNode) {
-                                const pos = {
+                                placeholderData.pos = {
                                     x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
                                     y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
                                     width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
                                     height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
                                 };
-                                let listStyle = null;
-                                let bodyPr = {};
-                                const txBodyNode = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-                                if (txBodyNode) {
-                                    const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
-                                    if (lstStyleNode) {
-                                        listStyle = parseTextStyle(lstStyleNode);
-                                    }
-                                    bodyPr = parseBodyProperties(txBodyNode);
-                                }
-
-                                const tempSlideContext = {
-                                    theme: theme,
-                                    colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
-                                };
-                                const shapeProps = parseShapeProperties(shapeNode, tempSlideContext, "layout/master");
-
-                                placeholders[key] = { pos, type, listStyle, shapeProps, bodyPr };
                             }
                         }
+
+                        const txBodyNode = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+                        if (txBodyNode) {
+                            const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+                            if (lstStyleNode) {
+                                placeholderData.listStyle = parseTextStyle(lstStyleNode);
+                            }
+                            placeholderData.bodyPr = parseBodyProperties(txBodyNode);
+                        }
+
+                        const tempSlideContext = {
+                            theme: theme,
+                            colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
+                        };
+                        placeholderData.shapeProps = parseShapeProperties(shapeNode, tempSlideContext, "layout/master");
+
+                        placeholders[key] = placeholderData;
+
                         if (type === 'pic') {
                             staticShapes.push(shapeNode);
                         }
