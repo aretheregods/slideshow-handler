@@ -1218,9 +1218,15 @@
             const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
             if (noFillNode) return null;
 
+            const capMap = {
+                rnd: 'round',
+                sq: 'square',
+                flat: 'butt'
+            };
+
             const props = {
                 width: parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL,
-                cap: lnNode.getAttribute('cap'), // rnd, sq, flat
+                cap: capMap[lnNode.getAttribute('cap')] || 'butt',
                 join: null // miter, round, bevel
             };
 
@@ -1236,18 +1242,40 @@
             const prstDashNode = lnNode.getElementsByTagNameNS(DML_NS, 'prstDash')[0];
             if (prstDashNode) {
                 const dashType = prstDashNode.getAttribute('val') || 'solid';
+                const w = props.width;
                 switch (dashType) {
                     case 'solid':
                         props.dash = [];
                         break;
                     case 'dot':
-                        props.dash = [1, 5];
+                        props.dash = [w, 3 * w];
                         break;
                     case 'dash':
-                        props.dash = [10, 5];
+                        props.dash = [4 * w, 3 * w];
                         break;
                     case 'lgDash':
-                        props.dash = [20, 10];
+                        props.dash = [8 * w, 3 * w];
+                        break;
+                    case 'dashDot':
+                        props.dash = [4 * w, 3 * w, w, 3 * w];
+                        break;
+                    case 'lgDashDot':
+                        props.dash = [8 * w, 3 * w, w, 3 * w];
+                        break;
+                    case 'lgDashDotDot':
+                        props.dash = [8 * w, 3 * w, w, 3 * w, w, 3 * w];
+                        break;
+                    case 'sysDash':
+                        props.dash = [3 * w, w];
+                        break;
+                    case 'sysDot':
+                        props.dash = [w, w];
+                        break;
+                    case 'sysDashDot':
+                        props.dash = [3 * w, w, w, w];
+                        break;
+                    case 'sysDashDotDot':
+                        props.dash = [3 * w, w, w, w, w, w];
                         break;
                     default:
                         props.dash = [];
