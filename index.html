@@ -403,6 +403,8 @@
                     slideContainer.className = 'slide-viewer';
                     slideContainer.id = `slide-${ i + 1 }`;
                     slideContainer.style.aspectRatio = `${slideSize.width} / ${slideSize.height}`;
+                    slideContainer.style.width = `${slideSize.width}px`;
+                    slideContainer.style.height = `${slideSize.height}px`;
                     slideViewerContainer.appendChild( slideContainer );
 
                     // The renderSlide function now handles its own scaling.
