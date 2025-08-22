@@ -301,7 +301,7 @@ export class ShapeBuilder {
     }
 
     polarToCartesian(centerX, centerY, radiusX, radiusY, angleInDegrees) {
-        const angleInRadians = angleInDegrees * Math.PI / 180.0;
+        const angleInRadians = (angleInDegrees - 180) * Math.PI / 180.0;
         return {
             x: centerX + (radiusX * Math.cos(angleInRadians)),
             y: centerY + (radiusY * Math.sin(angleInRadians))
