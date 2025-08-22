@@ -227,8 +227,8 @@ export class ShapeBuilder {
                     });
                     break;
                 case 'roundRect':
-                    const adj1_roundRect = shapeProps.geometry.adjustments?.adj1 !== undefined ? shapeProps.geometry.adjustments.adj1 : 50000;
-                    const cornerRadiusRatio = adj1_roundRect / 100000;
+                    const adj_roundRect = shapeProps.geometry.adjustments?.adj !== undefined ? shapeProps.geometry.adjustments.adj : 16667;
+                    const cornerRadiusRatio = adj_roundRect / 100000;
                     const cornerRadius = Math.min(pos.width, pos.height) * cornerRadiusRatio;
 
                     const path_roundRect = [
@@ -256,8 +256,8 @@ export class ShapeBuilder {
                 case 'snip2SameRect':
                 case 'snip2DiagRect':
                 case 'snipRoundRect':
-                    const adj1_multi = shapeProps.geometry.adjustments?.adj1 !== undefined ? shapeProps.geometry.adjustments.adj1 : 50000;
-                    const adj2_multi = shapeProps.geometry.adjustments?.adj2 !== undefined ? shapeProps.geometry.adjustments.adj2 : 50000;
+                    const adj1_multi = shapeProps.geometry.adjustments?.adj1 !== undefined ? shapeProps.geometry.adjustments.adj1 : 16667;
+                    const adj2_multi = shapeProps.geometry.adjustments?.adj2 !== undefined ? shapeProps.geometry.adjustments.adj2 : 16667;
                     const cornerRadius1 = Math.min(pos.width, pos.height) * (adj1_multi / 100000);
                     const cornerRadius2 = Math.min(pos.width, pos.height) * (adj2_multi / 100000);
 
