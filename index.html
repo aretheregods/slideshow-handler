@@ -1689,7 +1689,7 @@
             }
 
             const masterPh = masterPlaceholders ? (masterPlaceholders[phKey] || Object.values(masterPlaceholders).find(p => p.type === phType)) : null;
-            const layoutPh = layoutPlaceholders ? (layoutPlaceholders[phKey] || layoutPlaceholders[phType]) : null;
+            const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
 
             const masterShapeProps = masterPh ? masterPh.shapeProps : {};
             const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
@@ -1720,8 +1720,6 @@
                 const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
                 if (txBody) {
                     const slideBodyPr = parseBodyProperties(txBody);
-                    const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
-                    const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
                     const masterBodyPr = masterPh ? masterPh.bodyPr : {};
                     const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
                     const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
