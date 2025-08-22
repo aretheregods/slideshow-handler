@@ -50,7 +50,6 @@ export class ShapeBuilder {
 
         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
         if (xfrmNode) {
-            if (shapeName === 'Title 23') console.log('[DEBUG] Found <xfrm> on shape itself.');
             const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
             if (offNode && extNode) {
@@ -71,22 +70,18 @@ export class ShapeBuilder {
                 localMatrix.translate(-w / 2, -h / 2);
             }
         } else if (phKey && (this.layoutPlaceholders?.[phKey] || this.masterPlaceholders?.[phKey])) {
-            if (shapeName === 'Title 23') console.log(`[DEBUG] No <xfrm> on shape. Looking for placeholder with key: ${phKey}`);
             const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
             const masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
-            const placeholder = layoutPh || masterPh;
-            if (placeholder) {
-                if (shapeName === 'Title 23') console.log('[DEBUG] Found placeholder:', placeholder);
+
+            // Prioritize layout placeholder only if it has position info. Otherwise, fallback to master.
+            const placeholder = (layoutPh && layoutPh.pos) ? layoutPh : masterPh;
+
+            if (placeholder && placeholder.pos) {
                 pos = { ...placeholder.pos };
                 localMatrix.translate(pos.x, pos.y);
-                if (shapeName === 'Title 23') console.log(`[DEBUG] Applied translation from placeholder: x=${pos.x}, y=${pos.y}`);
                 pos.x = 0;
                 pos.y = 0;
-            } else {
-                if (shapeName === 'Title 23') console.log('[DEBUG] Placeholder key found, but no matching placeholder in layout or master.');
             }
-        } else {
-            if (shapeName === 'Title 23') console.log('[DEBUG] No <xfrm> and no placeholder key. Cannot determine position.');
         }
 
         if (!pos) return { shape: null, pos: null, phKey, phType };
