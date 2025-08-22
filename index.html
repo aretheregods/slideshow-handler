@@ -518,13 +518,13 @@
 
                 const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
 
-                const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
+                const masterPh = masterPlaceholders ? (masterPlaceholders[phKey] || Object.values(masterPlaceholders).find(p => p.type === phType)) : null;
                 let masterListStyle = (masterPh?.listStyle?.[level]) || {};
                 if (masterPh && masterPh.type && phType && masterPh.type !== phType) {
                     masterListStyle = {};
                 }
 
-                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
+                const layoutPh = layoutPlaceholders ? (layoutPlaceholders[phKey] || layoutPlaceholders[phType]) : null;
                 let layoutListStyle = (layoutPh?.listStyle?.[level]) || {};
                 if (layoutPh && layoutPh.type && phType && layoutPh.type !== phType) {
                     layoutListStyle = {};
