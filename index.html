@@ -2151,10 +2151,10 @@
                 const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
                 const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                 if (offNode && extNode) {
-                    const x = parseInt(offNode.getAttribute("x")) / 12700;
-                    const y = parseInt(offNode.getAttribute("y")) / 12700;
-                    const w = parseInt(extNode.getAttribute("cx")) / 12700;
-                    const h = parseInt(extNode.getAttribute("cy")) / 12700;
+                    const x = parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
+                    const y = parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
+                    const w = parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL;
+                    const h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
                     const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
                     const flipH = xfrmNode.getAttribute('flipH') === '1';
                     const flipV = xfrmNode.getAttribute('flipV') === '1';
