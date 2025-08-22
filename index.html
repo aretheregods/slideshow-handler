@@ -524,7 +524,7 @@
                     masterListStyle = {};
                 }
 
-                const layoutPh = layoutPlaceholders ? (layoutPlaceholders[phKey] || layoutPlaceholders[phType]) : null;
+                const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
                 let layoutListStyle = (layoutPh?.listStyle?.[level]) || {};
                 if (layoutPh && layoutPh.type && phType && layoutPh.type !== phType) {
                     layoutListStyle = {};
