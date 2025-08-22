@@ -1679,7 +1679,7 @@
                 stroke: finalStroke,
             };
 
-            const shapeBuilder = new ShapeBuilder(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders);
+            const shapeBuilder = new ShapeBuilder(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, EMU_PER_PIXEL);
 
             renderer.ctx.save();
             const { pos } = shapeBuilder.build(shape, parentMatrix, shapeProps);

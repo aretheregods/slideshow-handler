@@ -2,12 +2,13 @@ import { Matrix } from './matrix.js';
 import { CanvasRenderer } from './canvas-renderer.js';
 
 export class ShapeBuilder {
-    constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders) {
+    constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, emuPerPixel) {
         this.renderer = renderer;
         this.slideContext = slideContext;
         this.imageMap = imageMap;
         this.masterPlaceholders = masterPlaceholders;
         this.layoutPlaceholders = layoutPlaceholders;
+        this.emuPerPixel = emuPerPixel;
     }
 
     build(shapeNode, parentMatrix, shapeProps) {
@@ -53,10 +54,10 @@ export class ShapeBuilder {
             const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
             if (offNode && extNode) {
-                const x = parseInt(offNode.getAttribute("x")) / 12700;
-                const y = parseInt(offNode.getAttribute("y")) / 12700;
-                const w = parseInt(extNode.getAttribute("cx")) / 12700;
-                const h = parseInt(extNode.getAttribute("cy")) / 12700;
+                const x = parseInt(offNode.getAttribute("x")) / this.emuPerPixel;
+                const y = parseInt(offNode.getAttribute("y")) / this.emuPerPixel;
+                const w = parseInt(extNode.getAttribute("cx")) / this.emuPerPixel;
+                const h = parseInt(extNode.getAttribute("cy")) / this.emuPerPixel;
                 const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
                 const flipH = xfrmNode.getAttribute('flipH') === '1';
                 const flipV = xfrmNode.getAttribute('flipV') === '1';
