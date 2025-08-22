@@ -26,6 +26,7 @@ yarn-error.log*
 
 # Environment files (local configs)
 /.env.*
+/.vim*
 
 # Jules' temporary verification files
 /jules-scratch/

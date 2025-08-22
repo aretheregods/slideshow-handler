@@ -39,12 +39,6 @@ export class ShapeBuilder {
         }
 
         const isConnector = shapeName.startsWith('Straight Connector');
-        if (isConnector) {
-            console.log(`[CONNECTOR DEBUG] Processing shape: "${shapeName}"`);
-            console.log('[CONNECTOR DEBUG] Parent Matrix:', parentMatrix.m);
-        } else {
-            console.log(`[DEBUG] Processing shape: "${shapeName}", phKey: ${phKey}, phType: ${phType}`);
-        }
 
         let localMatrix = new Matrix();
         let pos;
@@ -105,10 +99,6 @@ export class ShapeBuilder {
 
         const finalMatrix = parentMatrix.clone().multiply(localMatrix);
 
-        if (isConnector) {
-            console.log('[CONNECTOR DEBUG] Local Matrix:', localMatrix.m);
-            console.log('[CONNECTOR DEBUG] Final Matrix:', finalMatrix.m);
-        }
 
         this.renderer.setTransform(finalMatrix);
 
@@ -150,7 +140,26 @@ export class ShapeBuilder {
                     this.renderer.setTransform(finalMatrix);
                     break;
                 case 'arc':
-                    const arcPath = `M 0,${pos.height} A ${pos.width},${pos.height} 0 0 1 ${pos.width},0`;
+                    const arcAdj = shapeProps.geometry.adjustments;
+                    const arcStartAngle = (arcAdj?.adj1 !== undefined ? arcAdj.adj1 : 5400000) / 60000;
+                    const arcSweepAngle = (arcAdj?.adj2 !== undefined ? arcAdj.adj2 : 5400000) / 60000;
+                    const arcEndAngle = arcStartAngle + arcSweepAngle;
+
+                    const arcCenterX = pos.width / 2;
+                    const arcCenterY = pos.height / 2;
+                    const arcRadiusX = pos.width / 2;
+                    const arcRadiusY = pos.height / 2;
+
+                    const arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                    const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+
+                    const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
+
+                    const arcPath = [
+                        "M", arcStart.x, arcStart.y,
+                        "A", arcRadiusX, arcRadiusY, 0, arcLargeArcFlag, 1, arcEnd.x, arcEnd.y,
+                    ].join(" ");
+
                     this.renderer.drawPath(arcPath, {
                         stroke: shapeProps.stroke,
                     });
@@ -317,6 +326,14 @@ export class ShapeBuilder {
         return {
             x: centerX + (radiusX * Math.cos(angleInRadians)),
             y: centerY + (radiusY * Math.sin(angleInRadians))
+        };
+    }
+
+    polarToCartesianForArc(centerX, centerY, radiusX, radiusY, angleInDegrees) {
+        const angleInRadians = angleInDegrees * Math.PI / 180.0;
+        return {
+            x: centerX - (radiusX * Math.cos(angleInRadians)),
+            y: centerY - (radiusY * Math.sin(angleInRadians))
         };
     }
 }
