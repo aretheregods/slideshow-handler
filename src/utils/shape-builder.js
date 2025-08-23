@@ -155,7 +155,7 @@ export class ShapeBuilder {
                     const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
 
                     const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
-                    let arcSweepFlag = arcSweepAngle >= 0 ? "0" : "1";
+                    let arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
                     if (flipH ^ flipV) {
                         arcSweepFlag = arcSweepFlag === "0" ? "1" : "0";
                     }
