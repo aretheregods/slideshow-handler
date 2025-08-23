@@ -2319,6 +2319,52 @@
             return null;
         }
 
+        function buildPathStringFromGeom(geometry, pos) {
+            if (!geometry || !pos) return null;
+
+            if (geometry.type === 'custom' && geometry.path) {
+                const pathData = geometry.path;
+                const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
+                const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
+
+                let pathString = '';
+                pathData.commands.forEach(command => {
+                    switch (command.cmd) {
+                        case 'moveTo': {
+                            const p = command.points[0];
+                            pathString += `M ${p.x * scaleX} ${p.y * scaleY} `;
+                            break;
+                        }
+                        case 'lnTo': {
+                            const p = command.points[0];
+                            pathString += `L ${p.x * scaleX} ${p.y * scaleY} `;
+                            break;
+                        }
+                        case 'cubicBezTo': {
+                            const p1 = command.points[0];
+                            const p2 = command.points[1];
+                            const p3 = command.points[2];
+                            pathString += `C ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} ${p3.x * scaleX} ${p3.y * scaleY} `;
+                            break;
+                        }
+                        case 'quadBezTo': {
+                            const p1 = command.points[0];
+                            const p2 = command.points[1];
+                            pathString += `Q ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} `;
+                            break;
+                        }
+                        case 'close': {
+                            pathString += 'Z ';
+                            break;
+                        }
+                    }
+                });
+                return pathString;
+            }
+
+            return null;
+        }
+
         async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -2362,7 +2408,7 @@
                 const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
                 const placeholder = layoutPh || masterPh;
 
-                if (placeholder) {
+                if (placeholder && placeholder.pos) {
                     pos = { ...placeholder.pos };
                     localMatrix.translate(pos.x, pos.y);
                 }
@@ -2385,73 +2431,54 @@
                 const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
 
                 placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
-
-                if (placeholderProps) {
-                    const rectConfig = {
-                        width: pos.width,
-                        height: pos.height,
-                    };
-
-                    let shouldDrawRect = false;
-
-                    if (placeholderProps.fill && placeholderProps.fill !== 'none' && placeholderProps.fill.type === 'solid') {
-                        rectConfig.fill = placeholderProps.fill.color;
-                        shouldDrawRect = true;
-                    }
-
-                    if (placeholderProps.stroke && placeholderProps.stroke !== 'none') {
-                        rectConfig.stroke = placeholderProps.stroke.color;
-                        rectConfig.strokeWidth = placeholderProps.stroke.width || 1;
-                        if (placeholderProps.stroke.dash) {
-                            rectConfig.dash = placeholderProps.stroke.dash;
-                        }
-                        shouldDrawRect = true;
-                    }
-
-                    if (shouldDrawRect) {
-                        const stroke = {
-                            color: rectConfig.stroke,
-                            width: rectConfig.strokeWidth,
-                            dash: rectConfig.dash,
-                        };
-                        renderer.drawRect(0, 0, pos.width, pos.height, {
-                            fill: rectConfig.fill,
-                            stroke: stroke,
-                        });
-                    }
-                }
             }
 
-            const blipFillNode = picNode.getElementsByTagNameNS(PML_NS, 'blipFill')[0];
-            if (!blipFillNode) return { width: pos.width, height: pos.height };
-            const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
-            if (!blipNode) return { width: pos.width, height: pos.height };
-            const relId = blipNode.getAttribute('r:embed');
-            if (!relId || !imageMap[relId]) return { width: pos.width, height: pos.height };
+            const pathString = (placeholderProps && placeholderProps.geometry)
+                ? buildPathStringFromGeom(placeholderProps.geometry, pos)
+                : null;
 
-            try {
-                const imageObj = await createImage(imageMap[relId]);
-
-                let pathString = null;
-                if (placeholderProps && placeholderProps.geometry) {
-                    pathString = buildPathStringFromGeom(placeholderProps.geometry, pos);
-                }
-
+            // 1. Draw Placeholder Fill
+            if (placeholderProps && placeholderProps.fill && placeholderProps.fill !== 'none' && placeholderProps.fill.type === 'solid') {
                 if (pathString) {
-                    renderer.ctx.save();
-                    const clipPath = new Path2D(pathString);
-                    renderer.ctx.clip(clipPath);
-                    renderer.ctx.drawImage(imageObj, 0, 0, pos.width, pos.height);
-                    renderer.ctx.restore();
+                    renderer.drawPath(pathString, { fill: placeholderProps.fill.color });
                 } else {
-                    renderer.ctx.drawImage(imageObj, 0, 0, pos.width, pos.height);
+                    renderer.drawRect(0, 0, pos.width, pos.height, { fill: placeholderProps.fill.color });
                 }
-
-                return { width: pos.width, height: pos.height };
-            } catch (e) {
-                console.error("Error creating image", e);
-                return { width: 0, height: 0 };
             }
+
+            // 2. Draw Image
+            const blipFillNode = picNode.getElementsByTagNameNS(PML_NS, 'blipFill')[0];
+            if (blipFillNode) {
+                const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
+                const relId = blipNode ? blipNode.getAttribute('r:embed') : null;
+                if (relId && imageMap[relId]) {
+                    try {
+                        const imageObj = await createImage(imageMap[relId]);
+                        if (pathString) {
+                            renderer.ctx.save();
+                            const clipPath = new Path2D(pathString);
+                            renderer.ctx.clip(clipPath);
+                            renderer.ctx.drawImage(imageObj, 0, 0, pos.width, pos.height);
+                            renderer.ctx.restore();
+                        } else {
+                            renderer.ctx.drawImage(imageObj, 0, 0, pos.width, pos.height);
+                        }
+                    } catch (e) {
+                        console.error("Error creating image", e);
+                    }
+                }
+            }
+
+            // 3. Draw Placeholder Stroke
+            if (placeholderProps && placeholderProps.stroke) {
+                if (pathString) {
+                    renderer.drawPath(pathString, { stroke: placeholderProps.stroke });
+                } else {
+                    renderer.drawRect(0, 0, pos.width, pos.height, { stroke: placeholderProps.stroke });
+                }
+            }
+
+            return { width: pos.width, height: pos.height };
         }
 
         async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix, finalBg, slideSize) {
