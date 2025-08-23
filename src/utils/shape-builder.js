@@ -142,13 +142,18 @@ export class ShapeBuilder {
                     break;
                 case 'arc':
                     const arcAdj = shapeProps.geometry.adjustments;
-                    const arcStartAngle = (arcAdj?.adj1 !== undefined ? arcAdj.adj1 : 5400000) / 60000;
-                    let arcSweepAngle = (arcAdj?.adj2 !== undefined ? arcAdj.adj2 : 5400000) / 60000;
-                    if (arcSweepAngle === 0) {
+                    let arcStartAngle, arcSweepAngle;
+
+                    if (arcAdj?.adj1 !== undefined && arcAdj?.adj2 !== undefined) {
+                        arcStartAngle = arcAdj.adj1 / 60000;
+                        const endAngle = arcAdj.adj2 / 60000;
+                        arcSweepAngle = endAngle - arcStartAngle;
+                    } else {
+                        arcStartAngle = 90;
                         arcSweepAngle = 90;
                     }
-                    const arcEndAngle = arcStartAngle + arcSweepAngle;
 
+                    const arcEndAngle = arcStartAngle + arcSweepAngle;
                     const arcCenterX = pos.width / 2;
                     const arcCenterY = pos.height / 2;
                     const arcRadiusX = pos.width / 2;
