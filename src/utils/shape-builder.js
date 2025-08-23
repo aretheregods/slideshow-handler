@@ -142,7 +142,7 @@ export class ShapeBuilder {
                     break;
                 case 'arc':
                     const arcAdj = shapeProps.geometry.adjustments;
-                    const arcStartAngle = (arcAdj?.adj1 !== undefined ? arcAdj.adj1 : 5400000) / 60000;
+                    const arcStartAngle = (arcAdj?.adj1 !== undefined ? arcAdj.adj1 : 0) / 60000;
                     const arcSweepAngle = (arcAdj?.adj2 !== undefined ? arcAdj.adj2 : 5400000) / 60000;
                     const arcEndAngle = arcStartAngle + arcSweepAngle;
 
@@ -155,7 +155,10 @@ export class ShapeBuilder {
                     const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
 
                     const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
-                    const arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
+                    let arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
+                    if (flipH ^ flipV) {
+                        arcSweepFlag = arcSweepFlag === "0" ? "1" : "0";
+                    }
 
                     const arcPath = [
                         "M", arcStart.x, arcStart.y,
