@@ -148,7 +148,7 @@ export class ShapeBuilder {
                         const startAngleFromXml = arcAdj.adj1 / 60000;
                         const endAngleFromXml = arcAdj.adj2 / 60000;
                         arcSweepAngle = (endAngleFromXml - startAngleFromXml) / 2;
-                        arcStartAngle = startAngleFromXml - 90;
+                        arcStartAngle = startAngleFromXml - 60;
                     } else {
                         arcStartAngle = 90;
                         arcSweepAngle = 90;
@@ -164,9 +164,9 @@ export class ShapeBuilder {
                     const arcEnd = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
 
                     const arcLargeArcFlag = Math.abs(arcSweepAngle) <= 180 ? "0" : "1";
-                    let arcSweepFlag = arcSweepAngle >= 0 ? "0" : "1";
+                    let arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
                     if (flipH ^ flipV) {
-                        arcSweepFlag = arcSweepFlag === "0" ? "1" : "0";
+                        arcSweepFlag = arcSweepFlag === "0" ? "0" : "1";
                     }
 
                     const arcPath = [
