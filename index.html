@@ -304,11 +304,16 @@
                 }
 
                 let tableStyles = {};
+                let defaultTableStyleId = null;
                 const tableStylesRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
                 if (tableStylesRel) {
                     const tableStylesPath = resolvePath('ppt', tableStylesRel.target);
                     const tableStylesXml = await getNormalizedXmlString(entriesMap, tableStylesPath);
-                    if (tableStylesXml) tableStyles = parseTableStyles(tableStylesXml);
+                    if (tableStylesXml) {
+                        const tableStylesResult = parseTableStyles(tableStylesXml);
+                        tableStyles = tableStylesResult.styles;
+                        defaultTableStyleId = tableStylesResult.defaultStyleId;
+                    }
                 }
 
                 const presentationXml = await getNormalizedXmlString(entriesMap, "ppt/presentation.xml");
@@ -343,6 +348,7 @@
                         theme: theme,
                         colorMap: {},
                         tableStyles: tableStyles,
+                        defaultTableStyleId: defaultTableStyleId,
                     };
 
                     const layoutRel = sortedSlideRels.find( r => r.type.endsWith( '/slideLayout' ) );
@@ -1101,6 +1107,9 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const styles = {};
 
+            const tblStyleLstNode = xmlDoc.getElementsByTagNameNS(DML_NS, 'tblStyleLst')[0];
+            const defaultStyleId = tblStyleLstNode ? tblStyleLstNode.getAttribute('def') : null;
+
             const tblStyleNodes = xmlDoc.getElementsByTagNameNS(DML_NS, 'tblStyle');
 
             for (const styleNode of tblStyleNodes) {
@@ -1119,7 +1128,7 @@
                 styles[`{${styleId}}`] = styleDef;
             }
 
-            return styles;
+            return { styles, defaultStyleId };
         }
 
         function parseStylePart(partNode) {
@@ -1991,11 +2000,16 @@
             }
             // Fallback to table style for borders that are not defined directly.
             const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
-            if (!tableStyleIdNode) {
+            let styleId = tableStyleIdNode ? tableStyleIdNode.textContent : null;
+
+            if (!styleId && slideContext.defaultTableStyleId) {
+                styleId = `{${slideContext.defaultTableStyleId}}`;
+            }
+
+            if (!styleId) {
                 return borders;
             }
 
-            const styleId = tableStyleIdNode.textContent;
             const tableStyle = slideContext.tableStyles[styleId];
             if (!tableStyle) {
                 return borders;
@@ -2085,11 +2099,16 @@
 
             // Levels 2 & 3: Table Styles
             const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
-            if (!tableStyleIdNode) {
+            let styleId = tableStyleIdNode ? tableStyleIdNode.textContent : null;
+
+            if (!styleId && slideContext.defaultTableStyleId) {
+                styleId = `{${slideContext.defaultTableStyleId}}`;
+            }
+
+            if (!styleId) {
                 return null;
             }
 
-            const styleId = tableStyleIdNode.textContent;
             const tableStyle = slideContext.tableStyles[styleId];
             if (!tableStyle) {
                 return null;
