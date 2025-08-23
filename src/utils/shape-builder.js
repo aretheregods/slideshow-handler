@@ -17,7 +17,7 @@ export class ShapeBuilder {
         const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
         const nvSpPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'nvSpPr')[0];
-        let phKey = null, phType = null, shapeName = 'Unknown';
+        let phKey = null, phType = null, shapeName = 'Unknown', userDrawn = false;
         if (nvSpPrNode) {
             const cNvPrNode = nvSpPrNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
             if (cNvPrNode) {
@@ -26,6 +26,7 @@ export class ShapeBuilder {
 
             const nvPrNode = nvSpPrNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
             if (nvPrNode) {
+                userDrawn = nvPrNode.getAttribute('userDrawn') === '1';
                 const placeholder = nvPrNode.getElementsByTagNameNS(PML_NS, 'ph')[0];
                 if (placeholder) {
                     phType = placeholder.getAttribute('type');
@@ -151,8 +152,14 @@ export class ShapeBuilder {
                     const arcRadiusX = pos.width / 2;
                     const arcRadiusY = pos.height / 2;
 
-                    const arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
-                    const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+                    let arcStart, arcEnd;
+                    if (userDrawn) {
+                        arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                        arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+                    } else {
+                        arcStart = this.standardPolarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                        arcEnd = this.standardPolarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+                    }
 
                     const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
                     const arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
@@ -335,6 +342,14 @@ export class ShapeBuilder {
         const angleInRadians = angleInDegrees * Math.PI / 180.0;
         return {
             x: centerX - (radiusX * Math.cos(angleInRadians)),
+            y: centerY - (radiusY * Math.sin(angleInRadians))
+        };
+    }
+
+    standardPolarToCartesianForArc(centerX, centerY, radiusX, radiusY, angleInDegrees) {
+        const angleInRadians = angleInDegrees * Math.PI / 180.0;
+        return {
+            x: centerX + (radiusX * Math.cos(angleInRadians)),
             y: centerY - (radiusY * Math.sin(angleInRadians))
         };
     }
