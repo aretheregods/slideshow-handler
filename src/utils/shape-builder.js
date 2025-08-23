@@ -162,23 +162,13 @@ export class ShapeBuilder {
                     const arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
                     const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
 
-                    const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
+                    const arcLargeArcFlag = Math.abs(arcSweepAngle) <= 180 ? "0" : "1";
                     const arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
 
                     const arcPath = [
                         "M", arcStart.x, arcStart.y,
                         "A", arcRadiusX, arcRadiusY, 0, arcLargeArcFlag, arcSweepFlag, arcEnd.x, arcEnd.y,
                     ].join(" ");
-
-                    console.log("Drawing Arc:", {
-                        shapeName,
-                        rotation: rot,
-                        flipH,
-                        flipV,
-                        arcStartAngle,
-                        arcSweepAngle,
-                        arcPath,
-                    });
 
                     this.renderer.drawPath(arcPath, {
                         stroke: shapeProps.stroke,
