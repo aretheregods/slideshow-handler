@@ -142,7 +142,7 @@ export class ShapeBuilder {
                     break;
                 case 'arc':
                     const arcAdj = shapeProps.geometry.adjustments;
-                    const arcStartAngle = (arcAdj?.adj1 !== undefined ? arcAdj.adj1 : 0) / 60000;
+                    const arcStartAngle = (arcAdj?.adj1 !== undefined ? arcAdj.adj1 : 5400000) / 60000;
                     const arcSweepAngle = (arcAdj?.adj2 !== undefined ? arcAdj.adj2 : 5400000) / 60000;
                     const arcEndAngle = arcStartAngle + arcSweepAngle;
 
@@ -151,29 +151,22 @@ export class ShapeBuilder {
                     const arcRadiusX = pos.width / 2;
                     const arcRadiusY = pos.height / 2;
 
-                    const arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
-                    const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+                    let arcStart, arcEnd;
+                    if (flipH || flipV) {
+                        arcStart = this.standardPolarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                        arcEnd = this.standardPolarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+                    } else {
+                        arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                        arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+                    }
 
                     const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
-                    let arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
-                    if (flipH ^ flipV) {
-                        arcSweepFlag = arcSweepFlag === "0" ? "1" : "0";
-                    }
+                    const arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
 
                     const arcPath = [
                         "M", arcStart.x, arcStart.y,
                         "A", arcRadiusX, arcRadiusY, 0, arcLargeArcFlag, arcSweepFlag, arcEnd.x, arcEnd.y,
                     ].join(" ");
-
-                    console.log("Drawing Arc:", {
-                        shapeName,
-                        rotation: rot,
-                        flipH,
-                        flipV,
-                        arcStartAngle,
-                        arcSweepAngle,
-                        arcPath,
-                    });
 
                     this.renderer.drawPath(arcPath, {
                         stroke: shapeProps.stroke,
@@ -352,4 +345,11 @@ export class ShapeBuilder {
         };
     }
 
+    standardPolarToCartesianForArc(centerX, centerY, radiusX, radiusY, angleInDegrees) {
+        const angleInRadians = angleInDegrees * Math.PI / 180.0;
+        return {
+            x: centerX + (radiusX * Math.cos(angleInRadians)),
+            y: centerY - (radiusY * Math.sin(angleInRadians))
+        };
+    }
 }
