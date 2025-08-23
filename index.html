@@ -2273,6 +2273,52 @@
             renderer.ctx.restore();
         }
 
+        function buildPathStringFromGeom(geometry, pos) {
+            if (!geometry || !pos) return null;
+
+            if (geometry.type === 'custom' && geometry.path) {
+                const pathData = geometry.path;
+                const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
+                const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
+
+                let pathString = '';
+                pathData.commands.forEach(command => {
+                    switch (command.cmd) {
+                        case 'moveTo': {
+                            const p = command.points[0];
+                            pathString += `M ${p.x * scaleX} ${p.y * scaleY} `;
+                            break;
+                        }
+                        case 'lnTo': {
+                            const p = command.points[0];
+                            pathString += `L ${p.x * scaleX} ${p.y * scaleY} `;
+                            break;
+                        }
+                        case 'cubicBezTo': {
+                            const p1 = command.points[0];
+                            const p2 = command.points[1];
+                            const p3 = command.points[2];
+                            pathString += `C ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} ${p3.x * scaleX} ${p3.y * scaleY} `;
+                            break;
+                        }
+                        case 'quadBezTo': {
+                            const p1 = command.points[0];
+                            const p2 = command.points[1];
+                            pathString += `Q ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} `;
+                            break;
+                        }
+                        case 'close': {
+                            pathString += 'Z ';
+                            break;
+                        }
+                    }
+                });
+                return pathString;
+            }
+
+            return null;
+        }
+
         async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -2327,6 +2373,7 @@
             const finalMatrix = parentMatrix.clone().multiply(localMatrix);
             renderer.setTransform(finalMatrix);
 
+            let placeholderProps = null;
             if (phNode) {
                 const phType = phNode.getAttribute('type');
                 const phIdx = phNode.getAttribute('idx');
@@ -2337,7 +2384,7 @@
                 const masterShapeProps = masterPh ? masterPh.shapeProps : {};
                 const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
 
-                const placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
+                placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
 
                 if (placeholderProps) {
                     const rectConfig = {
@@ -2384,7 +2431,22 @@
 
             try {
                 const imageObj = await createImage(imageMap[relId]);
-                renderer.ctx.drawImage(imageObj, 0, 0, pos.width, pos.height);
+
+                let pathString = null;
+                if (placeholderProps && placeholderProps.geometry) {
+                    pathString = buildPathStringFromGeom(placeholderProps.geometry, pos);
+                }
+
+                if (pathString) {
+                    renderer.ctx.save();
+                    const clipPath = new Path2D(pathString);
+                    renderer.ctx.clip(clipPath);
+                    renderer.ctx.drawImage(imageObj, 0, 0, pos.width, pos.height);
+                    renderer.ctx.restore();
+                } else {
+                    renderer.ctx.drawImage(imageObj, 0, 0, pos.width, pos.height);
+                }
+
                 return { width: pos.width, height: pos.height };
             } catch (e) {
                 console.error("Error creating image", e);
