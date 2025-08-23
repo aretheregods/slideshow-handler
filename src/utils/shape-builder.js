@@ -165,6 +165,16 @@ export class ShapeBuilder {
                         "A", arcRadiusX, arcRadiusY, 0, arcLargeArcFlag, arcSweepFlag, arcEnd.x, arcEnd.y,
                     ].join(" ");
 
+                    console.log("Drawing Arc:", {
+                        shapeName,
+                        rotation: rot,
+                        flipH,
+                        flipV,
+                        arcStartAngle,
+                        arcSweepAngle,
+                        arcPath,
+                    });
+
                     this.renderer.drawPath(arcPath, {
                         stroke: shapeProps.stroke,
                     });
