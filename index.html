@@ -1969,7 +1969,7 @@
             }
         }
 
-        function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, slideContext) {
+        function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const borders = {};
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
@@ -1998,23 +1998,12 @@
                     }
                 }
             }
-            // Fallback to table style for borders that are not defined directly.
-            const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
-            let styleId = tableStyleIdNode ? tableStyleIdNode.textContent : null;
 
-            if (!styleId && slideContext.defaultTableStyleId) {
-                styleId = `{${slideContext.defaultTableStyleId}}`;
-            }
-
-            if (!styleId) {
-                return borders;
-            }
-
-            const tableStyle = slideContext.tableStyles[styleId];
             if (!tableStyle) {
                 return borders;
             }
 
+            // Fallback to table style for borders that are not defined directly.
             const firstRow = tblPrNode.getAttribute('firstRow') === '1';
             const lastRow = tblPrNode.getAttribute('lastRow') === '1';
             const firstCol = tblPrNode.getAttribute('firstCol') === '1';
@@ -2074,7 +2063,7 @@
             return borders;
         }
 
-        function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, slideContext) {
+        function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             // Level 1: Direct Formatting
@@ -2097,23 +2086,11 @@
                 }
             }
 
-            // Levels 2 & 3: Table Styles
-            const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
-            let styleId = tableStyleIdNode ? tableStyleIdNode.textContent : null;
-
-            if (!styleId && slideContext.defaultTableStyleId) {
-                styleId = `{${slideContext.defaultTableStyleId}}`;
-            }
-
-            if (!styleId) {
-                return null;
-            }
-
-            const tableStyle = slideContext.tableStyles[styleId];
             if (!tableStyle) {
                 return null;
             }
 
+            // Levels 2 & 3: Table Styles
             const firstRow = tblPrNode.getAttribute('firstRow') === '1';
             const lastRow = tblPrNode.getAttribute('lastRow') === '1';
             const firstCol = tblPrNode.getAttribute('firstCol') === '1';
@@ -2206,7 +2183,13 @@
             const tblPrNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblPr')[0];
 
             const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
-            const styleId = tableStyleIdNode ? tableStyleIdNode.textContent : null;
+            let styleId = tableStyleIdNode ? tableStyleIdNode.textContent : null;
+
+            if (!styleId && slideContext.defaultTableStyleId) {
+                styleId = `{${slideContext.defaultTableStyleId}}`;
+            }
+
+            const tableStyle = styleId ? slideContext.tableStyles[styleId] : null;
 
             // 2. Parse grid and column widths
             const tblGridNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblGrid')[0];
@@ -2279,12 +2262,12 @@
                     }
 
                     // Step 4: Get cell styling
-                    const fillColor = getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, slideContext);
+                    const fillColor = getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext);
 
                     renderer.drawRect(cellX, cellY, cellWidth, cellHeight, { fill: fillColor || 'transparent' });
 
                     // Draw borders using a strategy to avoid double-drawing
-                    const borders = getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, slideContext);
+                    const borders = getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext);
                     const borderDefs = {
                         top: { p: [cellX, cellY, cellX + cellWidth, cellY], draw: (r === 0) },
                         right: { p: [cellX + cellWidth, cellY, cellX + cellWidth, cellY + cellHeight], draw: true },
