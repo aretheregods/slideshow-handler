@@ -17,7 +17,7 @@ export class ShapeBuilder {
         const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
         const nvSpPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'nvSpPr')[0];
-        let phKey = null, phType = null, shapeName = 'Unknown', userDrawn = false;
+        let phKey = null, phType = null, shapeName = 'Unknown';
         if (nvSpPrNode) {
             const cNvPrNode = nvSpPrNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
             if (cNvPrNode) {
@@ -26,7 +26,6 @@ export class ShapeBuilder {
 
             const nvPrNode = nvSpPrNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
             if (nvPrNode) {
-                userDrawn = nvPrNode.getAttribute('userDrawn') === '1';
                 const placeholder = nvPrNode.getElementsByTagNameNS(PML_NS, 'ph')[0];
                 if (placeholder) {
                     phType = placeholder.getAttribute('type');
@@ -43,7 +42,7 @@ export class ShapeBuilder {
 
         let localMatrix = new Matrix();
         let pos;
-        let flipH = false, flipV = false;
+        let flipH = false, flipV = false, rot = 0;
 
         const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
         if (xfrmNode) {
@@ -54,7 +53,7 @@ export class ShapeBuilder {
                 const y = parseInt(offNode.getAttribute("y")) / this.emuPerPixel;
                 const w = parseInt(extNode.getAttribute("cx")) / this.emuPerPixel;
                 const h = parseInt(extNode.getAttribute("cy")) / this.emuPerPixel;
-                const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
+                rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
                 flipH = xfrmNode.getAttribute('flipH') === '1';
                 flipV = xfrmNode.getAttribute('flipV') === '1';
 
@@ -152,14 +151,8 @@ export class ShapeBuilder {
                     const arcRadiusX = pos.width / 2;
                     const arcRadiusY = pos.height / 2;
 
-                    let arcStart, arcEnd;
-                    if (userDrawn) {
-                        arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
-                        arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
-                    } else {
-                        arcStart = this.standardPolarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
-                        arcEnd = this.standardPolarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
-                    }
+                    const arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                    const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
 
                     const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
                     const arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
@@ -168,6 +161,16 @@ export class ShapeBuilder {
                         "M", arcStart.x, arcStart.y,
                         "A", arcRadiusX, arcRadiusY, 0, arcLargeArcFlag, arcSweepFlag, arcEnd.x, arcEnd.y,
                     ].join(" ");
+
+                    console.log("Drawing Arc:", {
+                        shapeName,
+                        rotation: rot,
+                        flipH,
+                        flipV,
+                        arcStartAngle,
+                        arcSweepAngle,
+                        arcPath,
+                    });
 
                     this.renderer.drawPath(arcPath, {
                         stroke: shapeProps.stroke,
@@ -346,11 +349,4 @@ export class ShapeBuilder {
         };
     }
 
-    standardPolarToCartesianForArc(centerX, centerY, radiusX, radiusY, angleInDegrees) {
-        const angleInRadians = angleInDegrees * Math.PI / 180.0;
-        return {
-            x: centerX + (radiusX * Math.cos(angleInRadians)),
-            y: centerY - (radiusY * Math.sin(angleInRadians))
-        };
-    }
 }
