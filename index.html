@@ -5,6 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Native PPTX Parser - Step 4</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "utils": "./src/utils/index.js"
+            }
+        }
+    </script>
     <style>
         /* General Body Styling */
         body {
@@ -204,9 +211,7 @@
             ZipReader,
             ZipWriter,
         } from "https://deno.land/x/zipjs/index.js";
-        import { Matrix } from './src/utils/matrix.js';
-        import { ShapeBuilder } from './src/utils/shape-builder.js';
-        import { CanvasRenderer } from './src/utils/canvas-renderer.js';
+        import { CanvasRenderer, integerToRoman, Matrix, ShapeBuilder } from 'utils';
 
         const EMU_PER_PIXEL = 12700; // Standard conversion for 96 DPI
         const PT_TO_PX = .975; // Adjusted conversion for web rendering (90/72)
@@ -646,13 +651,12 @@
                 case 'arabicParenR': return `${number})`;
                 case 'arabicPeriod': return `${number}.`;
                 case 'arabicPlain': return `${number}`;
-                // TODO: Implement Roman numeral conversion
-                case 'romanLcParenBoth': return `(i)`;
-                case 'romanLcParenR': return `i)`;
-                case 'romanLcPeriod': return `i.`;
-                case 'romanUcParenBoth': return `(I)`;
-                case 'romanUcParenR': return `I)`;
-                case 'romanUcPeriod': return `I.`;
+                case 'romanLcParenBoth': return `(${integerToRoman(number).toLowerCase()})`;
+                case 'romanLcParenR': return `${integerToRoman(number).toLowerCase()})`;
+                case 'romanLcPeriod': return `${integerToRoman(number).toLowerCase()}.`;
+                case 'romanUcParenBoth': return `(${integerToRoman(number)})`;
+                case 'romanUcParenR': return `${integerToRoman(number)})`;
+                case 'romanUcPeriod': return `${integerToRoman(number)}.`;
                 default: return `${number}.`;
             }
         }
@@ -826,7 +830,32 @@
 
                  const effectStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'effectStyleLst')[0];
                  if (effectStyleLstNode) {
-                    // TODO: Implement effect parsing if needed
+                    for (const effectStyleNode of effectStyleLstNode.children) {
+                        if (effectStyleNode.localName === 'effectStyle') {
+                            const effectLstNode = effectStyleNode.getElementsByTagNameNS(DML_NS, 'effectLst')[0];
+                            if (effectLstNode) {
+                                const outerShdwNode = effectLstNode.getElementsByTagNameNS(DML_NS, 'outerShdw')[0];
+                                if (outerShdwNode) {
+                                    const blurRad = parseInt(outerShdwNode.getAttribute('blurRad') || '0') / EMU_PER_PIXEL;
+                                    const dist = parseInt(outerShdwNode.getAttribute('dist') || '0') / EMU_PER_PIXEL;
+                                    const dir = parseInt(outerShdwNode.getAttribute('dir') || '0') / 60000;
+                                    const color = parseColor(outerShdwNode);
+                                    theme.formatScheme.effects.push({
+                                        type: 'outerShdw',
+                                        blurRad,
+                                        dist,
+                                        dir,
+                                        color,
+                                    });
+                                } else {
+                                    // Placeholder for other or no effects
+                                    theme.formatScheme.effects.push(null);
+                                }
+                            } else {
+                                theme.formatScheme.effects.push(null);
+                            }
+                        }
+                    }
                  }
 
                 const bgFillStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'bgFillStyleLst')[0];
@@ -1295,9 +1324,9 @@
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const spPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
-            if (!spPrNode) return { fill: null, stroke: null, geometry: null, rawFillNode: null, rawStrokeNode: null };
+            if (!spPrNode) return { fill: null, stroke: null, geometry: null, rawFillNode: null, rawStrokeNode: null, effect: null };
 
-            const properties = { fill: null, stroke: null, geometry: null, rawFillNode: null, rawStrokeNode: null };
+            const properties = { fill: null, stroke: null, geometry: null, rawFillNode: null, rawStrokeNode: null, effect: null };
 
             const prstGeomNode = spPrNode.getElementsByTagNameNS(DML_NS, 'prstGeom')[0];
             if (prstGeomNode) {
@@ -1389,6 +1418,41 @@
                                     strokeProps.color = resolveColor(themeLine.color, slideContext);
                                 }
                                 properties.stroke = strokeProps;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- Effect Parsing ---
+            const effectLstNode = spPrNode.getElementsByTagNameNS(DML_NS, 'effectLst')[0];
+            if (effectLstNode) {
+                const outerShdwNode = effectLstNode.getElementsByTagNameNS(DML_NS, 'outerShdw')[0];
+                if (outerShdwNode) {
+                    const blurRad = parseInt(outerShdwNode.getAttribute('blurRad') || '0') / EMU_PER_PIXEL;
+                    const dist = parseInt(outerShdwNode.getAttribute('dist') || '0') / EMU_PER_PIXEL;
+                    const dir = parseInt(outerShdwNode.getAttribute('dir') || '0') / 60000;
+                    const colorObj = parseColor(outerShdwNode);
+                    properties.effect = {
+                        type: 'outerShdw',
+                        blurRad,
+                        dist,
+                        dir,
+                        color: resolveColor(colorObj, slideContext),
+                    };
+                }
+            } else {
+                const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
+                if (styleNode) {
+                    const effectRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'effectRef')[0];
+                    if (effectRefNode) {
+                        const idx = parseInt(effectRefNode.getAttribute('idx'));
+                        if (idx > 0 && slideContext.theme.formatScheme.effects[idx - 1]) {
+                            properties.effect = slideContext.theme.formatScheme.effects[idx - 1];
+                            // Apply color override if present
+                            const colorOverride = parseColor(effectRefNode);
+                            if (properties.effect && colorOverride) {
+                                properties.effect.color = resolveColor(colorOverride, slideContext);
                             }
                         }
                     }
@@ -1740,6 +1804,7 @@
             const slideShapeProps = parseShapeProperties(shape, slideContext, slideNum);
             let finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
             const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
+            const finalEffect = slideShapeProps.effect ?? layoutShapeProps.effect ?? masterShapeProps.effect;
 
             if (shape.getAttribute('useBgFill') === '1') {
                 if (finalBg && finalBg.type === 'color') {
@@ -1753,6 +1818,7 @@
                 geometry: slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry,
                 fill: finalFill,
                 stroke: finalStroke,
+                effect: finalEffect,
             };
 
             const shapeBuilder = new ShapeBuilder(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, EMU_PER_PIXEL, slideSize);
@@ -2207,6 +2273,98 @@
             renderer.ctx.restore();
         }
 
+        function buildPathStringFromGeom(geometry, pos) {
+            if (!geometry || !pos) return null;
+
+            if (geometry.type === 'custom' && geometry.path) {
+                const pathData = geometry.path;
+                const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
+                const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
+
+                let pathString = '';
+                pathData.commands.forEach(command => {
+                    switch (command.cmd) {
+                        case 'moveTo': {
+                            const p = command.points[0];
+                            pathString += `M ${p.x * scaleX} ${p.y * scaleY} `;
+                            break;
+                        }
+                        case 'lnTo': {
+                            const p = command.points[0];
+                            pathString += `L ${p.x * scaleX} ${p.y * scaleY} `;
+                            break;
+                        }
+                        case 'cubicBezTo': {
+                            const p1 = command.points[0];
+                            const p2 = command.points[1];
+                            const p3 = command.points[2];
+                            pathString += `C ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} ${p3.x * scaleX} ${p3.y * scaleY} `;
+                            break;
+                        }
+                        case 'quadBezTo': {
+                            const p1 = command.points[0];
+                            const p2 = command.points[1];
+                            pathString += `Q ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} `;
+                            break;
+                        }
+                        case 'close': {
+                            pathString += 'Z ';
+                            break;
+                        }
+                    }
+                });
+                return pathString;
+            }
+
+            return null;
+        }
+
+        function buildPathStringFromGeom(geometry, pos) {
+            if (!geometry || !pos) return null;
+
+            if (geometry.type === 'custom' && geometry.path) {
+                const pathData = geometry.path;
+                const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
+                const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
+
+                let pathString = '';
+                pathData.commands.forEach(command => {
+                    switch (command.cmd) {
+                        case 'moveTo': {
+                            const p = command.points[0];
+                            pathString += `M ${p.x * scaleX} ${p.y * scaleY} `;
+                            break;
+                        }
+                        case 'lnTo': {
+                            const p = command.points[0];
+                            pathString += `L ${p.x * scaleX} ${p.y * scaleY} `;
+                            break;
+                        }
+                        case 'cubicBezTo': {
+                            const p1 = command.points[0];
+                            const p2 = command.points[1];
+                            const p3 = command.points[2];
+                            pathString += `C ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} ${p3.x * scaleX} ${p3.y * scaleY} `;
+                            break;
+                        }
+                        case 'quadBezTo': {
+                            const p1 = command.points[0];
+                            const p2 = command.points[1];
+                            pathString += `Q ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} `;
+                            break;
+                        }
+                        case 'close': {
+                            pathString += 'Z ';
+                            break;
+                        }
+                    }
+                });
+                return pathString;
+            }
+
+            return null;
+        }
+
         async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -2250,7 +2408,7 @@
                 const masterPh = masterPlaceholders ? masterPlaceholders[phKey] : null;
                 const placeholder = layoutPh || masterPh;
 
-                if (placeholder) {
+                if (placeholder && placeholder.pos) {
                     pos = { ...placeholder.pos };
                     localMatrix.translate(pos.x, pos.y);
                 }
@@ -2261,6 +2419,7 @@
             const finalMatrix = parentMatrix.clone().multiply(localMatrix);
             renderer.setTransform(finalMatrix);
 
+            let placeholderProps = null;
             if (phNode) {
                 const phType = phNode.getAttribute('type');
                 const phIdx = phNode.getAttribute('idx');
@@ -2271,59 +2430,55 @@
                 const masterShapeProps = masterPh ? masterPh.shapeProps : {};
                 const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
 
-                const placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
+                placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
+            }
 
-                if (placeholderProps) {
-                    const rectConfig = {
-                        width: pos.width,
-                        height: pos.height,
-                    };
+            const pathString = (placeholderProps && placeholderProps.geometry)
+                ? buildPathStringFromGeom(placeholderProps.geometry, pos)
+                : null;
 
-                    let shouldDrawRect = false;
+            // 1. Draw Placeholder Fill
+            if (placeholderProps && placeholderProps.fill && placeholderProps.fill !== 'none' && placeholderProps.fill.type === 'solid') {
+                if (pathString) {
+                    renderer.drawPath(pathString, { fill: placeholderProps.fill.color });
+                } else {
+                    renderer.drawRect(0, 0, pos.width, pos.height, { fill: placeholderProps.fill.color });
+                }
+            }
 
-                    if (placeholderProps.fill && placeholderProps.fill !== 'none' && placeholderProps.fill.type === 'solid') {
-                        rectConfig.fill = placeholderProps.fill.color;
-                        shouldDrawRect = true;
-                    }
-
-                    if (placeholderProps.stroke && placeholderProps.stroke !== 'none') {
-                        rectConfig.stroke = placeholderProps.stroke.color;
-                        rectConfig.strokeWidth = placeholderProps.stroke.width || 1;
-                        if (placeholderProps.stroke.dash) {
-                            rectConfig.dash = placeholderProps.stroke.dash;
+            // 2. Draw Image
+            const blipFillNode = picNode.getElementsByTagNameNS(PML_NS, 'blipFill')[0];
+            if (blipFillNode) {
+                const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
+                const relId = blipNode ? blipNode.getAttribute('r:embed') : null;
+                if (relId && imageMap[relId]) {
+                    try {
+                        const imageObj = await createImage(imageMap[relId]);
+                        if (pathString) {
+                            renderer.ctx.save();
+                            const clipPath = new Path2D(pathString);
+                            renderer.ctx.clip(clipPath);
+                            renderer.ctx.drawImage(imageObj, 0, 0, pos.width, pos.height);
+                            renderer.ctx.restore();
+                        } else {
+                            renderer.ctx.drawImage(imageObj, 0, 0, pos.width, pos.height);
                         }
-                        shouldDrawRect = true;
-                    }
-
-                    if (shouldDrawRect) {
-                        const stroke = {
-                            color: rectConfig.stroke,
-                            width: rectConfig.strokeWidth,
-                            dash: rectConfig.dash,
-                        };
-                        renderer.drawRect(0, 0, pos.width, pos.height, {
-                            fill: rectConfig.fill,
-                            stroke: stroke,
-                        });
+                    } catch (e) {
+                        console.error("Error creating image", e);
                     }
                 }
             }
 
-            const blipFillNode = picNode.getElementsByTagNameNS(PML_NS, 'blipFill')[0];
-            if (!blipFillNode) return { width: pos.width, height: pos.height };
-            const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
-            if (!blipNode) return { width: pos.width, height: pos.height };
-            const relId = blipNode.getAttribute('r:embed');
-            if (!relId || !imageMap[relId]) return { width: pos.width, height: pos.height };
-
-            try {
-                const imageObj = await createImage(imageMap[relId]);
-                renderer.ctx.drawImage(imageObj, 0, 0, pos.width, pos.height);
-                return { width: pos.width, height: pos.height };
-            } catch (e) {
-                console.error("Error creating image", e);
-                return { width: 0, height: 0 };
+            // 3. Draw Placeholder Stroke
+            if (placeholderProps && placeholderProps.stroke) {
+                if (pathString) {
+                    renderer.drawPath(pathString, { stroke: placeholderProps.stroke });
+                } else {
+                    renderer.drawRect(0, 0, pos.width, pos.height, { stroke: placeholderProps.stroke });
+                }
             }
+
+            return { width: pos.width, height: pos.height };
         }
 
         async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix, finalBg, slideSize) {
