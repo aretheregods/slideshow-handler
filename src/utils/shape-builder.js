@@ -112,12 +112,14 @@ export class ShapeBuilder {
                     this.renderer.drawRect(0, 0, pos.width, pos.height, {
                         fill: shapeProps.fill?.color,
                         stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
                     });
                     break;
                 case 'ellipse':
                     this.renderer.drawEllipse(pos.width / 2, pos.height / 2, pos.width / 2, pos.height / 2, {
                         fill: shapeProps.fill?.color,
                         stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
                     });
                     break;
                 case 'line':
@@ -136,6 +138,7 @@ export class ShapeBuilder {
 
                     this.renderer.drawLine(0, 0, scaledWidth, scaledHeight, {
                         stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
                     });
 
                     this.renderer.setTransform(finalMatrix);
@@ -176,6 +179,7 @@ export class ShapeBuilder {
 
                     this.renderer.drawPath(arcPath, {
                         stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
                     });
                     break;
                 case 'custom':
@@ -219,6 +223,7 @@ export class ShapeBuilder {
                         this.renderer.drawPath(pathString, {
                             fill: shapeProps.fill?.color,
                             stroke: shapeProps.stroke,
+                            effect: shapeProps.effect,
                         });
                     }
                     break;
@@ -259,6 +264,7 @@ export class ShapeBuilder {
                     this.renderer.drawPath(path, {
                         fill: shapeProps.fill?.color,
                         stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
                     });
                     break;
                 case 'roundRect':
@@ -282,6 +288,7 @@ export class ShapeBuilder {
                     this.renderer.drawPath(path_roundRect, {
                         fill: shapeProps.fill?.color,
                         stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
                     });
                     break;
                 case 'round1Rect':
@@ -324,12 +331,13 @@ export class ShapeBuilder {
                     this.renderer.drawPath(path_multi, {
                         fill: shapeProps.fill?.color,
                         stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
                     });
                     break;
              }
         } else if (txBody) {
             // This is a shapeless textbox. Create a transparent rectangle to host the text.
-            this.renderer.drawRect(0, 0, pos.width, pos.height, { fill: 'transparent' });
+            this.renderer.drawRect(0, 0, pos.width, pos.height, { fill: 'transparent', effect: shapeProps.effect });
         }
 
         return { pos, phKey, phType };

@@ -13,6 +13,25 @@ export class CanvasRenderer {
         this.slideContext = slideContext;
     }
 
+    applyEffects(options) {
+        if (options && options.effect) {
+            if (options.effect.type === 'outerShdw') {
+                const effect = options.effect;
+                this.ctx.shadowColor = effect.color;
+                this.ctx.shadowBlur = effect.blurRad;
+                this.ctx.shadowOffsetX = effect.dist * Math.cos(effect.dir * Math.PI / 180);
+                this.ctx.shadowOffsetY = effect.dist * Math.sin(effect.dir * Math.PI / 180);
+            }
+        }
+    }
+
+    resetEffects() {
+        this.ctx.shadowColor = 'transparent';
+        this.ctx.shadowBlur = 0;
+        this.ctx.shadowOffsetX = 0;
+        this.ctx.shadowOffsetY = 0;
+    }
+
     /**
      * Clears the canvas.
      */
@@ -44,6 +63,8 @@ export class CanvasRenderer {
         this.ctx.beginPath();
         this.ctx.rect(x, y, width, height);
 
+        this.applyEffects(options);
+
         if (options.fill) {
             this.ctx.fillStyle = options.fill;
             this.ctx.fill();
@@ -64,6 +85,8 @@ export class CanvasRenderer {
             this.ctx.stroke();
             this.ctx.setLineDash([]); // Reset line dash
         }
+
+        this.resetEffects();
     }
 
     /**
@@ -82,6 +105,8 @@ export class CanvasRenderer {
         this.ctx.beginPath();
         this.ctx.ellipse(x, y, radiusX, radiusY, 0, 0, 2 * Math.PI);
 
+        this.applyEffects(options);
+
         if (options.fill) {
             this.ctx.fillStyle = options.fill;
             this.ctx.fill();
@@ -102,6 +127,8 @@ export class CanvasRenderer {
             this.ctx.stroke();
             this.ctx.setLineDash([]); // Reset line dash
         }
+
+        this.resetEffects();
     }
 
     /**
@@ -119,6 +146,8 @@ export class CanvasRenderer {
         this.ctx.moveTo(x1, y1);
         this.ctx.lineTo(x2, y2);
 
+        this.applyEffects(options);
+
         if (options.stroke) {
             this.ctx.strokeStyle = options.stroke.color;
             this.ctx.lineWidth = options.stroke.width;
@@ -134,6 +163,8 @@ export class CanvasRenderer {
             this.ctx.stroke();
             this.ctx.setLineDash([]); // Reset line dash
         }
+
+        this.resetEffects();
     }
 
     /**
@@ -147,6 +178,8 @@ export class CanvasRenderer {
      */
     drawPath(pathData, options = {}) {
         const path = new Path2D(pathData);
+
+        this.applyEffects(options);
 
         if (options.fill) {
             this.ctx.fillStyle = options.fill;
@@ -168,5 +201,7 @@ export class CanvasRenderer {
             this.ctx.stroke(path);
             this.ctx.setLineDash([]); // Reset line dash
         }
+
+        this.resetEffects();
     }
 }
