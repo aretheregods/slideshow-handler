@@ -1960,7 +1960,7 @@
             }
         }
 
-        function getCellBorders(cellNode, slideContext) {
+        function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, slideContext) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const borders = {};
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
@@ -1989,7 +1989,74 @@
                     }
                 }
             }
-            // TODO: Fallback to table style for borders
+            // Fallback to table style for borders that are not defined directly.
+            const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
+            if (!tableStyleIdNode) {
+                return borders;
+            }
+
+            const styleId = tableStyleIdNode.textContent;
+            const tableStyle = slideContext.tableStyles[styleId];
+            if (!tableStyle) {
+                return borders;
+            }
+
+            const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+            const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+            const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+            const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+            const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+            const bandCol = tblPrNode.getAttribute('bandCol') === '1';
+
+            const isFirstRow = r === 0;
+            const isLastRow = r === numRows - 1;
+            const isFirstCol = c === 0;
+            const isLastCol = c === numCols - 1;
+
+            let stylePart = null;
+
+            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { stylePart = tableStyle.nwCell; }
+            else if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { stylePart = tableStyle.neCell; }
+            else if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { stylePart = tableStyle.swCell; }
+            else if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { stylePart = tableStyle.seCell; }
+            else if (firstRow && isFirstRow && tableStyle.firstRow) { stylePart = tableStyle.firstRow; }
+            else if (lastRow && isLastRow && tableStyle.lastRow) { stylePart = tableStyle.lastRow; }
+            else if (firstCol && isFirstCol && tableStyle.firstCol) { stylePart = tableStyle.firstCol; }
+            else if (lastCol && isLastCol && tableStyle.lastCol) { stylePart = tableStyle.lastCol; }
+            else if (bandRow) {
+                const isDataRow = !(firstRow && isFirstRow);
+                if (isDataRow) {
+                    if (r % 2 === 1 && tableStyle.band1H) { stylePart = tableStyle.band1H; }
+                    else if (r % 2 === 0 && tableStyle.band2H) { stylePart = tableStyle.band2H; }
+                }
+            }
+
+            if (!stylePart && bandCol) {
+                const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+                if (isDataCol) {
+                    if (c % 2 === 1 && tableStyle.band1V) { stylePart = tableStyle.band1V; }
+                    else if (c % 2 === 0 && tableStyle.band2V) { stylePart = tableStyle.band2V; }
+                }
+            }
+
+            const styleToApply = stylePart || tableStyle.wholeTbl;
+
+            if (styleToApply && styleToApply.tcStyle && styleToApply.tcStyle.borders) {
+                const styleBorders = styleToApply.tcStyle.borders;
+                for (const side of ['left', 'right', 'top', 'bottom']) {
+                    if (borders[side] === undefined && styleBorders[side]) {
+                        const styleBorder = styleBorders[side];
+                        const color = resolveColor(styleBorder.color, slideContext);
+                        if (color) {
+                            borders[side] = {
+                                width: styleBorder.width,
+                                color: color
+                            };
+                        }
+                    }
+                }
+            }
+
             return borders;
         }
 
@@ -2198,7 +2265,7 @@
                     renderer.drawRect(cellX, cellY, cellWidth, cellHeight, { fill: fillColor || 'transparent' });
 
                     // Draw borders using a strategy to avoid double-drawing
-                    const borders = getCellBorders(cellNode, slideContext);
+                    const borders = getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, slideContext);
                     const borderDefs = {
                         top: { p: [cellX, cellY, cellX + cellWidth, cellY], draw: (r === 0) },
                         right: { p: [cellX + cellWidth, cellY, cellX + cellWidth, cellY + cellHeight], draw: true },
