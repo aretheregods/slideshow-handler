@@ -143,7 +143,10 @@ export class ShapeBuilder {
                 case 'arc':
                     const arcAdj = shapeProps.geometry.adjustments;
                     const arcStartAngle = (arcAdj?.adj1 !== undefined ? arcAdj.adj1 : 5400000) / 60000;
-                    const arcSweepAngle = (arcAdj?.adj2 !== undefined ? arcAdj.adj2 : 5400000) / 60000;
+                    let arcSweepAngle = (arcAdj?.adj2 !== undefined ? arcAdj.adj2 : 5400000) / 60000;
+                    if (arcSweepAngle === 0) {
+                        arcSweepAngle = 90;
+                    }
                     const arcEndAngle = arcStartAngle + arcSweepAngle;
 
                     const arcCenterX = pos.width / 2;
@@ -151,14 +154,8 @@ export class ShapeBuilder {
                     const arcRadiusX = pos.width / 2;
                     const arcRadiusY = pos.height / 2;
 
-                    let arcStart, arcEnd;
-                    if (flipH || flipV) {
-                        arcStart = this.standardPolarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
-                        arcEnd = this.standardPolarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
-                    } else {
-                        arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
-                        arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
-                    }
+                    const arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                    const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
 
                     const arcLargeArcFlag = arcSweepAngle <= 180 ? "0" : "1";
                     const arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
@@ -345,11 +342,4 @@ export class ShapeBuilder {
         };
     }
 
-    standardPolarToCartesianForArc(centerX, centerY, radiusX, radiusY, angleInDegrees) {
-        const angleInRadians = angleInDegrees * Math.PI / 180.0;
-        return {
-            x: centerX + (radiusX * Math.cos(angleInRadians)),
-            y: centerY - (radiusY * Math.sin(angleInRadians))
-        };
-    }
 }
