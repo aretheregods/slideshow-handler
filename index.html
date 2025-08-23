@@ -5,6 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Native PPTX Parser - Step 4</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "utils": "./src/utils/index.js"
+            }
+        }
+    </script>
     <style>
         /* General Body Styling */
         body {
@@ -204,9 +211,7 @@
             ZipReader,
             ZipWriter,
         } from "https://deno.land/x/zipjs/index.js";
-        import { Matrix } from './src/utils/matrix.js';
-        import { ShapeBuilder } from './src/utils/shape-builder.js';
-        import { CanvasRenderer } from './src/utils/canvas-renderer.js';
+        import { CanvasRenderer, integerToRoman, Matrix, ShapeBuilder } from 'utils';
 
         const EMU_PER_PIXEL = 12700; // Standard conversion for 96 DPI
         const PT_TO_PX = .975; // Adjusted conversion for web rendering (90/72)
@@ -646,13 +651,12 @@
                 case 'arabicParenR': return `${number})`;
                 case 'arabicPeriod': return `${number}.`;
                 case 'arabicPlain': return `${number}`;
-                // TODO: Implement Roman numeral conversion
-                case 'romanLcParenBoth': return `(i)`;
-                case 'romanLcParenR': return `i)`;
-                case 'romanLcPeriod': return `i.`;
-                case 'romanUcParenBoth': return `(I)`;
-                case 'romanUcParenR': return `I)`;
-                case 'romanUcPeriod': return `I.`;
+                case 'romanLcParenBoth': return `(${integerToRoman(number).toLowerCase()})`;
+                case 'romanLcParenR': return `${integerToRoman(number).toLowerCase()})`;
+                case 'romanLcPeriod': return `${integerToRoman(number).toLowerCase()}.`;
+                case 'romanUcParenBoth': return `(${integerToRoman(number)})`;
+                case 'romanUcParenR': return `${integerToRoman(number)})`;
+                case 'romanUcPeriod': return `${integerToRoman(number)}.`;
                 default: return `${number}.`;
             }
         }
