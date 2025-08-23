@@ -145,9 +145,10 @@ export class ShapeBuilder {
                     let arcStartAngle, arcSweepAngle;
 
                     if (arcAdj?.adj1 !== undefined && arcAdj?.adj2 !== undefined) {
-                        arcStartAngle = arcAdj.adj1 / 60000;
-                        const endAngle = arcAdj.adj2 / 60000;
-                        arcSweepAngle = endAngle - arcStartAngle;
+                        const startAngleFromXml = arcAdj.adj1 / 60000;
+                        const endAngleFromXml = arcAdj.adj2 / 60000;
+                        arcSweepAngle = (endAngleFromXml - startAngleFromXml) / 2;
+                        arcStartAngle = startAngleFromXml - 90;
                     } else {
                         arcStartAngle = 90;
                         arcSweepAngle = 90;
@@ -159,11 +160,14 @@ export class ShapeBuilder {
                     const arcRadiusX = pos.width / 2;
                     const arcRadiusY = pos.height / 2;
 
-                    const arcStart = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
-                    const arcEnd = this.polarToCartesianForArc(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+                    const arcStart = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+                    const arcEnd = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
 
                     const arcLargeArcFlag = Math.abs(arcSweepAngle) <= 180 ? "0" : "1";
-                    const arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
+                    let arcSweepFlag = arcSweepAngle >= 0 ? "0" : "1";
+                    if (flipH ^ flipV) {
+                        arcSweepFlag = arcSweepFlag === "0" ? "1" : "0";
+                    }
 
                     const arcPath = [
                         "M", arcStart.x, arcStart.y,
