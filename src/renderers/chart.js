@@ -1,4 +1,5 @@
-import { parseXmlString, EMU_PER_PIXEL } from 'utils';
+import { parseXmlString } from 'utils';
+import { EMU_PER_PIXEL } from 'constants';
 
 function parseChart(chartXml) {
     const xmlDoc = parseXmlString(chartXml, "chart");
