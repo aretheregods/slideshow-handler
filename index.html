@@ -554,7 +554,6 @@
 
                 const marL = (finalProps.marL !== undefined) ? finalProps.marL : (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
                 const indent = (finalProps.indent !== undefined) ? finalProps.indent : 0;
-                const indent = (finalProps.indent !== undefined) ? finalProps.indent : 0;
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
 
                 let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: true };
@@ -1771,7 +1770,7 @@
                 const finalProps = line.paragraphProps;
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
 
-                if (bulletOffset > 0 && line.isFirstLineOfParagraph) {
+                if (bulletOffset > 0 && line.isFirstLine) {
                     const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext) || '#000';
                     const firstRunSize = line.runs.length > 0 ? line.runs[0].font.size : (finalProps.defRPr.size || 18 * PT_TO_PX);
                     const bulletBaselineY = startY + line.startY + firstRunSize;
