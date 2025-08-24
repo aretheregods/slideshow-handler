@@ -89,16 +89,23 @@ export class SvgRenderer {
     drawRect(x, y, width, height, options = {}) {
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
 
-        let strokeWidth = 0;
-        if (options.stroke && options.stroke.width > 0) {
-            strokeWidth = options.stroke.width;
+        const strokeWidth = (options.stroke && options.stroke.width > 0) ? options.stroke.width : 0;
+
+        if (strokeWidth > 0) {
+            // Adjust position and size for stroke alignment (SVG strokes are centered)
+            rect.setAttribute('x', x + strokeWidth / 2);
+            rect.setAttribute('y', y + strokeWidth / 2);
+            rect.setAttribute('width', Math.max(0, width - strokeWidth));
+            rect.setAttribute('height', Math.max(0, height - strokeWidth));
+        } else {
+            rect.setAttribute('x', x);
+            rect.setAttribute('y', y);
+            rect.setAttribute('width', width);
+            rect.setAttribute('height', height);
         }
 
-        // Adjust position and size for stroke alignment (SVG strokes are centered)
-        rect.setAttribute('x', x + strokeWidth / 2);
-        rect.setAttribute('y', y + strokeWidth / 2);
-        rect.setAttribute('width', Math.max(0, width - strokeWidth));
-        rect.setAttribute('height', Math.max(0, height - strokeWidth));
+        // For debugging positioning issues
+        // console.log(`Drawing rect: x=${rect.getAttribute('x')}, y=${rect.getAttribute('y')}, width=${rect.getAttribute('width')}, height=${rect.getAttribute('height')}`, { stroke: options.stroke, fill: options.fill });
 
         const filterUrl = this.applyEffects(options);
         if (filterUrl) {
