@@ -1075,33 +1075,6 @@
                 return color;
             }
 
-            const bgRefNode = bgNode.getElementsByTagNameNS(PML_NS, 'bgRef')[0];
-            if (bgRefNode) {
-                const idx = parseInt(bgRefNode.getAttribute('idx'));
-                if (idx > 0 && idx < 1000) { // 1-based index for bgFillStyleLst
-                    const themeBgFill = slideContext.theme.formatScheme.bgFills[idx - 1];
-                    if (themeBgFill) {
-                        if (themeBgFill.type === 'solid') {
-                            const color = resolveColor(themeBgFill.color, slideContext);
-                            bg = { type: 'color', value: color };
-                        } else if (themeBgFill.type === 'gradient') {
-                             // Here we need to resolve the colors in the stops
-                            const resolvedStops = themeBgFill.gradient.stops.map(stop => ({
-                                ...stop,
-                                color: resolveColor(stop.color, slideContext, true)
-                            }));
-                            bg = { type: 'gradient', gradient: { ...themeBgFill.gradient, stops: resolvedStops } };
-                        }
-                    }
-                } else if (idx >= 1000) {
-                    const colorObj = parseColor(bgRefNode);
-                    if (colorObj) {
-                        bg = { type: 'color', value: resolveColor(colorObj, slideContext) };
-                    }
-                }
-            }
-
-            console.log("[DEBUG] Parsed background: null");
             return null;
         }
 
