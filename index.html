@@ -2540,6 +2540,9 @@
             group.setAttribute('transform', `matrix(${finalMatrix.m.join(' ')})`);
             renderer.currentGroup.appendChild(group);
 
+            const originalGroup = renderer.currentGroup;
+            renderer.currentGroup = group;
+
             let placeholderProps = null;
             if (phNode) {
                 const phType = phNode.getAttribute('type');
@@ -2602,6 +2605,8 @@
                     renderer.drawRect(0, 0, pos.width, pos.height, { stroke: placeholderProps.stroke });
                 }
             }
+
+            renderer.currentGroup = originalGroup;
 
             return { width: pos.width, height: pos.height };
         }
