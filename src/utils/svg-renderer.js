@@ -138,8 +138,12 @@ export class SvgRenderer {
         }
 
         if (options.fill) {
-            if (typeof options.fill === 'object' && options.fill.type === 'gradient') {
-                rect.setAttribute('fill', this._createGradient(options.fill));
+            if (typeof options.fill === 'object') {
+                if (options.fill.type === 'gradient') {
+                    rect.setAttribute('fill', this._createGradient(options.fill));
+                } else if (options.fill.type === 'solid') {
+                    rect.setAttribute('fill', options.fill.color);
+                }
             } else {
                 rect.setAttribute('fill', options.fill);
             }
@@ -185,8 +189,12 @@ export class SvgRenderer {
         }
 
         if (options.fill) {
-            if (typeof options.fill === 'object' && options.fill.type === 'gradient') {
-                ellipse.setAttribute('fill', this._createGradient(options.fill));
+            if (typeof options.fill === 'object') {
+                if (options.fill.type === 'gradient') {
+                    ellipse.setAttribute('fill', this._createGradient(options.fill));
+                } else if (options.fill.type === 'solid') {
+                    ellipse.setAttribute('fill', options.fill.color);
+                }
             } else {
                 ellipse.setAttribute('fill', options.fill);
             }
@@ -349,8 +357,12 @@ export class SvgRenderer {
         }
 
         if (options.fill) {
-            if (typeof options.fill === 'object' && options.fill.type === 'gradient') {
-                path.setAttribute('fill', this._createGradient(options.fill));
+            if (typeof options.fill === 'object') {
+                if (options.fill.type === 'gradient') {
+                    path.setAttribute('fill', this._createGradient(options.fill));
+                } else if (options.fill.type === 'solid') {
+                    path.setAttribute('fill', options.fill.color);
+                }
             } else {
                 path.setAttribute('fill', options.fill);
             }
