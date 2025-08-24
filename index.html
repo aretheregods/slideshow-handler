@@ -1068,7 +1068,7 @@
             return null;
         }
 
-        function resolveColor(colorObj, slideContext) {
+        function resolveColor(colorObj, slideContext, returnObject = false) {
             if (!colorObj || !slideContext.theme) {
                 return null;
             }
@@ -1092,10 +1092,15 @@
             }
 
             if (hex) {
-                if (colorObj.alpha) {
+                const alpha = colorObj.alpha !== undefined ? colorObj.alpha / 100000 : 1.0;
+                if (returnObject) {
+                    return { color: hex, alpha: alpha };
+                }
+
+                if (alpha < 1.0) {
                     const rgb = hexToRgb(hex);
                     if (rgb) {
-                        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${colorObj.alpha / 100000})`;
+                        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
                     }
                 }
                 return hex;
@@ -1223,6 +1228,11 @@
                     }
                 }
 
+                const gradFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
+                if (gradFillNode) {
+                    return parseGradientFill(gradFillNode, slideContext);
+                }
+
                 const blipFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'blipFill')[0];
                 if (blipFillNode) {
                     const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
@@ -1271,6 +1281,35 @@
                 w: pathW,
                 h: pathH,
             };
+        }
+
+        function parseGradientFill(fillNode, slideContext) {
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const gsLstNode = fillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
+            const stops = [];
+            if (gsLstNode) {
+                for (const gsNode of gsLstNode.children) {
+                    const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
+                    const colorObj = parseColor(gsNode);
+                    if (colorObj) {
+                        stops.push({ pos, color: resolveColor(colorObj, slideContext, true) });
+                    }
+                }
+            }
+
+            let angle = 0;
+            let type = 'linear';
+            const linNode = fillNode.getElementsByTagNameNS(DML_NS, 'lin')[0];
+            if (linNode) {
+                angle = parseInt(linNode.getAttribute('ang')) / 60000;
+            }
+
+            const pathNode = fillNode.getElementsByTagNameNS(DML_NS, 'path')[0];
+            if(pathNode) {
+                type = 'path';
+            }
+
+            return { type: 'gradient', gradient: { type, stops, angle } };
         }
 
         function parseLineProperties(lnNode, slideContext) {
@@ -1406,7 +1445,7 @@
                     const colorObj = parseColor(fillNode);
                     if (colorObj) properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
                 } else if (fillNode.localName === 'gradFill') {
-                    // Gradient parsing logic...
+                    properties.fill = parseGradientFill(fillNode, slideContext);
                 }
             } else {
                 const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
@@ -2731,6 +2770,19 @@
                     bgRect.setAttribute('width', '100%');
                     bgRect.setAttribute('height', '100%');
                     bgRect.setAttribute('fill', finalBg.value);
+                    svg.insertBefore(bgRect, svg.firstChild);
+                } else if (finalBg.type === 'gradient') {
+                    // Create a rect that fills the entire slide, and use the renderer to apply the gradient
+                    const bgRect = document.createElementNS(SVG_NS, 'rect');
+                    bgRect.setAttribute('width', '100%');
+                    bgRect.setAttribute('height', '100%');
+
+                    // The renderer will create the gradient in defs and apply it
+                    const fill = renderer.drawRect(0, 0, slideSize.width, slideSize.height, { fill: finalBg });
+
+                    // The drawRect function will append its own rect, so we just need to apply the fill to our background rect.
+                    // We will handle the actual drawing of the gradient within the SvgRenderer itself.
+                    // For now, let's ensure the background rect is added.
                     svg.insertBefore(bgRect, svg.firstChild);
                 } else if (finalBg.type === 'image' && finalBg.relId && imageMap[finalBg.relId]) {
                     const bgImage = document.createElementNS(SVG_NS, 'image');
