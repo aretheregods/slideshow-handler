@@ -1253,12 +1253,16 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const bgNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'bg')[0];
-            if (!bgNode) return null;
+            if (!bgNode) {
+                return null;
+            }
 
             console.log("[DEBUG] Parsing background for:", xmlDoc.firstElementChild.localName);
 
             let bg = null;
             const bgPrNode = bgNode.getElementsByTagNameNS(PML_NS, 'bgPr')[0];
+            const bgRefNode = bgNode.getElementsByTagNameNS(PML_NS, 'bgRef')[0];
+
             if (bgPrNode) {
                 const solidFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                 if (solidFillNode) {
@@ -1278,12 +1282,35 @@
                     const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
                     if (blipNode) {
                         const relId = blipNode.getAttribute('r:embed');
-                        return { type: 'image', relId: relId };
+                        bg = { type: 'image', relId: relId };
+                    }
+                }
+            } else if (bgRefNode) {
+                const idx = parseInt(bgRefNode.getAttribute('idx'));
+                if (idx > 0 && idx < 1000) {
+                    const themeBgFill = slideContext.theme.formatScheme.bgFills[idx - 1];
+                    if (themeBgFill) {
+                        if (themeBgFill.type === 'solid') {
+                            const color = resolveColor(themeBgFill.color, slideContext);
+                            bg = { type: 'color', value: color };
+                        } else if (themeBgFill.type === 'gradient') {
+                            const resolvedStops = themeBgFill.gradient.stops.map(stop => ({
+                                ...stop,
+                                color: resolveColor(stop.color, slideContext, true)
+                            }));
+                            bg = { type: 'gradient', gradient: { ...themeBgFill.gradient, stops: resolvedStops } };
+                        }
+                    }
+                } else if (idx >= 1000) {
+                    const colorObj = parseColor(bgRefNode);
+                    if (colorObj) {
+                        bg = { type: 'color', value: resolveColor(colorObj, slideContext) };
                     }
                 }
             }
 
-            return null;
+            console.log(`[DEBUG] Parsed background for ${xmlDoc.firstElementChild.localName}:`, JSON.stringify(bg, null, 2));
+            return bg;
         }
 
         function parseCustomGeometry(custGeomNode) {
