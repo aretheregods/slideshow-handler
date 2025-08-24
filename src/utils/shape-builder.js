@@ -1,5 +1,5 @@
+import { findPlaceholder } from './findPlaceholder.js';
 import { Matrix } from './matrix.js';
-import { CanvasRenderer } from './canvas-renderer.js';
 
 export class ShapeBuilder {
     constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, emuPerPixel, slideSize) {
@@ -66,11 +66,8 @@ export class ShapeBuilder {
                 localMatrix.translate(-w / 2, -h / 2);
             }
         } else if (phKey) {
-            // Find layout placeholder by specific key or fall back to generic type
-            let layoutPh = this.layoutPlaceholders?.[phKey] || this.layoutPlaceholders?.[phType];
-
-            // Find master placeholder by specific key, or fall back to generic type, or search by type
-            let masterPh = this.masterPlaceholders?.[phKey] || this.masterPlaceholders?.[phType];
+            const layoutPh = findPlaceholder( phKey, phType, this.layoutPlaceholders );
+            let masterPh = findPlaceholder( phKey, phType, this.masterPlaceholders )
             if (!masterPh) {
                 // Last resort: find the first placeholder on the master with a matching type
                 masterPh = Object.values(this.masterPlaceholders).find(p => p.type === phType);
