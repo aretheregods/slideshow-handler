@@ -496,7 +496,7 @@
             return theme?.fontScheme?.minor || 'Arial';
         }
 
-        function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr) {
+        function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr, tableTextStyle = {}) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const paddedPos = {
@@ -538,7 +538,7 @@
                     ...layoutListStyle,
                     ...slideLevelProps,
                     bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
-                    defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
+                    defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
                 };
 
                 const marL = (finalProps.marL !== undefined) ? finalProps.marL : (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
@@ -1156,12 +1156,14 @@
 
             const tcStyleNode = partNode.getElementsByTagNameNS(DML_NS, 'tcStyle')[0];
             if (tcStyleNode) {
-                const fillChild = tcStyleNode.getElementsByTagNameNS(DML_NS, 'fill')[0]?.children[0];
-                if (fillChild) {
+                const fillContainer = tcStyleNode.getElementsByTagNameNS(DML_NS, 'fill')[0] || tcStyleNode;
+                for (const fillChild of fillContainer.children) {
                     if (fillChild.localName === 'noFill') {
                         partDef.tcStyle.fill = { type: 'none' };
+                        break;
                     } else if (fillChild.localName === 'solidFill') {
                         partDef.tcStyle.fill = { type: 'solid', color: parseColor(fillChild) };
+                        break;
                     } else if (fillChild.localName === 'gradFill') {
                         const gsLstNode = fillChild.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
                         const stops = [];
@@ -1181,6 +1183,7 @@
                             angle = parseInt(linNode.getAttribute('ang')) / 60000;
                         }
                         partDef.tcStyle.fill = { type: 'gradient', gradient: { type, stops, angle } };
+                        break;
                     }
                 }
 
@@ -1228,10 +1231,16 @@
                 }
 
                 // Color can be in fontRef or a direct child of tcTxStyle
-                const fontRefNode = tcTxStyleNode.getElementsByTagNameNS( DML_NS, 'fontRef' )[ 0 ];
-                const colorSourceNode = fontRefNode || tcTxStyleNode;
-                const colorObj = parseColor( colorSourceNode );
-                if ( colorObj ) {
+                const fontRefNode = tcTxStyleNode.getElementsByTagNameNS(DML_NS, 'fontRef')[0];
+                const colorContainerNode = fontRefNode || tcTxStyleNode; // This is where the color info lives
+
+                // The actual color can be a direct child, or inside a fill tag.
+                const solidFillNode = colorContainerNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+
+                const colorSourceNode = solidFillNode || colorContainerNode; // Pass the fill node if it exists
+
+                const colorObj = parseColor(colorSourceNode);
+                if (colorObj) {
                     style.color = colorObj;
                 }
 
@@ -2370,6 +2379,69 @@
             return null;
         }
 
+        function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) {
+            if (!tableStyle) return {};
+
+            let finalStyle = {};
+
+            // Base style from wholeTbl
+            if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcTxStyle) {
+                finalStyle = { ...tableStyle.wholeTbl.tcTxStyle };
+            }
+
+            const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+            const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+            const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+            const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+            const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+            const bandCol = tblPrNode.getAttribute('bandCol') === '1';
+
+            const isFirstRow = r === 0;
+            const isLastRow = r === numRows - 1;
+            const isFirstCol = c === 0;
+            const isLastCol = c === numCols - 1;
+
+            // Layer styles in increasing order of precedence
+            const partsToCheck = [];
+            if (bandRow) {
+                const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+                if (isDataRow) {
+                    const dataRowIdx = firstRow ? r - 1 : r;
+                    if (dataRowIdx >= 0) {
+                        if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
+                        else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+                    }
+                }
+            }
+            if (bandCol) {
+                const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+                if (isDataCol) {
+                    const dataColIdx = firstCol ? c - 1 : c;
+                    if (dataColIdx >= 0) {
+                        if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
+                        else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+                    }
+                }
+            }
+            if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+            if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
+            if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
+            if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
+            if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
+            if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
+            if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
+
+
+            for (const part of partsToCheck) {
+                if (part && part.tcTxStyle) {
+                    finalStyle = { ...finalStyle, ...part.tcTxStyle };
+                }
+            }
+
+            return finalStyle;
+        }
+
         async function processTable(graphicFrame, renderer, slideContext, parentMatrix) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -2492,6 +2564,7 @@
 
                     // Step 4: Get cell styling
                     const fillColor = getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext);
+                    const textStyle = getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle);
 
                     renderer.drawRect(cellX, cellY, cellWidth, cellHeight, { fill: fillColor || 'transparent' });
 
@@ -2512,7 +2585,7 @@
                     }
 
                     // Render text content
-                    await processCellText(cellNode, renderer, cellX, cellY, cellWidth, cellHeight, slideContext);
+                    await processCellText(cellNode, renderer, cellX, cellY, cellWidth, cellHeight, slideContext, textStyle);
                 }
             }
 
@@ -2522,7 +2595,7 @@
             };
         }
 
-        async function processCellText(cellNode, renderer, cellX, cellY, cellWidth, cellHeight, slideContext) {
+        async function processCellText(cellNode, renderer, cellX, cellY, cellWidth, cellHeight, slideContext, tableTextStyle = {}) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const txBodyNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
             if (!txBodyNode) return;
@@ -2590,7 +2663,7 @@
             const masterPlaceholders = {};
             const layoutPlaceholders = {};
 
-            await processParagraphs(renderer, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, bodyPr);
+            await processParagraphs(renderer, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, bodyPr, tableTextStyle);
 
             renderer.currentGroup = originalGroup;
         }
