@@ -552,7 +552,7 @@
                     defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
 
-                const indent = finalProps.indent || (level * INDENTATION_AMOUNT);
+                const indent = (finalProps.indent !== undefined) ? finalProps.indent : (level * INDENTATION_AMOUNT);
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
                 const effectiveWidth = paddedPos.width - indent - bulletOffset;
 
