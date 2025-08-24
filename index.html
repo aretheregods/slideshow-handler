@@ -2483,6 +2483,20 @@
             return null;
         }
 
+        function parseSourceRectangle(blipFillNode) {
+            if (!blipFillNode) return null;
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const srcRectNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'srcRect')[0];
+            if (!srcRectNode) return null;
+
+            return {
+                l: parseInt(srcRectNode.getAttribute('l') || '0') / 100000,
+                r: parseInt(srcRectNode.getAttribute('r') || '0') / 100000,
+                t: parseInt(srcRectNode.getAttribute('t') || '0') / 100000,
+                b: parseInt(srcRectNode.getAttribute('b') || '0') / 100000,
+            };
+        }
+
         async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg) {
             const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -2577,6 +2591,22 @@
                 if (relId && imageMap[relId]) {
                     const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
                     image.setAttribute('href', imageMap[relId]);
+
+                    const srcRect = parseSourceRectangle(blipFillNode);
+                    if (srcRect) {
+                        const img = await createImage(imageMap[relId]);
+                        const naturalWidth = img.width;
+                        const naturalHeight = img.height;
+
+                        const cropLeft = naturalWidth * srcRect.l;
+                        const cropTop = naturalHeight * srcRect.t;
+                        const cropWidth = naturalWidth * (1 - srcRect.l - srcRect.r);
+                        const cropHeight = naturalHeight * (1 - srcRect.t - srcRect.b);
+
+                        image.setAttribute('viewBox', `${cropLeft} ${cropTop} ${cropWidth} ${cropHeight}`);
+                        image.setAttribute('preserveAspectRatio', 'none');
+                    }
+
                     image.setAttribute('x', 0);
                     image.setAttribute('y', 0);
                     image.setAttribute('width', pos.width);
