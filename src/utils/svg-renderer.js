@@ -64,7 +64,7 @@ export class SvgRenderer {
         gradient.setAttribute('y1', '0%');
         gradient.setAttribute('x2', '100%');
         gradient.setAttribute('y2', '0%');
-        gradient.setAttribute('gradientTransform', `rotate(${fillData.gradient.angle})`);
+        gradient.setAttribute('gradientTransform', `rotate(${fillData.gradient.angle}, 0.5, 0.5)`);
 
         fillData.gradient.stops.forEach(stop => {
             const stopEl = document.createElementNS('http://www.w3.org/2000/svg', 'stop');

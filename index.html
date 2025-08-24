@@ -2772,17 +2772,11 @@
                     bgRect.setAttribute('fill', finalBg.value);
                     svg.insertBefore(bgRect, svg.firstChild);
                 } else if (finalBg.type === 'gradient') {
-                    // Create a rect that fills the entire slide, and use the renderer to apply the gradient
                     const bgRect = document.createElementNS(SVG_NS, 'rect');
                     bgRect.setAttribute('width', '100%');
                     bgRect.setAttribute('height', '100%');
-
-                    // The renderer will create the gradient in defs and apply it
-                    const fill = renderer.drawRect(0, 0, slideSize.width, slideSize.height, { fill: finalBg });
-
-                    // The drawRect function will append its own rect, so we just need to apply the fill to our background rect.
-                    // We will handle the actual drawing of the gradient within the SvgRenderer itself.
-                    // For now, let's ensure the background rect is added.
+                    const gradientUrl = renderer._createGradient(finalBg);
+                    bgRect.setAttribute('fill', gradientUrl);
                     svg.insertBefore(bgRect, svg.firstChild);
                 } else if (finalBg.type === 'image' && finalBg.relId && imageMap[finalBg.relId]) {
                     const bgImage = document.createElementNS(SVG_NS, 'image');
