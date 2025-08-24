@@ -107,14 +107,14 @@ export class ShapeBuilder {
              switch (geomType) {
                 case 'rect':
                     this.renderer.drawRect(0, 0, pos.width, pos.height, {
-                        fill: shapeProps.fill?.color,
+                        fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                     });
                     break;
                 case 'ellipse':
                     this.renderer.drawEllipse(pos.width / 2, pos.height / 2, pos.width / 2, pos.height / 2, {
-                        fill: shapeProps.fill?.color,
+                        fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                     });
@@ -218,7 +218,7 @@ export class ShapeBuilder {
                             }
                         });
                         this.renderer.drawPath(pathString, {
-                            fill: shapeProps.fill?.color,
+                            fill: shapeProps.fill,
                             stroke: shapeProps.stroke,
                             effect: shapeProps.effect,
                         });
@@ -259,7 +259,7 @@ export class ShapeBuilder {
                     ].join(" ");
 
                     this.renderer.drawPath(path, {
-                        fill: shapeProps.fill?.color,
+                        fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                     });
@@ -283,7 +283,7 @@ export class ShapeBuilder {
                     ].join(" ");
 
                     this.renderer.drawPath(path_roundRect, {
-                        fill: shapeProps.fill?.color,
+                        fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                     });
@@ -326,7 +326,7 @@ export class ShapeBuilder {
                     }
 
                     this.renderer.drawPath(path_multi, {
-                        fill: shapeProps.fill?.color,
+                        fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                     });
