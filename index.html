@@ -1156,11 +1156,31 @@
 
             const tcStyleNode = partNode.getElementsByTagNameNS(DML_NS, 'tcStyle')[0];
             if (tcStyleNode) {
-                const fillNode = tcStyleNode.getElementsByTagNameNS(DML_NS, 'fill')[0];
-                if (fillNode) {
-                    const solidFillNode = fillNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                    if (solidFillNode) {
-                        partDef.tcStyle.fill = parseColor(solidFillNode);
+                const fillChild = tcStyleNode.getElementsByTagNameNS(DML_NS, 'fill')[0]?.children[0];
+                if (fillChild) {
+                    if (fillChild.localName === 'noFill') {
+                        partDef.tcStyle.fill = { type: 'none' };
+                    } else if (fillChild.localName === 'solidFill') {
+                        partDef.tcStyle.fill = { type: 'solid', color: parseColor(fillChild) };
+                    } else if (fillChild.localName === 'gradFill') {
+                        const gsLstNode = fillChild.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
+                        const stops = [];
+                        if (gsLstNode) {
+                            for (const gsNode of gsLstNode.children) {
+                                const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
+                                const colorObj = parseColor(gsNode);
+                                if (colorObj) {
+                                    stops.push({ pos, color: colorObj });
+                                }
+                            }
+                        }
+                        let angle = 0;
+                        let type = 'linear';
+                        const linNode = fillChild.getElementsByTagNameNS(DML_NS, 'lin')[0];
+                        if (linNode) {
+                            angle = parseInt(linNode.getAttribute('ang')) / 60000;
+                        }
+                        partDef.tcStyle.fill = { type: 'gradient', gradient: { type, stops, angle } };
                     }
                 }
 
@@ -2255,6 +2275,9 @@
             // Level 1: Direct Formatting (highest precedence)
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
             if (tcPrNode) {
+                const noFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+                if (noFillNode) return 'none';
+
                 const gradFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
                 if (gradFillNode) {
                     return parseGradientFill(gradFillNode, slideContext);
@@ -2264,16 +2287,14 @@
                 if (solidFillNode) {
                     const colorObj = parseColor(solidFillNode);
                     if (colorObj) {
-                        return resolveColor(colorObj, slideContext);
+                        return { type: 'solid', color: resolveColor(colorObj, slideContext) };
                     }
                 }
             }
 
-            if (!tableStyle) {
-                return null;
-            }
+            // Level 2 & 3: Table Styles
+            if (!tableStyle) return null;
 
-            // Level 2 & 3: Table Styles (layered)
             let finalFill = null;
 
             // Base fill from wholeTbl
@@ -2330,7 +2351,23 @@
                 }
             }
 
-            return finalFill ? resolveColor(finalFill, slideContext) : null;
+            if (finalFill) {
+                if (finalFill.type === 'none') {
+                    return 'none';
+                }
+                if (finalFill.type === 'solid') {
+                    return { type: 'solid', color: resolveColor(finalFill.color, slideContext) };
+                }
+                if (finalFill.type === 'gradient') {
+                    const resolvedStops = finalFill.gradient.stops.map(stop => ({
+                        ...stop,
+                        color: resolveColor(stop.color, slideContext, true)
+                    }));
+                    return { type: 'gradient', gradient: { ...finalFill.gradient, stops: resolvedStops } };
+                }
+            }
+
+            return null;
         }
 
         async function processTable(graphicFrame, renderer, slideContext, parentMatrix) {
