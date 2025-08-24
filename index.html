@@ -552,6 +552,15 @@
                     defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
 
+                console.log(`[DEBUG] Paragraph Level: ${level}`, {
+                    text: pNode.textContent.trim(),
+                    finalProps: JSON.parse(JSON.stringify(finalProps)),
+                    slideLevelProps: JSON.parse(JSON.stringify(slideLevelProps)),
+                    layoutListStyle: JSON.parse(JSON.stringify(layoutListStyle)),
+                    masterListStyle: JSON.parse(JSON.stringify(masterListStyle)),
+                    defaultLevelProps: JSON.parse(JSON.stringify(defaultLevelProps)),
+                });
+
                 const indent = (finalProps.indent !== undefined) ? finalProps.indent : (level * INDENTATION_AMOUNT);
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
                 const effectiveWidth = paddedPos.width - indent - bulletOffset;
