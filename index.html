@@ -1265,7 +1265,8 @@
             const props = {
                 width: parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL,
                 cap: capMap[lnNode.getAttribute('cap')] || 'butt',
-                join: null // miter, round, bevel
+                join: null, // miter, round, bevel
+                cmpd: lnNode.getAttribute('cmpd'),
             };
 
             const roundNode = lnNode.getElementsByTagNameNS(DML_NS, 'round')[0];
