@@ -518,7 +518,7 @@
             };
 
             const lines = [];
-            let currentY = 0; // This will track the Y position for the start of each line.
+            let currentY = 0;
 
             for (const pNode of paragraphs) {
                 const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
@@ -552,30 +552,19 @@
                     defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
                 };
 
-                console.log(`[DEBUG] Paragraph Level: ${level}`, {
-                    text: pNode.textContent.trim(),
-                    finalProps: JSON.parse(JSON.stringify(finalProps)),
-                    slideLevelProps: JSON.parse(JSON.stringify(slideLevelProps)),
-                    layoutListStyle: JSON.parse(JSON.stringify(layoutListStyle)),
-                    masterListStyle: JSON.parse(JSON.stringify(masterListStyle)),
-                    defaultLevelProps: JSON.parse(JSON.stringify(defaultLevelProps)),
-                });
-
-                const indent = (finalProps.indent !== undefined) ? finalProps.indent : (level * INDENTATION_AMOUNT);
+                const marL = (finalProps.marL !== undefined) ? finalProps.marL : (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
+                const indent = (finalProps.indent !== undefined) ? finalProps.indent : 0;
+                const indent = (finalProps.indent !== undefined) ? finalProps.indent : 0;
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
-                const effectiveWidth = paddedPos.width - indent - bulletOffset;
 
-                let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY };
-                let isFirstLineOfParagraph = true;
+                let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: true };
 
                 const pushCurrentLine = () => {
                     if (currentLine.runs.length > 0) {
-                        currentLine.isFirstLineOfParagraph = isFirstLineOfParagraph;
                         lines.push(currentLine);
                         currentY += currentLine.height || LINE_HEIGHT;
-                        isFirstLineOfParagraph = false;
                     }
-                    currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY };
+                    currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: false };
                 };
 
                 const runsAndBreaks = Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName));
@@ -618,6 +607,8 @@
                         if (!word) continue;
 
                         const wordWidth = tempCtx.measureText(word).width;
+                        const currentIndent = currentLine.isFirstLine ? marL + indent : marL;
+                        const effectiveWidth = paddedPos.width - currentIndent - bulletOffset;
 
                         if (currentLine.width + wordWidth > effectiveWidth && currentLine.runs.length > 0) {
                             pushCurrentLine();
@@ -649,9 +640,12 @@
             for(const line of lines) {
                 const align = line.paragraphProps.align || 'l';
                 const level = line.paragraphProps.level || 0;
-                const indent = line.paragraphProps.indent || (level * INDENTATION_AMOUNT);
+                const marL = (line.paragraphProps.marL !== undefined) ? line.paragraphProps.marL : (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
+                const indent = (line.paragraphProps.indent !== undefined) ? line.paragraphProps.indent : 0;
                 const bulletOffset = (line.paragraphProps.bullet.type && line.paragraphProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
-                const effectiveWidth = paddedPos.width - indent - bulletOffset;
+
+                const lineIndent = line.isFirstLine ? marL + indent : marL;
+                const effectiveWidth = paddedPos.width - lineIndent - bulletOffset;
 
                 let lineXOffset = 0;
                 if (align === 'ctr') {
@@ -659,7 +653,7 @@
                 } else if (align === 'r') {
                     lineXOffset = effectiveWidth - line.width;
                 }
-                line.x = paddedPos.x + indent + bulletOffset + lineXOffset;
+                line.x = paddedPos.x + lineIndent + bulletOffset + lineXOffset;
             }
 
             return { totalHeight, lines };
@@ -1562,7 +1556,10 @@
             if (align) properties.align = align;
 
             const marL = pPrNode.getAttribute('marL');
-            if (marL) properties.indent = parseInt(marL) / EMU_PER_PIXEL;
+            if (marL) properties.marL = parseInt(marL) / EMU_PER_PIXEL;
+
+            const indent = pPrNode.getAttribute('indent');
+            if (indent) properties.indent = parseInt(indent) / EMU_PER_PIXEL;
 
             const buNone = pPrNode.getElementsByTagNameNS(DML_NS, 'buNone')[0];
             if (buNone) properties.bullet.type = 'none';
