@@ -597,11 +597,12 @@
                     if (bodyPr.fontScale) {
                         fontSize *= bodyPr.fontScale;
                     }
-                    const fontStyle = finalRunProps.bold && finalRunProps.italic ? 'bold italic' : finalRunProps.bold ? 'bold' : finalRunProps.italic ? 'italic' : 'normal';
+                    const fontStyle = finalRunProps.italic ? 'italic' : 'normal';
+                    const fontWeight = finalRunProps.bold ? 'bold' : 'normal';
                     const fontFamily = resolveFontFamily(finalRunProps, phType, slideContext);
 
                     const tempCtx = document.createElement('canvas').getContext('2d');
-                    tempCtx.font = `${fontStyle} ${fontSize}px ${fontFamily}`;
+                    tempCtx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
                     const words = text.split(/(\s+)/); // Split on whitespace but keep it
 
                     for (const word of words) {
@@ -613,7 +614,17 @@
                             pushCurrentLine();
                         }
 
-                        currentLine.runs.push({ text: word, width: wordWidth, font: tempCtx.font, color: textColor, size: fontSize });
+                        currentLine.runs.push({
+                            text: word,
+                            width: wordWidth,
+                            font: {
+                                style: fontStyle,
+                                weight: fontWeight,
+                                size: fontSize,
+                                family: fontFamily
+                            },
+                            color: textColor
+                        });
                         currentLine.width += wordWidth;
                         let lineHeight = fontSize * 1.2; // Approximate height
                         if (bodyPr.lnSpcReduction) {
@@ -1756,7 +1767,7 @@
 
                 if (bulletOffset > 0 && line.isFirstLineOfParagraph) {
                     const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext) || '#000';
-                    const firstRunSize = line.runs.length > 0 ? line.runs[0].size : (finalProps.defRPr.size || 18 * PT_TO_PX);
+                    const firstRunSize = line.runs.length > 0 ? line.runs[0].font.size : (finalProps.defRPr.size || 18 * PT_TO_PX);
                     const bulletBaselineY = startY + line.startY + firstRunSize;
 
                     if (finalProps.bullet.type === 'char') {
@@ -1796,28 +1807,14 @@
 
                 const textElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 textElement.setAttribute('x', line.x);
-                textElement.setAttribute('y', startY + line.startY);
-                textElement.setAttribute('dy', line.runs.length > 0 ? line.runs[0].size : 0); // dy for baseline alignment
+                textElement.setAttribute('y', startY + line.startY + (line.runs.length > 0 ? line.runs[0].font.size : 0));
 
-                let currentX = 0;
                 for (const run of line.runs) {
                     const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-                    const [fontStyle, fontWeight, fontSize, fontFamily] = run.font.split(/(?<=^\S+)\s/).reduce((acc, part, i, arr) => {
-                        if (i === 0) {
-                            if (part.includes('italic')) acc[0] = 'italic';
-                            if (part.includes('bold')) acc[1] = 'bold';
-                        } else if (part.endsWith('px')) {
-                             acc[2] = part;
-                        } else {
-                            acc[3] += part + ' ';
-                        }
-                        return acc;
-                    }, ['normal', 'normal', '18px', '']);
-
-                    tspan.setAttribute('font-family', fontFamily.trim() || 'Arial');
-                    tspan.setAttribute('font-size', fontSize);
-                    tspan.setAttribute('font-style', fontStyle);
-                    tspan.setAttribute('font-weight', fontWeight);
+                    tspan.setAttribute('font-family', run.font.family);
+                    tspan.setAttribute('font-size', `${run.font.size}px`);
+                    tspan.setAttribute('font-style', run.font.style);
+                    tspan.setAttribute('font-weight', run.font.weight);
                     tspan.setAttribute('fill', run.color);
                     tspan.textContent = run.text;
                     textElement.appendChild(tspan);
