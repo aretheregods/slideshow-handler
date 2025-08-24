@@ -124,12 +124,13 @@ async function renderChart(graphicFrame, renderer, chartData) {
                     text: chartData.title
                 },
                 datalabels: {
-                    anchor: 'end',
-                    align: 'end',
+                    anchor: 'center',
+                    align: 'center',
                     formatter: Math.round,
                     font: {
                         weight: 'bold'
-                    }
+                    },
+                    color: '#fff'
                 }
             }
         }
