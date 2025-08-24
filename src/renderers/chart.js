@@ -128,7 +128,8 @@ async function renderChart(graphicFrame, renderer, chartData) {
                     align: 'center',
                     formatter: Math.round,
                     font: {
-                        weight: 'bold'
+                        weight: 'bold',
+                        size: 14
                     },
                     color: '#fff'
                 }
