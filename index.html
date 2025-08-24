@@ -211,7 +211,7 @@
             ZipReader,
             ZipWriter,
         } from "https://deno.land/x/zipjs/index.js";
-        import { SvgRenderer, integerToRoman, Matrix, ShapeBuilder } from 'utils';
+        import { integerToRoman, Matrix, ShapeBuilder, SvgRenderer } from 'utils';
 
         const EMU_PER_PIXEL = 12700; // Standard conversion for 96 DPI
         const PT_TO_PX = .975; // Adjusted conversion for web rendering (90/72)
@@ -1188,7 +1188,30 @@
 
             const tcTxStyleNode = partNode.getElementsByTagNameNS(DML_NS, 'tcTxStyle')[0];
             if (tcTxStyleNode) {
-                // TODO: Parse text styles for tables (bold, italic, color, etc.)
+                const style = {};
+                const bold = tcTxStyleNode.getAttribute( 'b' );
+                if ( bold === '1' || bold === 'on' ) {
+                    style.bold = true;
+                } else if ( bold === '0' || bold === 'off' ) {
+                    style.bold = false;
+                }
+
+                const italic = tcTxStyleNode.getAttribute( 'i' );
+                if ( italic === '1' || italic === 'on' ) {
+                    style.italic = true;
+                } else if ( italic === '0' || italic === 'off' ) {
+                    style.italic = false;
+                }
+
+                // Color can be in fontRef or a direct child of tcTxStyle
+                const fontRefNode = tcTxStyleNode.getElementsByTagNameNS( DML_NS, 'fontRef' )[ 0 ];
+                const colorSourceNode = fontRefNode || tcTxStyleNode;
+                const colorObj = parseColor( colorSourceNode );
+                if ( colorObj ) {
+                    style.color = colorObj;
+                }
+
+                partDef.tcTxStyle = style;
             }
 
             return partDef;
@@ -1714,6 +1737,7 @@
                                 placeholderData.listStyle = parseTextStyle(lstStyleNode);
                             }
                             placeholderData.bodyPr = parseBodyProperties(txBodyNode);
+                            placeholderData.txBodyNode = txBodyNode;
                         }
 
                         const tempSlideContext = {
@@ -1895,13 +1919,25 @@
             const { pos } = shapeBuilder.build(shape, parentMatrix, shapeProps);
 
             if (pos) {
-                const txBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-                if (txBody) {
-                    const slideBodyPr = parseBodyProperties(txBody);
+                const slideTxBody = shape.getElementsByTagNameNS( PML_NS, 'txBody' )[ 0 ];
+                let txBodyToRender = slideTxBody;
+
+                const slideTextContent = slideTxBody ? slideTxBody.textContent.trim() : '';
+
+                if ( slideTextContent === '' ) {
+                    if ( layoutPh && layoutPh.txBodyNode ) {
+                        txBodyToRender = layoutPh.txBodyNode;
+                    } else if ( masterPh && masterPh.txBodyNode ) {
+                        txBodyToRender = masterPh.txBodyNode;
+                    }
+                }
+
+                if ( txBodyToRender ) {
+                    const slideBodyPr = parseBodyProperties( slideTxBody );
                     const masterBodyPr = masterPh ? masterPh.bodyPr : {};
                     const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
                     const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-                    await processParagraphs(renderer, txBody, { x: 0, y: 0, width: pos.width, height: pos.height }, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, finalBodyPr);
+                    await processParagraphs(renderer, txBodyToRender, { x: 0, y: 0, width: pos.width, height: pos.height }, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, finalBodyPr);
                 }
             }
 
@@ -1985,6 +2021,7 @@
                     const chY = chOffNode ? parseInt(chOffNode.getAttribute("y")) / EMU_PER_PIXEL : 0;
                     const chW = chExtNode ? parseInt(chExtNode.getAttribute("cx")) / EMU_PER_PIXEL : 1; // Avoid divide by zero
                     const chH = chExtNode ? parseInt(chExtNode.getAttribute("cy")) / EMU_PER_PIXEL : 1;
+
 
                     if (groupName === 'Group 6') {
                         console.table({ x, y, w, h, chX, chY, chW, chH, rot, flipH, flipV });
@@ -2669,7 +2706,9 @@
                             const chartXml = await getNormalizedXmlString(entriesMap, chartPath);
                             if (chartXml) {
                                 const chartData = parseChart(chartXml);
-                                await renderChart(element, renderer, chartData, parentMatrix.clone());
+                                if (chartData) {
+                                    await renderChart(element, renderer, chartData, parentMatrix.clone());
+                                }
                             }
                         }
                     }
@@ -2754,6 +2793,8 @@
                 'barChart': 'bar',
                 'lineChart': 'line',
                 'pieChart': 'pie',
+                'doughnutChart': 'doughnut',
+                'ofPieChart': 'pie',
                 // TODO: Add other chart types
             };
 
