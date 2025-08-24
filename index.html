@@ -2669,7 +2669,9 @@
                             const chartXml = await getNormalizedXmlString(entriesMap, chartPath);
                             if (chartXml) {
                                 const chartData = parseChart(chartXml);
-                                await renderChart(element, renderer, chartData, parentMatrix.clone());
+                                if (chartData) {
+                                    await renderChart(element, renderer, chartData, parentMatrix.clone());
+                                }
                             }
                         }
                     }
@@ -2754,6 +2756,8 @@
                 'barChart': 'bar',
                 'lineChart': 'line',
                 'pieChart': 'pie',
+                'doughnutChart': 'doughnut',
+                'ofPieChart': 'pie',
                 // TODO: Add other chart types
             };
 
