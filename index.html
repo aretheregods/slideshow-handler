@@ -1806,7 +1806,10 @@
                 }
 
                 const textElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                const align = finalProps.align || 'l';
+                let align = finalProps.align || 'l';
+                if (bodyPr.anchor === 'ctr' && !finalProps.align) {
+                    align = 'ctr';
+                }
                 const xPos = line.x;
 
                 if (align === 'ctr') {
