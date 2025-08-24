@@ -304,11 +304,16 @@
                 }
 
                 let tableStyles = {};
+                let defaultTableStyleId = null;
                 const tableStylesRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
                 if (tableStylesRel) {
                     const tableStylesPath = resolvePath('ppt', tableStylesRel.target);
                     const tableStylesXml = await getNormalizedXmlString(entriesMap, tableStylesPath);
-                    if (tableStylesXml) tableStyles = parseTableStyles(tableStylesXml);
+                    if (tableStylesXml) {
+                        const tableStylesResult = parseTableStyles(tableStylesXml);
+                        tableStyles = tableStylesResult.styles;
+                        defaultTableStyleId = tableStylesResult.defaultStyleId;
+                    }
                 }
 
                 const presentationXml = await getNormalizedXmlString(entriesMap, "ppt/presentation.xml");
@@ -343,6 +348,7 @@
                         theme: theme,
                         colorMap: {},
                         tableStyles: tableStyles,
+                        defaultTableStyleId: defaultTableStyleId,
                     };
 
                     const layoutRel = sortedSlideRels.find( r => r.type.endsWith( '/slideLayout' ) );
@@ -1101,6 +1107,9 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const styles = {};
 
+            const tblStyleLstNode = xmlDoc.getElementsByTagNameNS(DML_NS, 'tblStyleLst')[0];
+            const defaultStyleId = tblStyleLstNode ? tblStyleLstNode.getAttribute('def') : null;
+
             const tblStyleNodes = xmlDoc.getElementsByTagNameNS(DML_NS, 'tblStyle');
 
             for (const styleNode of tblStyleNodes) {
@@ -1115,11 +1124,10 @@
                         styleDef[partName] = parseStylePart(partNode);
                     }
                 }
-                // The ID in the slide is wrapped in braces, but not in the style definition
-                styles[`{${styleId}}`] = styleDef;
+                styles[styleId] = styleDef;
             }
 
-            return styles;
+            return { styles, defaultStyleId };
         }
 
         function parseStylePart(partNode) {
@@ -1256,7 +1264,8 @@
             const props = {
                 width: parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL,
                 cap: capMap[lnNode.getAttribute('cap')] || 'butt',
-                join: null // miter, round, bevel
+                join: null, // miter, round, bevel
+                cmpd: lnNode.getAttribute('cmpd'),
             };
 
             const roundNode = lnNode.getElementsByTagNameNS(DML_NS, 'round')[0];
@@ -1960,7 +1969,7 @@
             }
         }
 
-        function getCellBorders(cellNode, slideContext) {
+        function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const borders = {};
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
@@ -1989,17 +1998,89 @@
                     }
                 }
             }
-            // TODO: Fallback to table style for borders
-            return borders;
+
+             if (!tableStyle) {
+                return borders;
+            }
+
+            const finalBorders = { ...borders };
+
+            // Base borders from wholeTbl
+            const baseBorders = (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.borders) ? tableStyle.wholeTbl.tcStyle.borders : {};
+
+            const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+            const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+            const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+            const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+            const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+            const bandCol = tblPrNode.getAttribute('bandCol') === '1';
+
+            const isFirstRow = r === 0;
+            const isLastRow = r === numRows - 1;
+            const isFirstCol = c === 0;
+            const isLastCol = c === numCols - 1;
+
+            const partsToCheck = [];
+             if (bandRow) {
+                const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+                if (isDataRow) {
+                    const dataRowIdx = firstRow ? r - 1 : r;
+                    if (dataRowIdx >= 0) {
+                        if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
+                        else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+                    }
+                }
+            }
+             if (bandCol) {
+                const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+                 if (isDataCol) {
+                    const dataColIdx = firstCol ? c - 1 : c;
+                     if (dataColIdx >= 0) {
+                        if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
+                        else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+                    }
+                }
+            }
+            if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+            if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
+            if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
+            if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
+            if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
+            if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
+            if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
+
+            const mergedPartBorders = {};
+            for (const part of partsToCheck) {
+                if (part && part.tcStyle && part.tcStyle.borders) {
+                    Object.assign(mergedPartBorders, part.tcStyle.borders);
+                }
+            }
+
+            for (const side of ['left', 'right', 'top', 'bottom']) {
+                if (finalBorders[side] === undefined) {
+                    const borderToApply = mergedPartBorders[side] || baseBorders[side];
+                    if (borderToApply) {
+                         const color = resolveColor(borderToApply.color, slideContext);
+                        if (color) {
+                            finalBorders[side] = {
+                                width: borderToApply.width,
+                                color: color
+                            };
+                        }
+                    }
+                }
+            }
+
+            return finalBorders;
         }
 
-        function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, slideContext) {
+        function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-            // Level 1: Direct Formatting
+            // Level 1: Direct Formatting (highest precedence)
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
             if (tcPrNode) {
-                // Find the solidFill that is a direct child of tcPr, not nested in lnL, etc.
                 let solidFillNode = null;
                 for (const child of tcPrNode.children) {
                     if (child.localName === 'solidFill') {
@@ -2007,7 +2088,6 @@
                         break;
                     }
                 }
-
                 if (solidFillNode) {
                     const colorObj = parseColor(solidFillNode);
                     if (colorObj) {
@@ -2016,16 +2096,16 @@
                 }
             }
 
-            // Levels 2 & 3: Table Styles
-            const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
-            if (!tableStyleIdNode) {
+            if (!tableStyle) {
                 return null;
             }
 
-            const styleId = tableStyleIdNode.textContent;
-            const tableStyle = slideContext.tableStyles[styleId];
-            if (!tableStyle) {
-                return null;
+            // Level 2 & 3: Table Styles (layered)
+            let finalFill = null;
+
+            // Base fill from wholeTbl
+            if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.fill) {
+                finalFill = tableStyle.wholeTbl.tcStyle.fill;
             }
 
             const firstRow = tblPrNode.getAttribute('firstRow') === '1';
@@ -2040,42 +2120,44 @@
             const isFirstCol = c === 0;
             const isLastCol = c === numCols - 1;
 
-            let stylePart = null;
-
-            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { stylePart = tableStyle.nwCell; }
-            else if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { stylePart = tableStyle.neCell; }
-            else if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { stylePart = tableStyle.swCell; }
-            else if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { stylePart = tableStyle.seCell; }
-            else if (firstRow && isFirstRow && tableStyle.firstRow) { stylePart = tableStyle.firstRow; }
-            else if (lastRow && isLastRow && tableStyle.lastRow) { stylePart = tableStyle.lastRow; }
-            else if (firstCol && isFirstCol && tableStyle.firstCol) { stylePart = tableStyle.firstCol; }
-            else if (lastCol && isLastCol && tableStyle.lastCol) { stylePart = tableStyle.lastCol; }
-            else if (bandRow) {
-                const isDataRow = !(firstRow && isFirstRow);
+            // Layer styles in increasing order of precedence
+            const partsToCheck = [];
+            if (bandRow) {
+                const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
                 if (isDataRow) {
-                    if (r % 2 === 1 && tableStyle.band1H) { stylePart = tableStyle.band1H; }
-                    else if (r % 2 === 0 && tableStyle.band2H) { stylePart = tableStyle.band2H; }
+                    const dataRowIdx = firstRow ? r - 1 : r;
+                    if (dataRowIdx >= 0) {
+                        if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
+                        else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+                    }
                 }
             }
-
-            if (!stylePart && bandCol) {
+             if (bandCol) {
                 const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
-                if (isDataCol) {
-                    if (c % 2 === 1 && tableStyle.band1V) { stylePart = tableStyle.band1V; }
-                    else if (c % 2 === 0 && tableStyle.band2V) { stylePart = tableStyle.band2V; }
+                 if (isDataCol) {
+                    const dataColIdx = firstCol ? c - 1 : c;
+                     if (dataColIdx >= 0) {
+                        if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
+                        else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+                    }
+                }
+            }
+            if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+            if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
+            if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
+            if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
+            if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
+            if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
+            if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
+
+            for (const part of partsToCheck) {
+                if (part && part.tcStyle && part.tcStyle.fill) {
+                    finalFill = part.tcStyle.fill;
                 }
             }
 
-            if (stylePart && stylePart.tcStyle && stylePart.tcStyle.fill) {
-                return resolveColor(stylePart.tcStyle.fill, slideContext);
-            }
-
-            const wholeTblStyle = tableStyle.wholeTbl;
-            if (wholeTblStyle && wholeTblStyle.tcStyle && wholeTblStyle.tcStyle.fill) {
-                return resolveColor(wholeTblStyle.tcStyle.fill, slideContext);
-            }
-
-            return null;
+            return finalFill ? resolveColor(finalFill, slideContext) : null;
         }
 
         async function processTable(graphicFrame, renderer, slideContext, parentMatrix) {
@@ -2120,7 +2202,13 @@
             const tblPrNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblPr')[0];
 
             const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
-            const styleId = tableStyleIdNode ? tableStyleIdNode.textContent : null;
+            let styleId = tableStyleIdNode ? tableStyleIdNode.textContent : null;
+
+            if (!styleId && slideContext.defaultTableStyleId) {
+                styleId = `{${slideContext.defaultTableStyleId}}`;
+            }
+
+            const tableStyle = styleId ? slideContext.tableStyles[styleId] : null;
 
             // 2. Parse grid and column widths
             const tblGridNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblGrid')[0];
@@ -2193,12 +2281,12 @@
                     }
 
                     // Step 4: Get cell styling
-                    const fillColor = getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, slideContext);
+                    const fillColor = getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext);
 
                     renderer.drawRect(cellX, cellY, cellWidth, cellHeight, { fill: fillColor || 'transparent' });
 
                     // Draw borders using a strategy to avoid double-drawing
-                    const borders = getCellBorders(cellNode, slideContext);
+                    const borders = getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext);
                     const borderDefs = {
                         top: { p: [cellX, cellY, cellX + cellWidth, cellY], draw: (r === 0) },
                         right: { p: [cellX + cellWidth, cellY, cellX + cellWidth, cellY + cellHeight], draw: true },
@@ -2232,7 +2320,18 @@
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
             const bodyPrFromTxBody = parseBodyProperties(txBodyNode);
 
-            const bodyPrFromTcPr = {};
+            // Default OOXML table cell margins in EMUs
+            const DEFAULT_L_R_MARGIN_EMU = 91440;
+            const DEFAULT_T_B_MARGIN_EMU = 45720;
+
+            const bodyPrFromTcPr = {
+                // Apply defaults first
+                lIns: DEFAULT_L_R_MARGIN_EMU / EMU_PER_PIXEL,
+                rIns: DEFAULT_L_R_MARGIN_EMU / EMU_PER_PIXEL,
+                tIns: DEFAULT_T_B_MARGIN_EMU / EMU_PER_PIXEL,
+                bIns: DEFAULT_T_B_MARGIN_EMU / EMU_PER_PIXEL,
+            };
+
             if (tcPrNode) {
                 const anchor = tcPrNode.getAttribute('anchor');
                 if (anchor) bodyPrFromTcPr.anchor = anchor;

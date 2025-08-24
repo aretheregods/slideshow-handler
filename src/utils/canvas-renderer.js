@@ -141,26 +141,111 @@ export class CanvasRenderer {
      * @param {string} [options.stroke.color] - The stroke color.
      * @param {number} [options.stroke.width] - The stroke width.
      */
-    drawLine(x1, y1, x2, y2, options = {}) {
-        this.ctx.beginPath();
-        this.ctx.moveTo(x1, y1);
-        this.ctx.lineTo(x2, y2);
+    _drawCompoundLine(x1, y1, x2, y2, options) {
+        const stroke = options.stroke;
+        const totalWidth = stroke.width;
 
+        if (!totalWidth || totalWidth <= 0) {
+            return;
+        }
+
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len === 0) return;
+
+        const nx = -dy / len;
+        const ny = dx / len;
+
+        const originalLineWidth = this.ctx.lineWidth;
+        const originalLineDash = this.ctx.getLineDash();
+        this.ctx.setLineDash([]);
+
+        const drawParallelLine = (offset, width) => {
+            const offsetX = nx * offset;
+            const offsetY = ny * offset;
+            this.ctx.lineWidth = width;
+            this.ctx.beginPath();
+            this.ctx.moveTo(x1 + offsetX, y1 + offsetY);
+            this.ctx.lineTo(x2 + offsetX, y2 + offsetY);
+            this.ctx.stroke();
+        };
+
+        switch (stroke.cmpd) {
+            case 'dbl': {
+                const w = totalWidth * 3 / 8;
+                const s = totalWidth * 2 / 8;
+                const offset = (w + s) / 2;
+                drawParallelLine(-offset, w);
+                drawParallelLine(offset, w);
+                break;
+            }
+            case 'thickThin': {
+                const w1 = totalWidth * 3 / 4;
+                const w2 = totalWidth * 1 / 4;
+                const offset1 = -totalWidth / 2 + w1 / 2;
+                const offset2 = totalWidth / 2 - w2 / 2;
+                drawParallelLine(offset1, w1);
+                drawParallelLine(offset2, w2);
+                break;
+            }
+            case 'thinThick': {
+                const w1 = totalWidth * 1 / 4;
+                const w2 = totalWidth * 3 / 4;
+                const offset1 = -totalWidth / 2 + w1 / 2;
+                const offset2 = totalWidth / 2 - w2 / 2;
+                drawParallelLine(offset1, w1);
+                drawParallelLine(offset2, w2);
+                break;
+            }
+            case 'tri': {
+                const w = totalWidth / 5;
+                const s = totalWidth / 5;
+                const offset = w + s;
+                drawParallelLine(-offset, w);
+                drawParallelLine(0, w);
+                drawParallelLine(offset, w);
+                break;
+            }
+            default:
+                this.ctx.lineWidth = totalWidth;
+                if (stroke.dash) {
+                    this.ctx.setLineDash(stroke.dash);
+                }
+                this.ctx.beginPath();
+                this.ctx.moveTo(x1, y1);
+                this.ctx.lineTo(x2, y2);
+                this.ctx.stroke();
+                break;
+        }
+
+        this.ctx.lineWidth = originalLineWidth;
+        this.ctx.setLineDash(originalLineDash);
+    }
+
+    drawLine(x1, y1, x2, y2, options = {}) {
         this.applyEffects(options);
 
-        if (options.stroke) {
+        if (options.stroke && options.stroke.width > 0) {
             this.ctx.strokeStyle = options.stroke.color;
-            this.ctx.lineWidth = options.stroke.width;
-            if (options.stroke.dash) {
-                this.ctx.setLineDash(options.stroke.dash);
+            this.ctx.lineCap = options.stroke.cap || 'butt';
+
+            if (options.stroke.cmpd && options.stroke.cmpd !== 'sng') {
+                this._drawCompoundLine(x1, y1, x2, y2, options);
+            } else {
+                this.ctx.lineWidth = options.stroke.width;
+                if (options.stroke.dash) {
+                    this.ctx.setLineDash(options.stroke.dash);
+                }
+                if (options.stroke.join) {
+                    this.ctx.lineJoin = options.stroke.join;
+                }
+                this.ctx.beginPath();
+                this.ctx.moveTo(x1, y1);
+                this.ctx.lineTo(x2, y2);
+                this.ctx.stroke();
             }
-            if (options.stroke.join) {
-                this.ctx.lineJoin = options.stroke.join;
-            }
-            if (options.stroke.cap) {
-                this.ctx.lineCap = options.stroke.cap;
-            }
-            this.ctx.stroke();
+
             this.ctx.setLineDash([]); // Reset line dash
         }
 
@@ -177,6 +262,7 @@ export class CanvasRenderer {
      * @param {number} [options.stroke.width] - The stroke width.
      */
     drawPath(pathData, options = {}) {
+        // TODO: Handle compound lines for paths, which is more complex than straight lines.
         const path = new Path2D(pathData);
 
         this.applyEffects(options);
