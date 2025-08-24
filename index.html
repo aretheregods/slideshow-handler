@@ -1124,8 +1124,7 @@
                         styleDef[partName] = parseStylePart(partNode);
                     }
                 }
-                // The ID in the slide is wrapped in braces, but not in the style definition
-                styles[`{${styleId}}`] = styleDef;
+                styles[styleId] = styleDef;
             }
 
             return { styles, defaultStyleId };
@@ -2321,7 +2320,18 @@
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
             const bodyPrFromTxBody = parseBodyProperties(txBodyNode);
 
-            const bodyPrFromTcPr = {};
+            // Default OOXML table cell margins in EMUs
+            const DEFAULT_L_R_MARGIN_EMU = 91440;
+            const DEFAULT_T_B_MARGIN_EMU = 45720;
+
+            const bodyPrFromTcPr = {
+                // Apply defaults first
+                lIns: DEFAULT_L_R_MARGIN_EMU / EMU_PER_PIXEL,
+                rIns: DEFAULT_L_R_MARGIN_EMU / EMU_PER_PIXEL,
+                tIns: DEFAULT_T_B_MARGIN_EMU / EMU_PER_PIXEL,
+                bIns: DEFAULT_T_B_MARGIN_EMU / EMU_PER_PIXEL,
+            };
+
             if (tcPrNode) {
                 const anchor = tcPrNode.getAttribute('anchor');
                 if (anchor) bodyPrFromTcPr.anchor = anchor;
