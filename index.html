@@ -2284,15 +2284,30 @@
             // Level 1: Direct Formatting (highest precedence)
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
             if (tcPrNode) {
-                const noFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
-                if (noFillNode) return 'none';
+                for ( const child of tcPrNode.children ) {
+                    if ( child.localName === 'noFill' ) {
+                        return 'none';
+                    }
+                }
 
-                const gradFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
+                let gradFillNode = null;
+                for ( const child of tcPrNode.children ) {
+                    if ( child.localName === 'gradFill' ) {
+                        gradFillNode = child;
+                        break;
+                    }
+                }
                 if (gradFillNode) {
                     return parseGradientFill(gradFillNode, slideContext);
                 }
 
-                const solidFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                let solidFillNode = null;
+                for ( const child of tcPrNode.children ) {
+                    if ( child.localName === 'solidFill' ) {
+                        solidFillNode = child;
+                        break;
+                    }
+                }
                 if (solidFillNode) {
                     const colorObj = parseColor(solidFillNode);
                     if (colorObj) {
