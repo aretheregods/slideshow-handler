@@ -496,7 +496,7 @@
             return theme?.fontScheme?.minor || 'Arial';
         }
 
-        function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr) {
+        function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr, tableTextStyle = {}) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const paddedPos = {
@@ -538,7 +538,7 @@
                     ...layoutListStyle,
                     ...slideLevelProps,
                     bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
-                    defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr }
+                    defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
                 };
 
                 const marL = (finalProps.marL !== undefined) ? finalProps.marL : (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
@@ -774,7 +774,7 @@
                             const stops = [];
                             if (gsLstNode) {
                                 for (const gsNode of gsLstNode.children) {
-                                    const pos = parseInt(gsNode.getAttribute('pos')) / 1000; // Position is in 1000ths of a percent
+                                    const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
                                     const colorObj = parseColor(gsNode);
                                     if (colorObj) {
                                         stops.push({ pos, color: colorObj });
@@ -782,11 +782,16 @@
                                 }
                             }
                             let angle = 0;
+                            let type = 'linear';
                             const linNode = fillNode.getElementsByTagNameNS(DML_NS, 'lin')[0];
                             if (linNode) {
-                                angle = parseInt(linNode.getAttribute('ang')) / 60000; // Angle is in 60000ths of a degree
+                                angle = parseInt(linNode.getAttribute('ang')) / 60000;
                             }
-                            theme.formatScheme.fills.push({ type: 'gradient', stops, angle });
+                            const pathNode = fillNode.getElementsByTagNameNS(DML_NS, 'path')[0];
+                            if(pathNode) {
+                                type = 'path';
+                            }
+                            theme.formatScheme.fills.push({ type: 'gradient', gradient: { type, stops, angle } });
                         } else if (fillNode.localName === 'blipFill') {
                             const blipNode = fillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
                             if (blipNode) {
@@ -877,7 +882,7 @@
                             const stops = [];
                             if (gsLstNode) {
                                 for (const gsNode of gsLstNode.children) {
-                                    const pos = parseInt(gsNode.getAttribute('pos')) / 1000; // Position is in 1000ths of a percent
+                                    const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
                                     const colorObj = parseColor(gsNode);
                                     if (colorObj) {
                                         stops.push({ pos, color: colorObj });
@@ -885,11 +890,16 @@
                                 }
                             }
                             let angle = 0;
+                            let type = 'linear';
                             const linNode = fillNode.getElementsByTagNameNS(DML_NS, 'lin')[0];
                             if (linNode) {
-                                angle = parseInt(linNode.getAttribute('ang')) / 60000; // Angle is in 60000ths of a degree
+                                angle = parseInt(linNode.getAttribute('ang')) / 60000;
                             }
-                            theme.formatScheme.bgFills.push({ type: 'gradient', stops, angle });
+                            const pathNode = fillNode.getElementsByTagNameNS(DML_NS, 'path')[0];
+                            if(pathNode) {
+                                type = 'path';
+                            }
+                            theme.formatScheme.bgFills.push({ type: 'gradient', gradient: { type, stops, angle } });
                         } else if (fillNode.localName === 'blipFill') {
                             const blipNode = fillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
                             if (blipNode) {
@@ -1068,7 +1078,7 @@
             return null;
         }
 
-        function resolveColor(colorObj, slideContext) {
+        function resolveColor(colorObj, slideContext, returnObject = false) {
             if (!colorObj || !slideContext.theme) {
                 return null;
             }
@@ -1092,10 +1102,15 @@
             }
 
             if (hex) {
-                if (colorObj.alpha) {
+                const alpha = colorObj.alpha !== undefined ? colorObj.alpha / 100000 : 1.0;
+                if (returnObject) {
+                    return { color: hex, alpha: alpha };
+                }
+
+                if (alpha < 1.0) {
                     const rgb = hexToRgb(hex);
                     if (rgb) {
-                        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${colorObj.alpha / 100000})`;
+                        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
                     }
                 }
                 return hex;
@@ -1141,11 +1156,34 @@
 
             const tcStyleNode = partNode.getElementsByTagNameNS(DML_NS, 'tcStyle')[0];
             if (tcStyleNode) {
-                const fillNode = tcStyleNode.getElementsByTagNameNS(DML_NS, 'fill')[0];
-                if (fillNode) {
-                    const solidFillNode = fillNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                    if (solidFillNode) {
-                        partDef.tcStyle.fill = parseColor(solidFillNode);
+                const fillContainer = tcStyleNode.getElementsByTagNameNS(DML_NS, 'fill')[0] || tcStyleNode;
+                for (const fillChild of fillContainer.children) {
+                    if (fillChild.localName === 'noFill') {
+                        partDef.tcStyle.fill = { type: 'none' };
+                        break;
+                    } else if (fillChild.localName === 'solidFill') {
+                        partDef.tcStyle.fill = { type: 'solid', color: parseColor(fillChild) };
+                        break;
+                    } else if (fillChild.localName === 'gradFill') {
+                        const gsLstNode = fillChild.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
+                        const stops = [];
+                        if (gsLstNode) {
+                            for (const gsNode of gsLstNode.children) {
+                                const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
+                                const colorObj = parseColor(gsNode);
+                                if (colorObj) {
+                                    stops.push({ pos, color: colorObj });
+                                }
+                            }
+                        }
+                        let angle = 0;
+                        let type = 'linear';
+                        const linNode = fillChild.getElementsByTagNameNS(DML_NS, 'lin')[0];
+                        if (linNode) {
+                            angle = parseInt(linNode.getAttribute('ang')) / 60000;
+                        }
+                        partDef.tcStyle.fill = { type: 'gradient', gradient: { type, stops, angle } };
+                        break;
                     }
                 }
 
@@ -1193,10 +1231,16 @@
                 }
 
                 // Color can be in fontRef or a direct child of tcTxStyle
-                const fontRefNode = tcTxStyleNode.getElementsByTagNameNS( DML_NS, 'fontRef' )[ 0 ];
-                const colorSourceNode = fontRefNode || tcTxStyleNode;
-                const colorObj = parseColor( colorSourceNode );
-                if ( colorObj ) {
+                const fontRefNode = tcTxStyleNode.getElementsByTagNameNS(DML_NS, 'fontRef')[0];
+                const colorContainerNode = fontRefNode || tcTxStyleNode; // This is where the color info lives
+
+                // The actual color can be a direct child, or inside a fill tag.
+                const solidFillNode = colorContainerNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+
+                const colorSourceNode = solidFillNode || colorContainerNode; // Pass the fill node if it exists
+
+                const colorObj = parseColor(colorSourceNode);
+                if (colorObj) {
                     style.color = colorObj;
                 }
 
@@ -1211,16 +1255,28 @@
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const bgNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'bg')[0];
-            if (!bgNode) return null;
+            if (!bgNode) {
+                return null;
+            }
 
+            console.log("[DEBUG] Parsing background for:", xmlDoc.firstElementChild.localName);
+
+            let bg = null;
             const bgPrNode = bgNode.getElementsByTagNameNS(PML_NS, 'bgPr')[0];
+            const bgRefNode = bgNode.getElementsByTagNameNS(PML_NS, 'bgRef')[0];
+
             if (bgPrNode) {
                 const solidFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                 if (solidFillNode) {
                     const colorObj = parseColor(solidFillNode);
                     if (colorObj) {
-                        return { type: 'color', value: resolveColor(colorObj, slideContext) };
+                        bg = { type: 'color', value: resolveColor(colorObj, slideContext) };
                     }
+                }
+
+                const gradFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
+                if (gradFillNode) {
+                    bg = parseGradientFill(gradFillNode, slideContext);
                 }
 
                 const blipFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'blipFill')[0];
@@ -1228,12 +1284,35 @@
                     const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
                     if (blipNode) {
                         const relId = blipNode.getAttribute('r:embed');
-                        return { type: 'image', relId: relId };
+                        bg = { type: 'image', relId: relId };
+                    }
+                }
+            } else if (bgRefNode) {
+                const idx = parseInt(bgRefNode.getAttribute('idx'));
+                if (idx > 0 && idx < 1000) {
+                    const themeBgFill = slideContext.theme.formatScheme.bgFills[idx - 1];
+                    if (themeBgFill) {
+                        if (themeBgFill.type === 'solid') {
+                            const color = resolveColor(themeBgFill.color, slideContext);
+                            bg = { type: 'color', value: color };
+                        } else if (themeBgFill.type === 'gradient') {
+                            const resolvedStops = themeBgFill.gradient.stops.map(stop => ({
+                                ...stop,
+                                color: resolveColor(stop.color, slideContext, true)
+                            }));
+                            bg = { type: 'gradient', gradient: { ...themeBgFill.gradient, stops: resolvedStops } };
+                        }
+                    }
+                } else if (idx >= 1000) {
+                    const colorObj = parseColor(bgRefNode);
+                    if (colorObj) {
+                        bg = { type: 'color', value: resolveColor(colorObj, slideContext) };
                     }
                 }
             }
 
-            return null;
+            console.log(`[DEBUG] Parsed background for ${xmlDoc.firstElementChild.localName}:`, JSON.stringify(bg, null, 2));
+            return bg;
         }
 
         function parseCustomGeometry(custGeomNode) {
@@ -1271,6 +1350,38 @@
                 w: pathW,
                 h: pathH,
             };
+        }
+
+        function parseGradientFill(fillNode, slideContext) {
+            console.log("[DEBUG] Parsing gradient fill:", fillNode.outerHTML);
+            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            const gsLstNode = fillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
+            const stops = [];
+            if (gsLstNode) {
+                for (const gsNode of gsLstNode.children) {
+                    const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
+                    const colorObj = parseColor(gsNode);
+                    if (colorObj) {
+                        stops.push({ pos, color: resolveColor(colorObj, slideContext, true) });
+                    }
+                }
+            }
+
+            let angle = 0;
+            let type = 'linear';
+            const linNode = fillNode.getElementsByTagNameNS(DML_NS, 'lin')[0];
+            if (linNode) {
+                angle = parseInt(linNode.getAttribute('ang')) / 60000;
+            }
+
+            const pathNode = fillNode.getElementsByTagNameNS(DML_NS, 'path')[0];
+            if(pathNode) {
+                type = 'path';
+            }
+
+            const result = { type: 'gradient', gradient: { type, stops, angle } };
+            console.log("[DEBUG] Parsed gradient fill:", JSON.stringify(result, null, 2));
+            return result;
         }
 
         function parseLineProperties(lnNode, slideContext) {
@@ -1406,7 +1517,7 @@
                     const colorObj = parseColor(fillNode);
                     if (colorObj) properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
                 } else if (fillNode.localName === 'gradFill') {
-                    // Gradient parsing logic...
+                    properties.fill = parseGradientFill(fillNode, slideContext);
                 }
             } else {
                 const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
@@ -1504,6 +1615,12 @@
                     }
                  }
             }
+
+            console.log(`[DEBUG] Parsed shape properties for shape on slide ${slideNum}:`, {
+                fill: properties.fill,
+                stroke: properties.stroke,
+                geometry: properties.geometry
+            });
             return properties;
         }
 
@@ -2167,9 +2284,26 @@
             // Level 1: Direct Formatting (highest precedence)
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
             if (tcPrNode) {
+                for ( const child of tcPrNode.children ) {
+                    if ( child.localName === 'noFill' ) {
+                        return 'none';
+                    }
+                }
+
+                let gradFillNode = null;
+                for ( const child of tcPrNode.children ) {
+                    if ( child.localName === 'gradFill' ) {
+                        gradFillNode = child;
+                        break;
+                    }
+                }
+                if (gradFillNode) {
+                    return parseGradientFill(gradFillNode, slideContext);
+                }
+
                 let solidFillNode = null;
-                for (const child of tcPrNode.children) {
-                    if (child.localName === 'solidFill') {
+                for ( const child of tcPrNode.children ) {
+                    if ( child.localName === 'solidFill' ) {
                         solidFillNode = child;
                         break;
                     }
@@ -2177,16 +2311,14 @@
                 if (solidFillNode) {
                     const colorObj = parseColor(solidFillNode);
                     if (colorObj) {
-                        return resolveColor(colorObj, slideContext);
+                        return { type: 'solid', color: resolveColor(colorObj, slideContext) };
                     }
                 }
             }
 
-            if (!tableStyle) {
-                return null;
-            }
+            // Level 2 & 3: Table Styles
+            if (!tableStyle) return null;
 
-            // Level 2 & 3: Table Styles (layered)
             let finalFill = null;
 
             // Base fill from wholeTbl
@@ -2243,7 +2375,86 @@
                 }
             }
 
-            return finalFill ? resolveColor(finalFill, slideContext) : null;
+            if (finalFill) {
+                if (finalFill.type === 'none') {
+                    return 'none';
+                }
+                if (finalFill.type === 'solid') {
+                    return { type: 'solid', color: resolveColor(finalFill.color, slideContext) };
+                }
+                if (finalFill.type === 'gradient') {
+                    const resolvedStops = finalFill.gradient.stops.map(stop => ({
+                        ...stop,
+                        color: resolveColor(stop.color, slideContext, true)
+                    }));
+                    return { type: 'gradient', gradient: { ...finalFill.gradient, stops: resolvedStops } };
+                }
+            }
+
+            return null;
+        }
+
+        function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) {
+            if (!tableStyle) return {};
+
+            let finalStyle = {};
+
+            // Base style from wholeTbl
+            if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcTxStyle) {
+                finalStyle = { ...tableStyle.wholeTbl.tcTxStyle };
+            }
+
+            const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+            const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+            const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+            const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+            const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+            const bandCol = tblPrNode.getAttribute('bandCol') === '1';
+
+            const isFirstRow = r === 0;
+            const isLastRow = r === numRows - 1;
+            const isFirstCol = c === 0;
+            const isLastCol = c === numCols - 1;
+
+            // Layer styles in increasing order of precedence
+            const partsToCheck = [];
+            if (bandRow) {
+                const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+                if (isDataRow) {
+                    const dataRowIdx = firstRow ? r - 1 : r;
+                    if (dataRowIdx >= 0) {
+                        if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
+                        else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+                    }
+                }
+            }
+            if (bandCol) {
+                const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+                if (isDataCol) {
+                    const dataColIdx = firstCol ? c - 1 : c;
+                    if (dataColIdx >= 0) {
+                        if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
+                        else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+                    }
+                }
+            }
+            if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+            if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
+            if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
+            if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+            if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
+            if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
+            if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
+            if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
+
+
+            for (const part of partsToCheck) {
+                if (part && part.tcTxStyle) {
+                    finalStyle = { ...finalStyle, ...part.tcTxStyle };
+                }
+            }
+
+            return finalStyle;
         }
 
         async function processTable(graphicFrame, renderer, slideContext, parentMatrix) {
@@ -2368,6 +2579,7 @@
 
                     // Step 4: Get cell styling
                     const fillColor = getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext);
+                    const textStyle = getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle);
 
                     renderer.drawRect(cellX, cellY, cellWidth, cellHeight, { fill: fillColor || 'transparent' });
 
@@ -2388,7 +2600,7 @@
                     }
 
                     // Render text content
-                    await processCellText(cellNode, renderer, cellX, cellY, cellWidth, cellHeight, slideContext);
+                    await processCellText(cellNode, renderer, cellX, cellY, cellWidth, cellHeight, slideContext, textStyle);
                 }
             }
 
@@ -2398,7 +2610,7 @@
             };
         }
 
-        async function processCellText(cellNode, renderer, cellX, cellY, cellWidth, cellHeight, slideContext) {
+        async function processCellText(cellNode, renderer, cellX, cellY, cellWidth, cellHeight, slideContext, tableTextStyle = {}) {
             const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const txBodyNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
             if (!txBodyNode) return;
@@ -2466,7 +2678,7 @@
             const masterPlaceholders = {};
             const layoutPlaceholders = {};
 
-            await processParagraphs(renderer, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, bodyPr);
+            await processParagraphs(renderer, txBodyNode, pos, null, 'body', slideContext, {}, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, bodyPr, tableTextStyle);
 
             renderer.currentGroup = originalGroup;
         }
@@ -2731,6 +2943,13 @@
                     bgRect.setAttribute('width', '100%');
                     bgRect.setAttribute('height', '100%');
                     bgRect.setAttribute('fill', finalBg.value);
+                    svg.insertBefore(bgRect, svg.firstChild);
+                } else if (finalBg.type === 'gradient') {
+                    const bgRect = document.createElementNS(SVG_NS, 'rect');
+                    bgRect.setAttribute('width', '100%');
+                    bgRect.setAttribute('height', '100%');
+                    const gradientUrl = renderer._createGradient(finalBg);
+                    bgRect.setAttribute('fill', gradientUrl);
                     svg.insertBefore(bgRect, svg.firstChild);
                 } else if (finalBg.type === 'image' && finalBg.relId && imageMap[finalBg.relId]) {
                     const bgImage = document.createElementNS(SVG_NS, 'image');

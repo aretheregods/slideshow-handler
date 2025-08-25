@@ -56,6 +56,31 @@ export class SvgRenderer {
         // In SVG, effects are applied per-element, so a global reset is not needed.
     }
 
+    _createGradient(fillData) {
+        console.log("[DEBUG] Creating gradient with data:", JSON.stringify(fillData, null, 2));
+        const gradientId = `grad-${this.defs.children.length}`;
+        const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+        gradient.setAttribute('id', gradientId);
+        gradient.setAttribute('x1', '0%');
+        gradient.setAttribute('y1', '0%');
+        gradient.setAttribute('x2', '100%');
+        gradient.setAttribute('y2', '0%');
+        gradient.setAttribute('gradientTransform', `rotate(${fillData.gradient.angle}, 0.5, 0.5)`);
+
+        fillData.gradient.stops.forEach(stop => {
+            const stopEl = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+            stopEl.setAttribute('offset', `${stop.pos * 100}%`);
+            stopEl.setAttribute('stop-color', stop.color.color);
+            if (stop.color.alpha < 1) {
+                stopEl.setAttribute('stop-opacity', stop.color.alpha);
+            }
+            gradient.appendChild(stopEl);
+        });
+
+        this.defs.appendChild(gradient);
+        return `url(#${gradientId})`;
+    }
+
     /**
      * Clears the SVG.
      */
@@ -113,7 +138,15 @@ export class SvgRenderer {
         }
 
         if (options.fill) {
-            rect.setAttribute('fill', options.fill);
+            if (typeof options.fill === 'object') {
+                if (options.fill.type === 'gradient') {
+                    rect.setAttribute('fill', this._createGradient(options.fill));
+                } else if (options.fill.type === 'solid') {
+                    rect.setAttribute('fill', options.fill.color);
+                }
+            } else {
+                rect.setAttribute('fill', options.fill);
+            }
         } else {
             rect.setAttribute('fill', 'none');
         }
@@ -156,7 +189,15 @@ export class SvgRenderer {
         }
 
         if (options.fill) {
-            ellipse.setAttribute('fill', options.fill);
+            if (typeof options.fill === 'object') {
+                if (options.fill.type === 'gradient') {
+                    ellipse.setAttribute('fill', this._createGradient(options.fill));
+                } else if (options.fill.type === 'solid') {
+                    ellipse.setAttribute('fill', options.fill.color);
+                }
+            } else {
+                ellipse.setAttribute('fill', options.fill);
+            }
         } else {
             ellipse.setAttribute('fill', 'none');
         }
@@ -316,7 +357,15 @@ export class SvgRenderer {
         }
 
         if (options.fill) {
-            path.setAttribute('fill', options.fill);
+            if (typeof options.fill === 'object') {
+                if (options.fill.type === 'gradient') {
+                    path.setAttribute('fill', this._createGradient(options.fill));
+                } else if (options.fill.type === 'solid') {
+                    path.setAttribute('fill', options.fill.color);
+                }
+            } else {
+                path.setAttribute('fill', options.fill);
+            }
         } else {
             path.setAttribute('fill', 'none');
         }
