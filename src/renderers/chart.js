@@ -1,9 +1,8 @@
 import { parseXmlString } from 'utils';
-import { EMU_PER_PIXEL } from 'constants';
+import { EMU_PER_PIXEL, CHART_NS } from 'constants';
 
 function parseChart(chartXml) {
     const xmlDoc = parseXmlString(chartXml, "chart");
-    const C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 
     const chartData = {
         type: null,
@@ -12,12 +11,12 @@ function parseChart(chartXml) {
         datasets: []
     };
 
-    const titleNode = xmlDoc.getElementsByTagNameNS(C_NS, 'title')[0];
+    const titleNode = xmlDoc.getElementsByTagNameNS(CHART_NS, 'title')[0];
     if (titleNode) {
         chartData.title = titleNode.textContent.trim();
     }
 
-    const plotAreaNode = xmlDoc.getElementsByTagNameNS(C_NS, 'plotArea')[0];
+    const plotAreaNode = xmlDoc.getElementsByTagNameNS(CHART_NS, 'plotArea')[0];
     if (!plotAreaNode) return null;
 
     const chartTypeMap = {
@@ -31,7 +30,7 @@ function parseChart(chartXml) {
 
     let chartTypeNode;
     for (const type in chartTypeMap) {
-        chartTypeNode = plotAreaNode.getElementsByTagNameNS(C_NS, type)[0];
+        chartTypeNode = plotAreaNode.getElementsByTagNameNS(CHART_NS, type)[0];
         if (chartTypeNode) {
             chartData.type = chartTypeMap[type];
             break;
@@ -40,32 +39,32 @@ function parseChart(chartXml) {
 
     if (!chartTypeNode) return null;
 
-    const serNodes = chartTypeNode.getElementsByTagNameNS(C_NS, 'ser');
+    const serNodes = chartTypeNode.getElementsByTagNameNS(CHART_NS, 'ser');
     for (const serNode of serNodes) {
         const dataset = {
             label: '',
             data: []
         };
 
-        const txValNode = serNode.getElementsByTagNameNS(C_NS, 'tx')[0]?.getElementsByTagNameNS(C_NS, 'v')[0];
+        const txValNode = serNode.getElementsByTagNameNS(CHART_NS, 'tx')[0]?.getElementsByTagNameNS(CHART_NS, 'v')[0];
         if (txValNode) {
             dataset.label = txValNode.textContent.trim();
         }
 
-        const catNode = serNode.getElementsByTagNameNS(C_NS, 'cat')[0];
+        const catNode = serNode.getElementsByTagNameNS(CHART_NS, 'cat')[0];
         if (catNode) {
-            const strRefNode = catNode.getElementsByTagNameNS(C_NS, 'strRef')[0];
+            const strRefNode = catNode.getElementsByTagNameNS(CHART_NS, 'strRef')[0];
             if (strRefNode) {
-                const ptNodes = strRefNode.getElementsByTagNameNS(C_NS, 'pt');
+                const ptNodes = strRefNode.getElementsByTagNameNS(CHART_NS, 'pt');
                 chartData.labels = Array.from(ptNodes).map(pt => pt.textContent.trim());
             }
         }
 
-        const valNode = serNode.getElementsByTagNameNS(C_NS, 'val')[0];
+        const valNode = serNode.getElementsByTagNameNS(CHART_NS, 'val')[0];
         if (valNode) {
-            const numRefNode = valNode.getElementsByTagNameNS(C_NS, 'numRef')[0];
+            const numRefNode = valNode.getElementsByTagNameNS(CHART_NS, 'numRef')[0];
             if (numRefNode) {
-                const ptNodes = numRefNode.getElementsByTagNameNS(C_NS, 'pt');
+                const ptNodes = numRefNode.getElementsByTagNameNS(CHART_NS, 'pt');
                 dataset.data = Array.from(ptNodes).map(pt => parseFloat(pt.textContent.trim()));
             }
         }
