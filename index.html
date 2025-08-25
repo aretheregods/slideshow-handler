@@ -216,7 +216,17 @@
         } from "https://deno.land/x/zipjs/index.js";
         import { integerToRoman, Matrix, ShapeBuilder, SvgRenderer, parseXmlString } from 'utils';
         import { parseChart, renderChart } from 'chart';
-        import { EMU_PER_PIXEL, PT_TO_PX, LINE_HEIGHT, INDENTATION_AMOUNT, BULLET_OFFSET } from 'constants';
+        import {
+            EMU_PER_PIXEL,
+            PT_TO_PX,
+            LINE_HEIGHT,
+            INDENTATION_AMOUNT,
+            BULLET_OFFSET,
+            PML_NS,
+            DML_NS,
+            CHART_NS,
+            TABLE_NS
+        } from 'constants';
 
         const fileInput = document.getElementById( 'pptx-file' );
         const fileInfo = document.getElementById( 'file-info' );
@@ -391,7 +401,7 @@
                     const layoutXmlDoc = layoutXml ? parseXmlString(layoutXml, `layout for slide ${slideId}`) : null;
                     const masterXmlDoc = masterXml ? parseXmlString(masterXml, `master for slide ${slideId}`) : null;
 
-                    const sldNode = slideXmlDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", 'sld')[0];
+                    const sldNode = slideXmlDoc.getElementsByTagNameNS(PML_NS, 'sld')[0];
                     const showMasterShapes = !sldNode || sldNode.getAttribute('showMasterSp') !== '0';
 
                     const slideBg = parseBackground(slideXmlDoc, slideContext);
@@ -497,8 +507,6 @@
         }
 
         function layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr, tableTextStyle = {}) {
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
             const paddedPos = {
                 x: pos.x + (bodyPr.lIns || 0),
                 y: pos.y + (bodyPr.tIns || 0),
@@ -720,8 +728,6 @@
                     bgFills: [],
                 },
             };
-
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const clrSchemeNode = xmlDoc.getElementsByTagNameNS(DML_NS, 'clrScheme')[0];
             if (clrSchemeNode) {
@@ -1045,7 +1051,6 @@
         function parseColor(colorNode) {
             if (!colorNode) return null;
 
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const srgbClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
             if (srgbClrNode) {
                 const color = { srgb: `#${srgbClrNode.getAttribute('val')}` };
@@ -1121,7 +1126,6 @@
 
         function parseTableStyles(xmlString) {
             const xmlDoc = parseXmlString(xmlString, "tableStyles");
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const styles = {};
 
             const tblStyleLstNode = xmlDoc.getElementsByTagNameNS(DML_NS, 'tblStyleLst')[0];
@@ -1148,7 +1152,6 @@
         }
 
         function parseStylePart(partNode) {
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const partDef = {
                 tcStyle: {},
                 tcTxStyle: {}
@@ -1251,9 +1254,6 @@
         }
 
         function parseBackground(xmlDoc, slideContext) {
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
             const bgNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'bg')[0];
             if (!bgNode) {
                 return null;
@@ -1316,7 +1316,6 @@
         }
 
         function parseCustomGeometry(custGeomNode) {
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const pathLstNode = custGeomNode.getElementsByTagNameNS(DML_NS, 'pathLst')[0];
             if (!pathLstNode) return null;
 
@@ -1354,7 +1353,6 @@
 
         function parseGradientFill(fillNode, slideContext) {
             console.log("[DEBUG] Parsing gradient fill:", fillNode.outerHTML);
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const gsLstNode = fillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
             const stops = [];
             if (gsLstNode) {
@@ -1386,7 +1384,6 @@
 
         function parseLineProperties(lnNode, slideContext) {
             if (!lnNode) return null;
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
             if (noFillNode) return null;
@@ -1466,8 +1463,6 @@
         }
 
         function parseShapeProperties(shapeNode, slideContext, slideNum) {
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const spPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
             if (!spPrNode) return { fill: null, stroke: null, geometry: null, rawFillNode: null, rawStrokeNode: null, effect: null };
 
@@ -1626,7 +1621,6 @@
 
         function parseTextStyle(styleNode) {
             if (!styleNode) return null;
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const styles = {};
             for (let i = 1; i <= 9; i++) {
                 const lvlPr = styleNode.getElementsByTagNameNS(DML_NS, `lvl${i}pPr`)[0];
@@ -1638,7 +1632,6 @@
         }
 
         function parseBodyProperties(txBodyNode) {
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const bodyPrNode = txBodyNode ? txBodyNode.getElementsByTagNameNS(DML_NS, 'bodyPr')[0] : null;
 
             if (!bodyPrNode) return {};
@@ -1677,7 +1670,6 @@
         function parseParagraphProperties(pPrNode) {
             if (!pPrNode) return {};
 
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const properties = { bullet: {}, defRPr: {} };
 
             const align = pPrNode.getAttribute('algn');
@@ -1767,8 +1759,6 @@
 
         function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout = false) {
             const xmlDoc = parseXmlString(xml, isLayout ? "slideLayout" : "slideMaster");
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
             const placeholders = {};
             const staticShapes = [];
@@ -1871,9 +1861,6 @@
         }
 
         async function processParagraphs(renderer, txBody, pos, phKey, phType, slideContext, imageMap, listCounters, defaultTextStyles, masterPlaceholders, layoutPlaceholders, bodyPr = {}) {
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
             const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
             if (paragraphs.length === 0) return;
 
@@ -1975,8 +1962,6 @@
         }
 
         async function processShape(shape, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize) {
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-
             const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
             let phKey = null, phType = null;
             if (nvPr) {
@@ -2053,7 +2038,6 @@
 
         function parseGroupShapeProperties(grpSpPrNode, slideContext) {
             if (!grpSpPrNode) return null;
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const properties = { fill: null, ext: null };
 
             const xfrmNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
@@ -2092,9 +2076,6 @@
         }
 
         async function processGroupShape(group, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize) {
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
             const cNvPrNode = group.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
             const groupName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unknown Group';
@@ -2173,7 +2154,6 @@
         }
 
         function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const borders = {};
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
 
@@ -2279,8 +2259,6 @@
         }
 
         function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
             // Level 1: Direct Formatting (highest precedence)
             const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
             if (tcPrNode) {
@@ -2458,9 +2436,6 @@
         }
 
         async function processTable(graphicFrame, renderer, slideContext, parentMatrix) {
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-
             const xfrmNode = graphicFrame.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
             let pos = { x: 0, y: 0, width: 0, height: 0 };
             const localMatrix = new Matrix();
@@ -2611,7 +2586,6 @@
         }
 
         async function processCellText(cellNode, renderer, cellX, cellY, cellWidth, cellHeight, slideContext, tableTextStyle = {}) {
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const txBodyNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
             if (!txBodyNode) return;
 
@@ -2731,7 +2705,6 @@
 
         function parseSourceRectangle(blipFillNode) {
             if (!blipFillNode) return null;
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
             const srcRectNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'srcRect')[0];
             if (!srcRectNode) return null;
 
@@ -2744,9 +2717,6 @@
         }
 
         async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg) {
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
             let localMatrix = new Matrix();
             let pos;
 
@@ -2888,8 +2858,6 @@
         }
 
         async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix, finalBg, slideSize) {
-            const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
             for (const element of elements) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
@@ -2898,10 +2866,10 @@
                     await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize);
                 } else if (tagName === 'graphicFrame') {
                     const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
-                    if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/table') {
+                    if (graphicData && graphicData.getAttribute('uri') === TABLE_NS) {
                         await processTable(element, renderer, slideContext, parentMatrix.clone());
-                    } else if (graphicData && graphicData.getAttribute('uri') === 'http://schemas.openxmlformats.org/drawingml/2006/chart') {
-                        const chartRelId = graphicData.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/chart", "chart")[0].getAttribute("r:id");
+                    } else if (graphicData && graphicData.getAttribute('uri') === CHART_NS) {
+                        const chartRelId = graphicData.getElementsByTagNameNS(CHART_NS, "chart")[0].getAttribute("r:id");
                         if (chartRelId && slideRels && slideRels[chartRelId]) {
                             const chartPath = resolvePath('ppt/slides', slideRels[chartRelId].target);
                             const chartXml = await getNormalizedXmlString(entriesMap, chartPath);
@@ -2921,7 +2889,6 @@
 
         async function renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
-            const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
             const SVG_NS = "http://www.w3.org/2000/svg";
 
             const listCounters = {};
