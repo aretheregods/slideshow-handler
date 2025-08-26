@@ -214,7 +214,7 @@
             ZipReader,
             ZipWriter,
         } from "https://deno.land/x/zipjs/index.js";
-        import { integerToRoman, Matrix, ShapeBuilder, SvgRenderer, parseXmlString } from 'utils';
+        import { integerToRoman, Matrix, ShapeBuilder, SvgRenderer, parseXmlString, ColorParser } from 'utils';
         import { parseChart, renderChart } from 'chart';
         import {
             EMU_PER_PIXEL,
@@ -581,12 +581,12 @@
                         if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
                         if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
                         const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                        if (solidFill) finalRunProps.color = parseColor(solidFill);
+                        if (solidFill) finalRunProps.color = ColorParser.parseColor(solidFill);
                         const latinFontNode = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
                         if (latinFontNode && latinFontNode.getAttribute('typeface')) finalRunProps.font = latinFontNode.getAttribute('typeface');
                     }
 
-                    const textColor = resolveColor(finalRunProps.color, slideContext) || '#000000';
+                    const textColor = ColorParser.resolveColor(finalRunProps.color, slideContext) || '#000000';
                     let fontSize = finalRunProps.size || (18 * PT_TO_PX);
                     if (bodyPr.fontScale) {
                         fontSize *= bodyPr.fontScale;
@@ -773,7 +773,7 @@
                 if (fillStyleLstNode) {
                     for (const fillNode of fillStyleLstNode.children) {
                         if (fillNode.localName === 'solidFill') {
-                            const colorObj = parseColor(fillNode);
+                            const colorObj = ColorParser.parseColor(fillNode);
                             theme.formatScheme.fills.push({ type: 'solid', color: colorObj });
                         } else if (fillNode.localName === 'gradFill') {
                             const gsLstNode = fillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
@@ -781,7 +781,7 @@
                             if (gsLstNode) {
                                 for (const gsNode of gsLstNode.children) {
                                     const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
-                                    const colorObj = parseColor(gsNode);
+                                    const colorObj = ColorParser.parseColor(gsNode);
                                     if (colorObj) {
                                         stops.push({ pos, color: colorObj });
                                     }
@@ -813,11 +813,11 @@
                             };
                             const fgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'fgClr')[0];
                             if (fgClrNode) {
-                                pattern.fgColor = parseColor(fgClrNode);
+                                pattern.fgColor = ColorParser.parseColor(fgClrNode);
                             }
                             const bgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'bgClr')[0];
                             if (bgClrNode) {
-                                pattern.bgColor = parseColor(bgClrNode);
+                                pattern.bgColor = ColorParser.parseColor(bgClrNode);
                             }
                             theme.formatScheme.fills.push(pattern);
                         } else if (fillNode.localName === 'grpFill') {
@@ -839,7 +839,7 @@
 
                         const solidFillNode = lineNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                         if (solidFillNode) {
-                            const colorObj = parseColor(solidFillNode);
+                            const colorObj = ColorParser.parseColor(solidFillNode);
                             theme.formatScheme.lines.push({ type: 'solid', color: colorObj, width: width / EMU_PER_PIXEL, cap, cmpd });
                         } else {
                             theme.formatScheme.lines.push({ type: 'unsupported' });
@@ -858,7 +858,7 @@
                                     const blurRad = parseInt(outerShdwNode.getAttribute('blurRad') || '0') / EMU_PER_PIXEL;
                                     const dist = parseInt(outerShdwNode.getAttribute('dist') || '0') / EMU_PER_PIXEL;
                                     const dir = parseInt(outerShdwNode.getAttribute('dir') || '0') / 60000;
-                                    const color = parseColor(outerShdwNode);
+                                    const color = ColorParser.parseColor(outerShdwNode);
                                     theme.formatScheme.effects.push({
                                         type: 'outerShdw',
                                         blurRad,
@@ -881,7 +881,7 @@
                 if (bgFillStyleLstNode) {
                     for (const fillNode of bgFillStyleLstNode.children) {
                         if (fillNode.localName === 'solidFill') {
-                            const colorObj = parseColor(fillNode);
+                            const colorObj = ColorParser.parseColor(fillNode);
                             theme.formatScheme.bgFills.push({ type: 'solid', color: colorObj });
                         } else if (fillNode.localName === 'gradFill') {
                             const gsLstNode = fillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
@@ -889,7 +889,7 @@
                             if (gsLstNode) {
                                 for (const gsNode of gsLstNode.children) {
                                     const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
-                                    const colorObj = parseColor(gsNode);
+                                    const colorObj = ColorParser.parseColor(gsNode);
                                     if (colorObj) {
                                         stops.push({ pos, color: colorObj });
                                     }
@@ -921,19 +921,19 @@
                             };
                             const fgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'fgClr')[0];
                             if (fgClrNode) {
-                                pattern.fgColor = parseColor(fgClrNode);
+                                pattern.fgColor = ColorParser.parseColor(fgClrNode);
                             }
                             const bgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'bgClr')[0];
                             if (bgClrNode) {
-                                pattern.bgColor = parseColor(bgClrNode);
+                                pattern.bgColor = ColorParser.parseColor(bgClrNode);
                             }
-                            theme.formatScheme.bgFills.push(pattern);
+                            theme.formatScheme.fills.push(pattern);
                         } else if (fillNode.localName === 'grpFill') {
-                            theme.formatScheme.bgFills.push({ type: 'group' });
+                            theme.formatScheme.fills.push({ type: 'group' });
                         } else if (fillNode.localName === 'noFill') {
-                            theme.formatScheme.bgFills.push({ type: 'none' });
+                            theme.formatScheme.fills.push({ type: 'none' });
                         } else {
-                            theme.formatScheme.bgFills.push({ type: 'unsupported' });
+                            theme.formatScheme.fills.push({ type: 'unsupported' });
                         }
                     }
                 }
@@ -952,177 +952,6 @@
             return colorMap;
         }
 
-        function hexToRgb(hex) {
-            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-            return result ? {
-                r: parseInt(result[1], 16),
-                g: parseInt(result[2], 16),
-                b: parseInt(result[3], 16)
-            } : null;
-        }
-
-        function rgbToHex(r, g, b) {
-            return "#" + ((1 << 24) + (Math.floor(r) << 16) + (Math.floor(g) << 8) + Math.floor(b)).toString(16).slice(1).toUpperCase();
-        }
-
-        function applyTint(hex, tint) {
-            const base = hexToRgb(hex);
-            if (!base) return hex;
-            const amount = tint / 100000; // Tint is provided as e.g. 80000 for 80%
-            const r = base.r * (1 - amount) + 255 * amount;
-            const g = base.g * (1 - amount) + 255 * amount;
-            const b = base.b * (1 - amount) + 255 * amount;
-            return rgbToHex(r, g, b);
-        }
-
-        function applyShade(hex, shade) {
-            const base = hexToRgb(hex);
-            if (!base) return hex;
-            const amount = shade / 100000; // Shade is provided as e.g. 80000 for 80%
-            const r = base.r * (1 - amount);
-            const g = base.g * (1 - amount);
-            const b = base.b * (1 - amount);
-            return rgbToHex(r, g, b);
-        }
-
-        function rgbToHsl(r, g, b) {
-            r /= 255, g /= 255, b /= 255;
-            const max = Math.max(r, g, b), min = Math.min(r, g, b);
-            let h, s, l = (max + min) / 2;
-
-            if (max === min) {
-                h = s = 0; // achromatic
-            } else {
-                const d = max - min;
-                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-                switch (max) {
-                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-                    case g: h = (b - r) / d + 2; break;
-                    case b: h = (r - g) / d + 4; break;
-                }
-                h /= 6;
-            }
-            return { h, s, l };
-        }
-
-        function hslToRgb(h, s, l) {
-            let r, g, b;
-            if (s === 0) {
-                r = g = b = l; // achromatic
-            } else {
-                const hue2rgb = (p, q, t) => {
-                    if (t < 0) t += 1;
-                    if (t > 1) t -= 1;
-                    if (t < 1/6) return p + (q - p) * 6 * t;
-                    if (t < 1/2) return q;
-                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-                    return p;
-                };
-                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-                const p = 2 * l - q;
-                r = hue2rgb(p, q, h + 1/3);
-                g = hue2rgb(p, q, h);
-                b = hue2rgb(p, q, h - 1/3);
-            }
-            return { r: r * 255, g: g * 255, b: b * 255 };
-        }
-
-        function applyLuminance(hex, lumMod, lumOff) {
-            const rgb = hexToRgb(hex);
-            if (!rgb) return hex;
-
-            const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
-            let newL = hsl.l;
-
-            if (lumMod) {
-                newL *= (lumMod / 100000);
-            }
-            if (lumOff) {
-                newL += (lumOff / 100000);
-            }
-
-            // Clamp luminance to the valid range [0, 1]
-            newL = Math.max(0, Math.min(1, newL));
-
-            const newRgb = hslToRgb(hsl.h, hsl.s, newL);
-            return rgbToHex(newRgb.r, newRgb.g, newRgb.b);
-        }
-
-        function parseColor(colorNode) {
-            if (!colorNode) return null;
-
-            const srgbClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
-            if (srgbClrNode) {
-                const color = { srgb: `#${srgbClrNode.getAttribute('val')}` };
-                const alphaNode = srgbClrNode.getElementsByTagNameNS(DML_NS, 'alpha')[0];
-                if (alphaNode) color.alpha = parseInt(alphaNode.getAttribute('val'));
-                return color;
-            }
-
-            const schemeClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
-            if (schemeClrNode) {
-                const color = { scheme: schemeClrNode.getAttribute('val') };
-                const tintNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'tint')[0];
-                if (tintNode) color.tint = parseInt(tintNode.getAttribute('val'));
-
-                const shadeNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'shade')[0];
-                if (shadeNode) color.shade = parseInt(shadeNode.getAttribute('val'));
-
-                const alphaNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'alpha')[0];
-                if (alphaNode) color.alpha = parseInt(alphaNode.getAttribute('val'));
-
-                const lumModNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'lumMod')[0];
-                if (lumModNode) color.lumMod = parseInt(lumModNode.getAttribute('val'));
-
-                const lumOffNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'lumOff')[0];
-                if (lumOffNode) color.lumOff = parseInt(lumOffNode.getAttribute('val'));
-
-                return color;
-            }
-
-            return null;
-        }
-
-        function resolveColor(colorObj, slideContext, returnObject = false) {
-            if (!colorObj || !slideContext.theme) {
-                return null;
-            }
-
-            let hex;
-            if (colorObj.srgb) {
-                hex = colorObj.srgb;
-            } else if (colorObj.scheme) {
-                let themeColorName = slideContext.colorMap[colorObj.scheme] || colorObj.scheme;
-                if (themeColorName === 'phClr') {
-                    // phClr is context-dependent. For a robust default, we'll map it
-                    // to a visible accent color like accent1.
-                    themeColorName = 'accent1';
-                }
-                if (themeColorName && slideContext.theme.colorScheme[themeColorName]) {
-                    hex = slideContext.theme.colorScheme[themeColorName];
-                    if (colorObj.tint) hex = applyTint(hex, colorObj.tint);
-                    if (colorObj.shade) hex = applyShade(hex, colorObj.shade);
-                    if (colorObj.lumMod || colorObj.lumOff) hex = applyLuminance(hex, colorObj.lumMod, colorObj.lumOff);
-                }
-            }
-
-            if (hex) {
-                const alpha = colorObj.alpha !== undefined ? colorObj.alpha / 100000 : 1.0;
-                if (returnObject) {
-                    return { color: hex, alpha: alpha };
-                }
-
-                if (alpha < 1.0) {
-                    const rgb = hexToRgb(hex);
-                    if (rgb) {
-                        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
-                    }
-                }
-                return hex;
-            }
-
-            return null; // Return null if color can't be resolved
-        }
 
         function parseTableStyles(xmlString) {
             const xmlDoc = parseXmlString(xmlString, "tableStyles");
@@ -1165,7 +994,7 @@
                         partDef.tcStyle.fill = { type: 'none' };
                         break;
                     } else if (fillChild.localName === 'solidFill') {
-                        partDef.tcStyle.fill = { type: 'solid', color: parseColor(fillChild) };
+                        partDef.tcStyle.fill = { type: 'solid', color: ColorParser.parseColor(fillChild) };
                         break;
                     } else if (fillChild.localName === 'gradFill') {
                         const gsLstNode = fillChild.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
@@ -1173,7 +1002,7 @@
                         if (gsLstNode) {
                             for (const gsNode of gsLstNode.children) {
                                 const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
-                                const colorObj = parseColor(gsNode);
+                                const colorObj = ColorParser.parseColor(gsNode);
                                 if (colorObj) {
                                     stops.push({ pos, color: colorObj });
                                 }
@@ -1202,7 +1031,7 @@
                                 const width = parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL;
                                 const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                                 if (solidFillNode) {
-                                    const colorObj = parseColor(solidFillNode);
+                                    const colorObj = ColorParser.parseColor(solidFillNode);
                                     if (colorObj) {
                                         partDef.tcStyle.borders[type] = {
                                             width: width,
@@ -1242,7 +1071,7 @@
 
                 const colorSourceNode = solidFillNode || colorContainerNode; // Pass the fill node if it exists
 
-                const colorObj = parseColor(colorSourceNode);
+                const colorObj = ColorParser.parseColor(colorSourceNode);
                 if (colorObj) {
                     style.color = colorObj;
                 }
@@ -1268,9 +1097,9 @@
             if (bgPrNode) {
                 const solidFillNode = bgPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                 if (solidFillNode) {
-                    const colorObj = parseColor(solidFillNode);
+                    const colorObj = ColorParser.parseColor(solidFillNode);
                     if (colorObj) {
-                        bg = { type: 'color', value: resolveColor(colorObj, slideContext) };
+                        bg = { type: 'color', value: ColorParser.resolveColor(colorObj, slideContext) };
                     }
                 }
 
@@ -1293,20 +1122,20 @@
                     const themeBgFill = slideContext.theme.formatScheme.bgFills[idx - 1];
                     if (themeBgFill) {
                         if (themeBgFill.type === 'solid') {
-                            const color = resolveColor(themeBgFill.color, slideContext);
+                            const color = ColorParser.resolveColor(themeBgFill.color, slideContext);
                             bg = { type: 'color', value: color };
                         } else if (themeBgFill.type === 'gradient') {
                             const resolvedStops = themeBgFill.gradient.stops.map(stop => ({
                                 ...stop,
-                                color: resolveColor(stop.color, slideContext, true)
+                                color: ColorParser.resolveColor(stop.color, slideContext, true)
                             }));
                             bg = { type: 'gradient', gradient: { ...themeBgFill.gradient, stops: resolvedStops } };
                         }
                     }
                 } else if (idx >= 1000) {
-                    const colorObj = parseColor(bgRefNode);
+                    const colorObj = ColorParser.parseColor(bgRefNode);
                     if (colorObj) {
-                        bg = { type: 'color', value: resolveColor(colorObj, slideContext) };
+                        bg = { type: 'color', value: ColorParser.resolveColor(colorObj, slideContext) };
                     }
                 }
             }
@@ -1358,9 +1187,9 @@
             if (gsLstNode) {
                 for (const gsNode of gsLstNode.children) {
                     const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
-                    const colorObj = parseColor(gsNode);
+                    const colorObj = ColorParser.parseColor(gsNode);
                     if (colorObj) {
-                        stops.push({ pos, color: resolveColor(colorObj, slideContext, true) });
+                        stops.push({ pos, color: ColorParser.resolveColor(colorObj, slideContext, true) });
                     }
                 }
             }
@@ -1456,7 +1285,7 @@
 
             const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
             if (solidFillNode) {
-                props.color = resolveColor(parseColor(solidFillNode), slideContext);
+                props.color = ColorParser.resolveColor(ColorParser.parseColor(solidFillNode), slideContext);
             }
 
             return props;
@@ -1509,8 +1338,8 @@
                 if (fillNode.localName === 'noFill') {
                     properties.fill = 'none';
                 } else if (fillNode.localName === 'solidFill') {
-                    const colorObj = parseColor(fillNode);
-                    if (colorObj) properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                    const colorObj = ColorParser.parseColor(fillNode);
+                    if (colorObj) properties.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
                 } else if (fillNode.localName === 'gradFill') {
                     properties.fill = parseGradientFill(fillNode, slideContext);
                 }
@@ -1521,15 +1350,15 @@
                     if (fillRefNode) {
                         properties.rawFillNode = fillRefNode.outerHTML;
                         const idx = parseInt(fillRefNode.getAttribute('idx'));
-                        const colorOverride = parseColor(fillRefNode);
+                        const colorOverride = ColorParser.parseColor(fillRefNode);
                         if (idx > 0 && slideContext.theme.formatScheme.fills[idx - 1]) {
                             const themeFill = slideContext.theme.formatScheme.fills[idx - 1];
                             let colorObj = colorOverride || themeFill.color;
                             if (themeFill.type === 'solid') {
-                                properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                                properties.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
                             }
                         } else if (colorOverride) {
-                            properties.fill = { type: 'solid', color: resolveColor(colorOverride, slideContext) };
+                            properties.fill = { type: 'solid', color: ColorParser.resolveColor(colorOverride, slideContext) };
                         }
                     }
                 }
@@ -1551,11 +1380,11 @@
                             const themeLine = slideContext.theme.formatScheme.lines[idx - 1];
                             if (themeLine.type === 'solid') {
                                 const strokeProps = { ...themeLine };
-                                const lnRefColorObj = parseColor(lnRefNode);
+                                const lnRefColorObj = ColorParser.parseColor(lnRefNode);
                                 if (lnRefColorObj) {
-                                    strokeProps.color = resolveColor(lnRefColorObj, slideContext);
+                                    strokeProps.color = ColorParser.resolveColor(lnRefColorObj, slideContext);
                                 } else {
-                                    strokeProps.color = resolveColor(themeLine.color, slideContext);
+                                    strokeProps.color = ColorParser.resolveColor(themeLine.color, slideContext);
                                 }
                                 properties.stroke = strokeProps;
                             }
@@ -1572,13 +1401,13 @@
                     const blurRad = parseInt(outerShdwNode.getAttribute('blurRad') || '0') / EMU_PER_PIXEL;
                     const dist = parseInt(outerShdwNode.getAttribute('dist') || '0') / EMU_PER_PIXEL;
                     const dir = parseInt(outerShdwNode.getAttribute('dir') || '0') / 60000;
-                    const colorObj = parseColor(outerShdwNode);
+                    const colorObj = ColorParser.parseColor(outerShdwNode);
                     properties.effect = {
                         type: 'outerShdw',
                         blurRad,
                         dist,
                         dir,
-                        color: resolveColor(colorObj, slideContext),
+                        color: ColorParser.resolveColor(colorObj, slideContext),
                     };
                 }
             } else {
@@ -1590,9 +1419,9 @@
                         if (idx > 0 && slideContext.theme.formatScheme.effects[idx - 1]) {
                             properties.effect = slideContext.theme.formatScheme.effects[idx - 1];
                             // Apply color override if present
-                            const colorOverride = parseColor(effectRefNode);
+                            const colorOverride = ColorParser.parseColor(effectRefNode);
                             if (properties.effect && colorOverride) {
-                                properties.effect.color = resolveColor(colorOverride, slideContext);
+                                properties.effect.color = ColorParser.resolveColor(colorOverride, slideContext);
                             }
                         }
                     }
@@ -1605,7 +1434,7 @@
                     if (slideContext.theme && slideContext.theme.formatScheme.fills.length > 0) {
                         const defaultFill = slideContext.theme.formatScheme.fills[1] || slideContext.theme.formatScheme.fills[0]; // Often the second fill is the default shape fill
                         if (defaultFill.type === 'solid' && defaultFill.color) {
-                            properties.fill = { type: 'solid', color: resolveColor(defaultFill.color, slideContext) };
+                            properties.fill = { type: 'solid', color: ColorParser.resolveColor(defaultFill.color, slideContext) };
                         }
                     }
                  }
@@ -1730,7 +1559,7 @@
                 }
                 const schemeClr = buClr.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
                 if (schemeClr) {
-                    properties.bullet.color = parseColor(buClr);
+                    properties.bullet.color = ColorParser.parseColor(buClr);
                 }
             }
 
@@ -1745,7 +1574,7 @@
 
                 const solidFillNode = defRPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                 if (solidFillNode) {
-                    properties.defRPr.color = parseColor(solidFillNode);
+                    properties.defRPr.color = ColorParser.parseColor(solidFillNode);
                 }
 
                 const latinFontNode = defRPrNode.getElementsByTagNameNS( DML_NS, 'latin' )[ 0 ];
@@ -1888,7 +1717,7 @@
                 const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
 
                 if (bulletOffset > 0 && line.isFirstLine) {
-                    const bulletColor = resolveColor(finalProps.bullet.color, slideContext) || resolveColor(finalProps.defRPr.color, slideContext) || '#000';
+                    const bulletColor = ColorParser.resolveColor(finalProps.bullet.color, slideContext) || ColorParser.resolveColor(finalProps.defRPr.color, slideContext) || '#000';
                     const firstRunSize = line.runs.length > 0 ? line.runs[0].font.size : (finalProps.defRPr.size || 18 * PT_TO_PX);
                     const bulletBaselineY = startY + line.startY + firstRunSize;
 
@@ -2067,9 +1896,9 @@
             if (noFillNode) {
                 properties.fill = 'none';
             } else if (solidFillNode) {
-                const colorObj = parseColor(solidFillNode);
+                const colorObj = ColorParser.parseColor(solidFillNode);
                 if (colorObj) {
-                    properties.fill = { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                    properties.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
                 }
             }
             return properties;
@@ -2169,11 +1998,11 @@
                         if (noFillNode) {
                             borders[side] = 'none';
                         } else if (solidFillNode) {
-                            const colorObj = parseColor(solidFillNode);
+                            const colorObj = ColorParser.parseColor(solidFillNode);
                             const width = parseInt(lnNode.getAttribute('w') || '0') / EMU_PER_PIXEL;
                             if (colorObj && width > 0) {
                                 borders[side] = {
-                                    color: resolveColor(colorObj, slideContext),
+                                    color: ColorParser.resolveColor(colorObj, slideContext),
                                     width: width
                                 };
                             }
@@ -2244,7 +2073,7 @@
                 if (finalBorders[side] === undefined) {
                     const borderToApply = mergedPartBorders[side] || baseBorders[side];
                     if (borderToApply) {
-                         const color = resolveColor(borderToApply.color, slideContext);
+                         const color = ColorParser.resolveColor(borderToApply.color, slideContext);
                         if (color) {
                             finalBorders[side] = {
                                 width: borderToApply.width,
@@ -2287,9 +2116,9 @@
                     }
                 }
                 if (solidFillNode) {
-                    const colorObj = parseColor(solidFillNode);
+                    const colorObj = ColorParser.parseColor(solidFillNode);
                     if (colorObj) {
-                        return { type: 'solid', color: resolveColor(colorObj, slideContext) };
+                        return { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
                     }
                 }
             }
@@ -2358,12 +2187,12 @@
                     return 'none';
                 }
                 if (finalFill.type === 'solid') {
-                    return { type: 'solid', color: resolveColor(finalFill.color, slideContext) };
+                    return { type: 'solid', color: ColorParser.resolveColor(finalFill.color, slideContext) };
                 }
                 if (finalFill.type === 'gradient') {
                     const resolvedStops = finalFill.gradient.stops.map(stop => ({
                         ...stop,
-                        color: resolveColor(stop.color, slideContext, true)
+                        color: ColorParser.resolveColor(stop.color, slideContext, true)
                     }));
                     return { type: 'gradient', gradient: { ...finalFill.gradient, stops: resolvedStops } };
                 }
