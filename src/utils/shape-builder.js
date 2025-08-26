@@ -1,5 +1,5 @@
-import { findPlaceholder } from './findPlaceholder.js';
-import { Matrix } from './matrix.js';
+import { DML_NS, PML_NS } from 'constants';
+import { findPlaceholder, Matrix } from 'utils';
 
 export class ShapeBuilder {
     constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, emuPerPixel, slideSize) {
@@ -13,30 +13,7 @@ export class ShapeBuilder {
     }
 
     build(shapeNode, parentMatrix, shapeProps) {
-        const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
-        const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
-        const nvSpPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'nvSpPr')[0];
-        let phKey = null, phType = null, shapeName = 'Unknown';
-        if (nvSpPrNode) {
-            const cNvPrNode = nvSpPrNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
-            if (cNvPrNode) {
-                shapeName = cNvPrNode.getAttribute('name');
-            }
-
-            const nvPrNode = nvSpPrNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
-            if (nvPrNode) {
-                const placeholder = nvPrNode.getElementsByTagNameNS(PML_NS, 'ph')[0];
-                if (placeholder) {
-                    phType = placeholder.getAttribute('type');
-                    const phIdx = placeholder.getAttribute('idx');
-                    phKey = phIdx ? `idx_${phIdx}` : phType;
-                    if (!phType && phIdx) {
-                        phType = 'body';
-                    }
-                }
-            }
-        }
+        const { phKey, phType, shapeName } = this.#shapeAttr( shapeNode );
 
         const isConnector = shapeName.startsWith('Straight Connector');
 
@@ -44,63 +21,11 @@ export class ShapeBuilder {
             shapeProps.geometry = { type: 'line' };
         }
 
-        let localMatrix = new Matrix();
-        let pos;
-        let flipH = false, flipV = false, rot = 0;
-
-        const xfrmNode = shapeNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
-        if (xfrmNode) {
-            const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
-            const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
-            if (offNode && extNode) {
-                const x = parseInt(offNode.getAttribute("x")) / this.emuPerPixel;
-                const y = parseInt(offNode.getAttribute("y")) / this.emuPerPixel;
-                const w = parseInt(extNode.getAttribute("cx")) / this.emuPerPixel;
-                const h = parseInt(extNode.getAttribute("cy")) / this.emuPerPixel;
-                rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
-                flipH = xfrmNode.getAttribute('flipH') === '1';
-                flipV = xfrmNode.getAttribute('flipV') === '1';
-
-                pos = { x: 0, y: 0, width: w, height: h };
-
-                localMatrix.translate(x, y);
-                localMatrix.translate(w / 2, h / 2);
-                localMatrix.rotate(rot * Math.PI / 180);
-                localMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-                localMatrix.translate(-w / 2, -h / 2);
-            }
-        } else if (phKey) {
-            const layoutPh = findPlaceholder( phKey, phType, this.layoutPlaceholders );
-            let masterPh = findPlaceholder( phKey, phType, this.masterPlaceholders )
-            if (!masterPh) {
-                // Last resort: find the first placeholder on the master with a matching type
-                masterPh = Object.values(this.masterPlaceholders).find(p => p.type === phType);
-            }
-
-            // Prioritize layout placeholder only if it has position info. Otherwise, fallback to master.
-            const placeholder = (layoutPh && layoutPh.pos) ? layoutPh : masterPh;
-
-            if (placeholder && placeholder.pos) {
-                pos = { ...placeholder.pos };
-
-                // Special handling for footers to stretch across the slide
-                if (phType === 'ftr') {
-                    console.log('[WIDTH DEBUG] Original pos:', JSON.stringify(pos, null, 2));
-                    console.log('[WIDTH DEBUG] Slide size:', JSON.stringify(this.slideSize, null, 2));
-                    pos.width = this.slideSize.width - (pos.x * 2);
-                    console.log(`[WIDTH DEBUG] New calculated width: ${pos.width}`);
-                }
-
-                localMatrix.translate(pos.x, pos.y);
-                pos.x = 0;
-                pos.y = 0;
-            }
-        }
+        let { pos, localMatrix, flipH, flipV } = this.#localMatrix( phKey, phType, shapeNode );
 
         if (!pos) return { shape: null, pos: null, phKey, phType };
 
         const finalMatrix = parentMatrix.clone().multiply(localMatrix);
-
 
         this.renderer.setTransform(finalMatrix);
 
@@ -342,6 +267,90 @@ export class ShapeBuilder {
         }
 
         return { pos, phKey, phType };
+    }
+
+
+    #shapeAttr( shapeNode ) {
+        const nvSpPrNode = shapeNode.getElementsByTagNameNS( PML_NS, 'nvSpPr' )[ 0 ];
+        let phKey = null, phType = null, shapeName = 'Unknown';
+        if ( nvSpPrNode ) {
+            const cNvPrNode = nvSpPrNode.getElementsByTagNameNS( PML_NS, 'cNvPr' )[ 0 ];
+            if ( cNvPrNode ) {
+                shapeName = cNvPrNode.getAttribute( 'name' );
+            }
+
+            const nvPrNode = nvSpPrNode.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ];
+            if ( nvPrNode ) {
+                const placeholder = nvPrNode.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ];
+                if ( placeholder ) {
+                    phType = placeholder.getAttribute( 'type' );
+                    const phIdx = placeholder.getAttribute( 'idx' );
+                    phKey = phIdx ? `idx_${ phIdx }` : phType;
+                    if ( !phType && phIdx ) {
+                        phType = 'body';
+                    }
+                }
+            }
+        }
+
+        return { phKey, phType, shapeName };
+    }
+
+    #localMatrix( phKey, phType, shapeNode ) {
+        let localMatrix = new Matrix();
+        let pos;
+        let flipH = false, flipV = false, rot = 0;
+
+        const xfrmNode = shapeNode.getElementsByTagNameNS( DML_NS, 'xfrm' )[ 0 ];
+        if ( xfrmNode ) {
+            const offNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
+            const extNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
+            if ( offNode && extNode ) {
+                const x = parseInt( offNode.getAttribute( "x" ) ) / this.emuPerPixel;
+                const y = parseInt( offNode.getAttribute( "y" ) ) / this.emuPerPixel;
+                const w = parseInt( extNode.getAttribute( "cx" ) ) / this.emuPerPixel;
+                const h = parseInt( extNode.getAttribute( "cy" ) ) / this.emuPerPixel;
+                rot = parseInt( xfrmNode.getAttribute( 'rot' ) || '0' ) / 60000;
+                flipH = xfrmNode.getAttribute( 'flipH' ) === '1';
+                flipV = xfrmNode.getAttribute( 'flipV' ) === '1';
+
+                pos = { x: 0, y: 0, width: w, height: h };
+
+                localMatrix.translate( x, y );
+                localMatrix.translate( w / 2, h / 2 );
+                localMatrix.rotate( rot * Math.PI / 180 );
+                localMatrix.scale( flipH ? -1 : 1, flipV ? -1 : 1 );
+                localMatrix.translate( -w / 2, -h / 2 );
+            }
+        } else if ( phKey ) {
+            const layoutPh = findPlaceholder( phKey, phType, this.layoutPlaceholders );
+            let masterPh = findPlaceholder( phKey, phType, this.masterPlaceholders )
+            if ( !masterPh ) {
+                // Last resort: find the first placeholder on the master with a matching type
+                masterPh = Object.values( this.masterPlaceholders ).find( p => p.type === phType );
+            }
+
+            // Prioritize layout placeholder only if it has position info. Otherwise, fallback to master.
+            const placeholder = ( layoutPh && layoutPh.pos ) ? layoutPh : masterPh;
+
+            if ( placeholder && placeholder.pos ) {
+                pos = { ...placeholder.pos };
+
+                // Special handling for footers to stretch across the slide
+                if ( phType === 'ftr' ) {
+                    console.log( '[WIDTH DEBUG] Original pos:', JSON.stringify( pos, null, 2 ) );
+                    console.log( '[WIDTH DEBUG] Slide size:', JSON.stringify( this.slideSize, null, 2 ) );
+                    pos.width = this.slideSize.width - ( pos.x * 2 );
+                    console.log( `[WIDTH DEBUG] New calculated width: ${ pos.width }` );
+                }
+
+                localMatrix.translate( pos.x, pos.y );
+                pos.x = 0;
+                pos.y = 0;
+            }
+        }
+
+        return { pos, localMatrix, flipH, flipV };
     }
 
     polarToCartesian(centerX, centerY, radiusX, radiusY, angleInDegrees) {

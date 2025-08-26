@@ -214,7 +214,7 @@
             ZipReader,
             ZipWriter,
         } from "https://deno.land/x/zipjs/index.js";
-        import { integerToRoman, Matrix, ShapeBuilder, SvgRenderer, parseXmlString, ColorParser } from 'utils';
+        import { integerToRoman, Matrix, ShapeBuilder, SvgRenderer, parseXmlString, ColorParser, ReactiveStore } from 'utils';
         import { parseChart, renderChart } from 'chart';
         import {
             EMU_PER_PIXEL,
@@ -236,48 +236,56 @@
         const loadingIndicator = document.getElementById( 'loading-indicator' );
         const debugOutput = document.getElementById( 'debug-output' );
 
-        function resolvePath(baseDir, target) {
-            // Normalize backslashes to forward slashes for cross-platform compatibility.
-            const normalizedTarget = target.replace(/\\/g, '/');
+        const initialPresentationState = {
+            status: 'idle', // idle, parsing, ready, error
+            slideSize: null,
+            theme: null,
+            error: null,
+        };
 
-            // If target is an absolute path (starts with '/'), it's relative to the zip root.
-            if (normalizedTarget.startsWith('/')) {
-                // Just remove the leading slash and return.
-                return normalizedTarget.substring(1);
+        function presentationReducer( state = initialPresentationState, action ) {
+            switch ( action.type ) {
+                case 'START_PRESENTATION':
+                    return { ...initialPresentationState, status: 'parsing' };
+                case 'SET_PRESENTATION_DATA':
+                    return { ...state, ...action.payload };
+                case 'SET_STATUS':
+                    return { ...state, status: action.payload };
+                case 'SET_ERROR':
+                    return { ...state, status: 'error', error: action.payload };
+                default:
+                    return state;
             }
-            // Otherwise, resolve it relative to the baseDir.
-            const path = baseDir + '/' + normalizedTarget;
-            const parts = path.split('/');
-            const resolved = [];
-            for (const part of parts) {
-                if (part === '..') {
-                    resolved.pop();
-                } else if (part !== '.' && part !== '') {
-                    resolved.push(part);
-                }
-            }
-            return resolved.join('/');
         }
 
-        async function getNormalizedXmlString(entriesMap, path) {
-            const entry = entriesMap.get(path);
-            if (!entry) return null;
+        const initialSlideState = {
+            slideNum: -1,
+            shapes: [],
+            background: null,
+            slideContext: null,
+        };
 
-            const writer = new TextWriter();
-            let xmlString = await entry.getData(writer);
-
-            // Strip BOM if present, as it can interfere with XML parsing on some platforms.
-            if (xmlString.charCodeAt(0) === 0xFEFF) {
-                xmlString = xmlString.substring(1);
+        function slideReducer( state = initialSlideState, action ) {
+            switch ( action.type ) {
+                case 'SET_SLIDE_DATA':
+                    return { ...state, ...action.payload };
+                default:
+                    return state;
             }
-
-            // Normalize line endings to prevent cross-platform parsing issues.
-            return xmlString.replace(/\\r\\n/g, '\n').replace(/\\r/g, '\n');
         }
+
+        const presentationStore = new ReactiveStore( {
+            initialState: initialPresentationState,
+            reducer: presentationReducer,
+        } );
+
+        const slideStores = [];
 
         fileInput.addEventListener( 'change', async ( event ) => {
             const file = event.target.files[ 0 ];
             if ( !file ) return;
+
+            presentationStore.dispatch( { type: 'START_PRESENTATION' } );
 
             fileInfo.textContent = `File selected: ${ file.name }`;
             outputContainer.style.display = 'block';
@@ -429,6 +437,45 @@
                 loadingIndicator.style.display = 'none';
             }
         } );
+
+        function resolvePath( baseDir, target ) {
+            // Normalize backslashes to forward slashes for cross-platform compatibility.
+            const normalizedTarget = target.replace( /\\/g, '/' );
+
+            // If target is an absolute path (starts with '/'), it's relative to the zip root.
+            if ( normalizedTarget.startsWith( '/' ) ) {
+                // Just remove the leading slash and return.
+                return normalizedTarget.substring( 1 );
+            }
+            // Otherwise, resolve it relative to the baseDir.
+            const path = baseDir + '/' + normalizedTarget;
+            const parts = path.split( '/' );
+            const resolved = [];
+            for ( const part of parts ) {
+                if ( part === '..' ) {
+                    resolved.pop();
+                } else if ( part !== '.' && part !== '' ) {
+                    resolved.push( part );
+                }
+            }
+            return resolved.join( '/' );
+        }
+
+        async function getNormalizedXmlString( entriesMap, path ) {
+            const entry = entriesMap.get( path );
+            if ( !entry ) return null;
+
+            const writer = new TextWriter();
+            let xmlString = await entry.getData( writer );
+
+            // Strip BOM if present, as it can interfere with XML parsing on some platforms.
+            if ( xmlString.charCodeAt( 0 ) === 0xFEFF ) {
+                xmlString = xmlString.substring( 1 );
+            }
+
+            // Normalize line endings to prevent cross-platform parsing issues.
+            return xmlString.replace( /\\r\\n/g, '\n' ).replace( /\\r/g, '\n' );
+        }
 
         async function getRelationships(entriesMap, path) {
             let xmlString = await getNormalizedXmlString(entriesMap, path);
@@ -1790,7 +1837,7 @@
             renderer.currentGroup.appendChild(textGroup);
         }
 
-        async function processShape(shape, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize) {
+        async function processShape(shape, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility) {
             const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
             let phKey = null, phType = null;
             if (nvPr) {
@@ -1803,6 +1850,10 @@
                         phType = 'body';
                     }
                 }
+            }
+
+            if (slideLevelVisibility && phType && slideLevelVisibility[phType] === false) {
+                return null;
             }
 
             const masterPh = masterPlaceholders ? (masterPlaceholders[phKey] || Object.values(masterPlaceholders).find(p => p.type === phType)) : null;
@@ -1904,7 +1955,19 @@
             return properties;
         }
 
-        async function processGroupShape(group, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize) {
+        async function processGroupShape(group, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility) {
+            if (slideLevelVisibility) {
+                const placeholders = Array.from(group.getElementsByTagNameNS(PML_NS, 'ph'));
+                if (placeholders.length > 0) {
+                    const placeholderTypes = placeholders.map(ph => ph.getAttribute('type')).filter(Boolean);
+                    const uniquePlaceholderTypes = [...new Set(placeholderTypes)];
+
+                    if (uniquePlaceholderTypes.length > 0 && uniquePlaceholderTypes.every(phType => slideLevelVisibility[phType] === false)) {
+                        return;
+                    }
+                }
+            }
+
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
             const cNvPrNode = group.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
             const groupName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unknown Group';
@@ -1973,11 +2036,11 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg, slideSize);
+                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg, slideSize);
+                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility);
                 } else if (tagName === 'pic') {
-                    await processPicture(element, renderer, imageMap, finalMatrixForChildren.clone(), masterPlaceholders, layoutPlaceholders, slideContext, finalBg);
+                    await processPicture(element, renderer, imageMap, finalMatrixForChildren.clone(), masterPlaceholders, layoutPlaceholders, slideContext, finalBg, slideLevelVisibility);
                 }
             }
         }
@@ -2545,13 +2608,20 @@
             };
         }
 
-        async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg) {
+        async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg, slideLevelVisibility) {
             let localMatrix = new Matrix();
             let pos;
 
             const nvPicPrNode = picNode.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0];
             const nvPrNode = nvPicPrNode ? nvPicPrNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0] : null;
             const phNode = nvPrNode ? nvPrNode.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
+
+            if (phNode) {
+                const phType = phNode.getAttribute('type');
+                if (slideLevelVisibility && phType && slideLevelVisibility[phType] === false) {
+                    return { width: 0, height: 0 };
+                }
+            }
 
             const spPrNode = picNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
             const xfrmNode = spPrNode ? spPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0] : null;
@@ -2686,13 +2756,13 @@
             return { width: pos.width, height: pos.height };
         }
 
-        async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix, finalBg, slideSize) {
+        async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix, finalBg, slideSize, slideLevelVisibility = null) {
             for (const element of elements) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize);
+                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize);
+                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility);
                 } else if (tagName === 'graphicFrame') {
                     const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                     if (graphicData && graphicData.getAttribute('uri') === TABLE_NS) {
@@ -2711,13 +2781,19 @@
                         }
                     }
                 } else if (tagName === 'pic') {
-                    await processPicture(element, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg);
+                    await processPicture(element, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg, slideLevelVisibility);
                 }
             }
         }
 
         async function renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
+            const hfNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'hf')[0];
+            const slideLevelVisibility = {
+                ftr: !hfNode || hfNode.getAttribute('ftr') !== '0',
+                dt: !hfNode || hfNode.getAttribute('dt') !== '0',
+                sldNum: !hfNode || hfNode.getAttribute('sldNum') !== '0',
+            };
             const SVG_NS = "http://www.w3.org/2000/svg";
 
             const listCounters = {};
@@ -2760,16 +2836,16 @@
             const initialMatrix = new Matrix();
             if (showMasterShapes) {
                 if (masterStaticShapes) {
-                    await processShapeTree(masterStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg, slideSize);
+                    await processShapeTree(masterStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg, slideSize, slideLevelVisibility);
                 }
                  if (layoutStaticShapes) {
-                    await processShapeTree(layoutStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg, slideSize);
+                    await processShapeTree(layoutStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg, slideSize, slideLevelVisibility);
                 }
             }
 
             const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
             if (spTreeNode) {
-                await processShapeTree(spTreeNode.children, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, initialMatrix.clone(), finalBg, slideSize);
+                await processShapeTree(spTreeNode.children, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, initialMatrix.clone(), finalBg, slideSize, slideLevelVisibility);
             }
              // Since SVG is scalable, we don't need the resize observer. The viewBox handles it.
         }
