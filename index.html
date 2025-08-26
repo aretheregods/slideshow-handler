@@ -214,7 +214,7 @@
             ZipReader,
             ZipWriter,
         } from "https://deno.land/x/zipjs/index.js";
-        import { integerToRoman, Matrix, ShapeBuilder, SvgRenderer, parseXmlString, ColorParser, ReactiveStore } from 'utils';
+        import { integerToRoman, Matrix, ShapeBuilder, SvgRenderer, parseXmlString, ColorParser, ReactiveStore, resolvePath, getNormalizedXmlString, getRelationships, getSlideOrder, getSlideSize } from 'utils';
         import { parseChart, renderChart } from 'chart';
         import {
             EMU_PER_PIXEL,
@@ -437,99 +437,6 @@
                 loadingIndicator.style.display = 'none';
             }
         } );
-
-        function resolvePath( baseDir, target ) {
-            // Normalize backslashes to forward slashes for cross-platform compatibility.
-            const normalizedTarget = target.replace( /\\/g, '/' );
-
-            // If target is an absolute path (starts with '/'), it's relative to the zip root.
-            if ( normalizedTarget.startsWith( '/' ) ) {
-                // Just remove the leading slash and return.
-                return normalizedTarget.substring( 1 );
-            }
-            // Otherwise, resolve it relative to the baseDir.
-            const path = baseDir + '/' + normalizedTarget;
-            const parts = path.split( '/' );
-            const resolved = [];
-            for ( const part of parts ) {
-                if ( part === '..' ) {
-                    resolved.pop();
-                } else if ( part !== '.' && part !== '' ) {
-                    resolved.push( part );
-                }
-            }
-            return resolved.join( '/' );
-        }
-
-        async function getNormalizedXmlString( entriesMap, path ) {
-            const entry = entriesMap.get( path );
-            if ( !entry ) return null;
-
-            const writer = new TextWriter();
-            let xmlString = await entry.getData( writer );
-
-            // Strip BOM if present, as it can interfere with XML parsing on some platforms.
-            if ( xmlString.charCodeAt( 0 ) === 0xFEFF ) {
-                xmlString = xmlString.substring( 1 );
-            }
-
-            // Normalize line endings to prevent cross-platform parsing issues.
-            return xmlString.replace( /\\r\\n/g, '\n' ).replace( /\\r/g, '\n' );
-        }
-
-        async function getRelationships(entriesMap, path) {
-            let xmlString = await getNormalizedXmlString(entriesMap, path);
-            if (!xmlString) return {};
-
-            const rels = {};
-            // Use regex to parse relationships to be resilient to XML parsing errors.
-            const relRegex = /<Relationship\s+([^>]+)\/?>/g;
-            const attrRegex = /(\w+)="([^"]+)"/g;
-
-            let match;
-            while ((match = relRegex.exec(xmlString)) !== null) {
-                const attrs = {};
-                const attributesString = match[1];
-                for (const attrMatch of attributesString.matchAll(attrRegex)) {
-                    attrs[attrMatch[1]] = attrMatch[2];
-                }
-
-                if (attrs.Id && attrs.Type && attrs.Target) {
-                    rels[attrs.Id] = {
-                        id: attrs.Id,
-                        type: attrs.Type,
-                        target: attrs.Target
-                    };
-                }
-            }
-            return rels;
-        }
-
-        function getSlideOrder(xmlString) {
-            const ids = [];
-            const regex = /<[^>:]*:sldId[^>]+r:id="([^"]+)"/g;
-            let match;
-            while ((match = regex.exec(xmlString)) !== null) {
-                ids.push(match[1]);
-            }
-            return ids;
-        }
-
-        function getSlideSize(xmlString) {
-            // Two-step regex for robustness: first find the tag, then find the attributes within it.
-            const sldSzTagMatch = xmlString.match(/<[^>:]*:sldSz\s+([^>]+)\/?>/);
-            if (sldSzTagMatch) {
-                const attrs = sldSzTagMatch[1];
-                const cxMatch = attrs.match(/cx="([^"]+)"/);
-                const cyMatch = attrs.match(/cy="([^"]+)"/);
-                if (cxMatch && cyMatch) {
-                    const cx = parseInt(cxMatch[1]);
-                    const cy = parseInt(cyMatch[1]);
-                    return { width: cx / EMU_PER_PIXEL, height: cy / EMU_PER_PIXEL };
-                }
-            }
-            return { width: 960, height: 720 }; // Default size
-        }
 
         function resolveFontFamily(finalRunProps, phType, slideContext) {
             const fontAlias = finalRunProps.font;
