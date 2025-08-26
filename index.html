@@ -8,6 +8,7 @@
     <script type="importmap">
         {
             "imports": {
+                "zipjs": "https://deno.land/x/zipjs/index.js",
                 "utils": "./src/utils/index.js",
                 "chart": "./src/renderers/chart.js",
                 "constants": "./src/constants.js"
@@ -213,7 +214,7 @@
             TextWriter,
             ZipReader,
             ZipWriter,
-        } from "https://deno.land/x/zipjs/index.js";
+        } from "zipjs";
         import { integerToRoman, Matrix, ShapeBuilder, SvgRenderer, parseXmlString, ColorParser, ReactiveStore, resolvePath, getNormalizedXmlString, getRelationships, getSlideOrder, getSlideSize } from 'utils';
         import { parseChart, renderChart } from 'chart';
         import {

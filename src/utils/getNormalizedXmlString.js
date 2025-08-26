@@ -1,4 +1,4 @@
-import { TextWriter } from "https://deno.land/x/zipjs/index.js";
+import { TextWriter } from "zipjs";
 
 export async function getNormalizedXmlString( entriesMap, path ) {
     const entry = entriesMap.get( path );
