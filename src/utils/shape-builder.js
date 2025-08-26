@@ -40,6 +40,10 @@ export class ShapeBuilder {
 
         const isConnector = shapeName.startsWith('Straight Connector');
 
+        if (isConnector && !shapeProps.geometry) {
+            shapeProps.geometry = { type: 'line' };
+        }
+
         let localMatrix = new Matrix();
         let pos;
         let flipH = false, flipV = false, rot = 0;
