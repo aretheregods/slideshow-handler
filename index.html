@@ -1790,7 +1790,7 @@
             renderer.currentGroup.appendChild(textGroup);
         }
 
-        async function processShape(shape, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize) {
+        async function processShape(shape, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility) {
             const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
             let phKey = null, phType = null;
             if (nvPr) {
@@ -1803,6 +1803,10 @@
                         phType = 'body';
                     }
                 }
+            }
+
+            if (slideLevelVisibility && phType && slideLevelVisibility[phType] === false) {
+                return null;
             }
 
             const masterPh = masterPlaceholders ? (masterPlaceholders[phKey] || Object.values(masterPlaceholders).find(p => p.type === phType)) : null;
@@ -1904,7 +1908,19 @@
             return properties;
         }
 
-        async function processGroupShape(group, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize) {
+        async function processGroupShape(group, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility) {
+            if (slideLevelVisibility) {
+                const placeholders = Array.from(group.getElementsByTagNameNS(PML_NS, 'ph'));
+                if (placeholders.length > 0) {
+                    const placeholderTypes = placeholders.map(ph => ph.getAttribute('type')).filter(Boolean);
+                    const uniquePlaceholderTypes = [...new Set(placeholderTypes)];
+
+                    if (uniquePlaceholderTypes.length > 0 && uniquePlaceholderTypes.every(phType => slideLevelVisibility[phType] === false)) {
+                        return;
+                    }
+                }
+            }
+
             const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
             const cNvPrNode = group.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
             const groupName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unknown Group';
@@ -1973,11 +1989,11 @@
             for (const element of group.children) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg, slideSize);
+                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg, slideSize);
+                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, finalMatrixForChildren.clone(), defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility);
                 } else if (tagName === 'pic') {
-                    await processPicture(element, renderer, imageMap, finalMatrixForChildren.clone(), masterPlaceholders, layoutPlaceholders, slideContext, finalBg);
+                    await processPicture(element, renderer, imageMap, finalMatrixForChildren.clone(), masterPlaceholders, layoutPlaceholders, slideContext, finalBg, slideLevelVisibility);
                 }
             }
         }
@@ -2545,13 +2561,20 @@
             };
         }
 
-        async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg) {
+        async function processPicture(picNode, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg, slideLevelVisibility) {
             let localMatrix = new Matrix();
             let pos;
 
             const nvPicPrNode = picNode.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0];
             const nvPrNode = nvPicPrNode ? nvPicPrNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0] : null;
             const phNode = nvPrNode ? nvPrNode.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
+
+            if (phNode) {
+                const phType = phNode.getAttribute('type');
+                if (slideLevelVisibility && phType && slideLevelVisibility[phType] === false) {
+                    return { width: 0, height: 0 };
+                }
+            }
 
             const spPrNode = picNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
             const xfrmNode = spPrNode ? spPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0] : null;
@@ -2686,13 +2709,13 @@
             return { width: pos.width, height: pos.height };
         }
 
-        async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix, finalBg, slideSize) {
+        async function processShapeTree(elements, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, parentMatrix, finalBg, slideSize, slideLevelVisibility = null) {
             for (const element of elements) {
                 const tagName = element.localName;
                 if (tagName === 'sp' || tagName === 'cxnSp') {
-                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize);
+                    await processShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility);
                 } else if (tagName === 'grpSp') {
-                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize);
+                    await processGroupShape(element, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, parentMatrix, defaultTextStyles, slideNum, finalBg, slideSize, slideLevelVisibility);
                 } else if (tagName === 'graphicFrame') {
                     const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                     if (graphicData && graphicData.getAttribute('uri') === TABLE_NS) {
@@ -2711,13 +2734,19 @@
                         }
                     }
                 } else if (tagName === 'pic') {
-                    await processPicture(element, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg);
+                    await processPicture(element, renderer, imageMap, parentMatrix, masterPlaceholders, layoutPlaceholders, slideContext, finalBg, slideLevelVisibility);
                 }
             }
         }
 
         async function renderSlide( slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap ) {
             const xmlDoc = parseXmlString(slideXml, `slide number ${slideNum}`);
+            const hfNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'hf')[0];
+            const slideLevelVisibility = {
+                ftr: !hfNode || hfNode.getAttribute('ftr') !== '0',
+                dt: !hfNode || hfNode.getAttribute('dt') !== '0',
+                sldNum: !hfNode || hfNode.getAttribute('sldNum') !== '0',
+            };
             const SVG_NS = "http://www.w3.org/2000/svg";
 
             const listCounters = {};
@@ -2760,16 +2789,16 @@
             const initialMatrix = new Matrix();
             if (showMasterShapes) {
                 if (masterStaticShapes) {
-                    await processShapeTree(masterStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg, slideSize);
+                    await processShapeTree(masterStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg, slideSize, slideLevelVisibility);
                 }
                  if (layoutStaticShapes) {
-                    await processShapeTree(layoutStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg, slideSize);
+                    await processShapeTree(layoutStaticShapes, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, null, entriesMap, initialMatrix.clone(), finalBg, slideSize, slideLevelVisibility);
                 }
             }
 
             const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
             if (spTreeNode) {
-                await processShapeTree(spTreeNode.children, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, initialMatrix.clone(), finalBg, slideSize);
+                await processShapeTree(spTreeNode.children, renderer, masterPlaceholders, layoutPlaceholders, slideContext, imageMap, listCounters, defaultTextStyles, slideNum, slideRels, entriesMap, initialMatrix.clone(), finalBg, slideSize, slideLevelVisibility);
             }
              // Since SVG is scalable, we don't need the resize observer. The viewBox handles it.
         }
