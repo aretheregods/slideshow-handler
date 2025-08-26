@@ -11,3 +11,5 @@ export { getNormalizedXmlString } from './getNormalizedXmlString.js';
 export { getRelationships } from './getRelationships.js';
 export { getSlideOrder } from './getSlideOrder.js';
 export { getSlideSize } from './getSlideSize.js';
+export * from './pptx-parser.js';
+export * from './drawing.js';
