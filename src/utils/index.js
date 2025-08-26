@@ -6,3 +6,8 @@ export { SvgRenderer } from './svg-renderer.js';
 export { Matrix } from './matrix.js';
 export { parseXmlString } from './xml.js';
 export { ColorParser } from './colorParser.js';
+export { resolvePath } from './resolvePath.js';
+export { getNormalizedXmlString } from './getNormalizedXmlString.js';
+export { getRelationships } from './getRelationships.js';
+export { getSlideOrder } from './getSlideOrder.js';
+export { getSlideSize } from './getSlideSize.js';
