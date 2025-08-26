@@ -190,7 +190,7 @@ export class PPTXRenderer {
                 const masterBodyPr = masterPh ? masterPh.bodyPr : {};
                 const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-                await this.processParagraphs(txBodyToRender, { x: 0, y: 0, width: pos.width, height: pos.height }, phKey, phType, listCounters, finalBodyPr);
+                await this.processParagraphs(txBodyToRender, { x: 0, y: 0, width: pos.width, height: pos.height }, phKey, phType, listCounters, finalBodyPr, {}, this.defaultTextStyles, this.masterPlaceholders, this.layoutPlaceholders, this.imageMap);
             }
         }
 
@@ -653,16 +653,16 @@ export class PPTXRenderer {
         const masterPlaceholders = {};
         const layoutPlaceholders = {};
 
-        await this.processParagraphs(txBodyNode, pos, null, 'body', listCounters, bodyPr, tableTextStyle);
+        await this.processParagraphs(txBodyNode, pos, null, 'body', listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, {});
 
         this.renderer.currentGroup = originalGroup;
     }
 
-    async processParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr = {}, tableTextStyle = {}) {
+    async processParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr = {}, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders, imageMap) {
         const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
         if (paragraphs.length === 0) return;
 
-        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle);
+        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
 
         const paddedPos = {
             x: pos.x + (bodyPr.lIns || 0),
@@ -759,7 +759,7 @@ export class PPTXRenderer {
         this.renderer.currentGroup.appendChild(textGroup);
     }
 
-    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle = {}) {
+    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
         const paddedPos = {
             x: pos.x + (bodyPr.lIns || 0),
             y: pos.y + (bodyPr.tIns || 0),
@@ -773,19 +773,19 @@ export class PPTXRenderer {
         for (const pNode of paragraphs) {
             const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
             const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
-            let defaultStyle = this.defaultTextStyles.other;
-            if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = this.defaultTextStyles.title;
-            else if (phType === 'body') defaultStyle = this.defaultTextStyles.body;
+            let defaultStyle = defaultTextStyles.other;
+            if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = defaultTextStyles.title;
+            else if (phType === 'body') defaultStyle = defaultTextStyles.body;
 
             const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
 
-            const masterPh = this.masterPlaceholders ? (this.masterPlaceholders[phKey] || Object.values(this.masterPlaceholders).find(p => p.type === phType)) : null;
+            const masterPh = masterPlaceholders ? (masterPlaceholders[phKey] || Object.values(masterPlaceholders).find(p => p.type === phType)) : null;
             let masterListStyle = (masterPh?.listStyle?.[level]) || {};
             if (masterPh && masterPh.type && phType && masterPh.type !== phType) {
                 masterListStyle = {};
             }
 
-            const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
+            const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
             let layoutListStyle = (layoutPh?.listStyle?.[level]) || {};
             if (layoutPh && layoutPh.type && phType && layoutPh.type !== phType) {
                 layoutListStyle = {};
