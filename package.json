@@ -1,0 +1,25 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "Render pptx in the browser",
+  "main": "index.js",
+  "scripts": {
+    "test": "./node_modules/.bin/vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aretheregods/slideshow-handler.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/aretheregods/slideshow-handler/issues"
+  },
+  "homepage": "https://github.com/aretheregods/slideshow-handler#readme",
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.4"
+  }
+}
