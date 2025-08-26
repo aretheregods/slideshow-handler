@@ -11,7 +11,7 @@ export class ColorParser {
     }
 
     static rgbToHex(r, g, b) {
-        return "#" + ((1 << 24) + (Math.floor(r) << 16) + (Math.floor(g) << 8) + Math.floor(b)).toString(16).slice(1).toUpperCase();
+        return "#" + ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b)).toString(16).slice(1).toUpperCase();
     }
 
     static applyTint(hex, tint) {
