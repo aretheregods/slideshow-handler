@@ -132,8 +132,8 @@ export function parseTheme(themeXml) {
             }
         }
 
-            const effectStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'effectStyleLst')[0];
-            if (effectStyleLstNode) {
+        const effectStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'effectStyleLst')[0];
+        if (effectStyleLstNode) {
             for (const effectStyleNode of effectStyleLstNode.children) {
                 if (effectStyleNode.localName === 'effectStyle') {
                     const effectLstNode = effectStyleNode.getElementsByTagNameNS(DML_NS, 'effectLst')[0];
@@ -160,7 +160,7 @@ export function parseTheme(themeXml) {
                     }
                 }
             }
-            }
+        }
 
         const bgFillStyleLstNode = fmtSchemeNode.getElementsByTagNameNS(DML_NS, 'bgFillStyleLst')[0];
         if (bgFillStyleLstNode) {
@@ -372,8 +372,6 @@ export function parseBackground(xmlDoc, slideContext) {
         return null;
     }
 
-    console.log("[DEBUG] Parsing background for:", xmlDoc.firstElementChild.localName);
-
     let bg = null;
     const bgPrNode = bgNode.getElementsByTagNameNS(PML_NS, 'bgPr')[0];
     const bgRefNode = bgNode.getElementsByTagNameNS(PML_NS, 'bgRef')[0];
@@ -424,7 +422,6 @@ export function parseBackground(xmlDoc, slideContext) {
         }
     }
 
-    console.log(`[DEBUG] Parsed background for ${xmlDoc.firstElementChild.localName}:`, JSON.stringify(bg, null, 2));
     return bg;
 }
 
@@ -490,9 +487,7 @@ export function parseGradientFill(fillNode, slideContext) {
         type = 'path';
     }
 
-    const result = { type: 'gradient', gradient: { type, stops, angle } };
-    console.log("[DEBUG] Parsed gradient fill:", JSON.stringify(result, null, 2));
-    return result;
+    return { type: 'gradient', gradient: { type, stops, angle } };
 }
 
 export function parseLineProperties(lnNode, slideContext) {
@@ -715,20 +710,15 @@ export function parseShapeProperties(shapeNode, slideContext, slideNum) {
     // --- Default Fill Logic ---
     if (properties.fill === null && shapeNode.localName !== 'cxnSp') {
             if (!properties.rawFillNode) { // Only apply default if no fill was specified at all
-            if (slideContext.theme && slideContext.theme.formatScheme.fills.length > 0) {
-                const defaultFill = slideContext.theme.formatScheme.fills[1] || slideContext.theme.formatScheme.fills[0]; // Often the second fill is the default shape fill
-                if (defaultFill.type === 'solid' && defaultFill.color) {
-                    properties.fill = { type: 'solid', color: ColorParser.resolveColor(defaultFill.color, slideContext) };
+                if (slideContext.theme && slideContext.theme.formatScheme.fills.length > 0) {
+                    const defaultFill = slideContext.theme.formatScheme.fills[1] || slideContext.theme.formatScheme.fills[0]; // Often the second fill is the default shape fill
+                    if (defaultFill.type === 'solid' && defaultFill.color) {
+                        properties.fill = { type: 'solid', color: ColorParser.resolveColor(defaultFill.color, slideContext) };
+                    }
                 }
-            }
             }
     }
 
-    console.log(`[DEBUG] Parsed shape properties for shape on slide ${slideNum}:`, {
-        fill: properties.fill,
-        stroke: properties.stroke,
-        geometry: properties.geometry
-    });
     return properties;
 }
 
