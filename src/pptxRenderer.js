@@ -1,8 +1,51 @@
-import { SvgRenderer, Matrix, ShapeBuilder, ColorParser, parseXmlString, getAutoNumberingChar, resolveFontFamily, parseChart, parseShapeProperties, parseBodyProperties, parseParagraphProperties, getCellFillColor, getCellTextStyle, getCellBorders, buildPathStringFromGeom, parseSourceRectangle, createImage } from 'utils';
-import { EMU_PER_PIXEL, PT_TO_PX, LINE_HEIGHT, INDENTATION_AMOUNT, BULLET_OFFSET, PML_NS, DML_NS, CHART_NS, TABLE_NS } from 'constants';
+import {
+    SvgRenderer,
+    Matrix,
+    ShapeBuilder,
+    ColorParser,
+    parseXmlString,
+    getAutoNumberingChar,
+    resolveFontFamily,
+    parseChart,
+    parseShapeProperties,
+    parseBodyProperties,
+    parseParagraphProperties,
+    getCellFillColor,
+    getCellTextStyle,
+    getCellBorders,
+    buildPathStringFromGeom,
+    parseSourceRectangle,
+    createImage,
+    resolvePath,
+    getNormalizedXmlString
+} from 'utils';
+import {
+    EMU_PER_PIXEL,
+    PT_TO_PX,
+    LINE_HEIGHT,
+    INDENTATION_AMOUNT,
+    BULLET_OFFSET,
+    PML_NS, DML_NS, CHART_NS, TABLE_NS
+} from 'constants';
 
 export class PPTXRenderer {
-    constructor(slideXml, slideContainer, masterPlaceholders, layoutPlaceholders, slideNum, slideSize, defaultTextStyles, imageMap, slideContext, finalBg, showMasterShapes, masterStaticShapes, layoutStaticShapes, slideRels, entriesMap) {
+    constructor( {
+        slideXml,
+        slideContainer,
+        masterPlaceholders,
+        layoutPlaceholders,
+        slideNum,
+        slideSize,
+        defaultTextStyles,
+        imageMap,
+        slideContext,
+        finalBg,
+        showMasterShapes,
+        masterStaticShapes,
+        layoutStaticShapes,
+        slideRels,
+        entriesMap
+    } ) {
         this.slideXml = slideXml;
         this.slideContainer = slideContainer;
         this.masterPlaceholders = masterPlaceholders;
@@ -190,7 +233,19 @@ export class PPTXRenderer {
                 const masterBodyPr = masterPh ? masterPh.bodyPr : {};
                 const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-                await this.processParagraphs(txBodyToRender, { x: 0, y: 0, width: pos.width, height: pos.height }, phKey, phType, listCounters, finalBodyPr, {}, this.defaultTextStyles, this.masterPlaceholders, this.layoutPlaceholders, this.imageMap);
+                await this.processParagraphs(
+                    txBodyToRender,
+                    { x: 0, y: 0, width: pos.width, height: pos.height },
+                    phKey,
+                    phType,
+                    listCounters,
+                    finalBodyPr,
+                    {},
+                    this.defaultTextStyles,
+                    this.masterPlaceholders,
+                    this.layoutPlaceholders,
+                    this.imageMap
+                );
             }
         }
 
