@@ -1,4 +1,4 @@
-import { DML_NS } from '../constants.js';
+import { DML_NS } from 'constants';
 
 export class ColorParser {
     static hexToRgb(hex) {

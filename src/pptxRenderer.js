@@ -138,11 +138,11 @@ export class PPTXRenderer {
             if (tagName === 'sp' || tagName === 'cxnSp') {
                 await this.#processShape(element, listCounters, parentMatrix, slideLevelVisibility);
             } else if (tagName === 'grpSp') {
-                await this.processGroupShape(element, listCounters, parentMatrix, slideLevelVisibility);
+                await this.#processGroupShape(element, listCounters, parentMatrix, slideLevelVisibility);
             } else if (tagName === 'graphicFrame') {
                 const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                 if (graphicData && graphicData.getAttribute('uri') === TABLE_NS) {
-                    await this.processTable(element, parentMatrix.clone());
+                    await this.#processTable(element, parentMatrix.clone());
                 } else if (graphicData && graphicData.getAttribute('uri') === CHART_NS) {
                     const chartRelId = graphicData.getElementsByTagNameNS(CHART_NS, "chart")[0].getAttribute("r:id");
                     if (chartRelId && this.slideRels && this.slideRels[chartRelId]) {
@@ -151,13 +151,13 @@ export class PPTXRenderer {
                         if (chartXml) {
                             const chartData = parseChart(chartXml);
                             if (chartData) {
-                                await this.renderChart(element, chartData, parentMatrix.clone());
+                                await this.#renderChart(element, chartData, parentMatrix.clone());
                             }
                         }
                     }
                 }
             } else if (tagName === 'pic') {
-                await this.processPicture(element, parentMatrix, slideLevelVisibility);
+                await this.#processPicture(element, parentMatrix, slideLevelVisibility);
             }
         }
     }
@@ -233,7 +233,7 @@ export class PPTXRenderer {
                 const masterBodyPr = masterPh ? masterPh.bodyPr : {};
                 const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-                await this.processParagraphs(
+                await this.#processParagraphs(
                     txBodyToRender,
                     { x: 0, y: 0, width: pos.width, height: pos.height },
                     phKey,
@@ -253,7 +253,7 @@ export class PPTXRenderer {
         return pos;
     }
 
-    async processGroupShape(group, listCounters, parentMatrix, slideLevelVisibility) {
+    async #processGroupShape(group, listCounters, parentMatrix, slideLevelVisibility) {
         if (slideLevelVisibility) {
             const placeholders = Array.from(group.getElementsByTagNameNS(PML_NS, 'ph'));
             if (placeholders.length > 0) {
@@ -336,14 +336,14 @@ export class PPTXRenderer {
             if (tagName === 'sp' || tagName === 'cxnSp') {
                 await this.#processShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
             } else if (tagName === 'grpSp') {
-                await this.processGroupShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
+                await this.#processGroupShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
             } else if (tagName === 'pic') {
-                await this.processPicture(element, finalMatrixForChildren.clone(), slideLevelVisibility);
+                await this.#processPicture(element, finalMatrixForChildren.clone(), slideLevelVisibility);
             }
         }
     }
 
-    async processPicture(picNode, parentMatrix, slideLevelVisibility) {
+    async #processPicture(picNode, parentMatrix, slideLevelVisibility) {
         let localMatrix = new Matrix();
         let pos;
 
@@ -426,13 +426,14 @@ export class PPTXRenderer {
             : null;
 
         // 1. Draw Placeholder Fill
-        if (placeholderProps && placeholderProps.fill && placeholderProps.fill !== 'none' && placeholderProps.fill.type === 'solid') {
-            if (pathString) {
-                this.renderer.drawPath(pathString, { fill: placeholderProps.fill.color });
+        if ( placeholderProps?.fill?.type === ( 'solid' || 'gradient' ) ) {
+            if ( pathString ) {
+                this.renderer.drawPath(pathString, { fill: placeholderProps.fill.type ? placeholderProps.fill : placeholderProps.fill.color });
             } else {
-                this.renderer.drawRect(0, 0, pos.width, pos.height, { fill: placeholderProps.fill.color });
+                this.renderer.drawRect( 0, 0, pos.width, pos.height, { fill: placeholderProps.fill.type ? placeholderProps.fill : placeholderProps.fill.color });
             }
         }
+
         // 2. Draw Image
         const blipFillNode = picNode.getElementsByTagNameNS(PML_NS, 'blipFill')[0];
         if (blipFillNode) {
@@ -478,7 +479,7 @@ export class PPTXRenderer {
         }
 
         // 3. Draw Placeholder Stroke
-        if (placeholderProps && placeholderProps.stroke) {
+        if ( placeholderProps?.stroke ) {
             if (pathString) {
                 this.renderer.drawPath(pathString, { stroke: placeholderProps.stroke });
             } else {
@@ -491,7 +492,7 @@ export class PPTXRenderer {
         return { width: pos.width, height: pos.height };
     }
 
-    async processTable(graphicFrame, parentMatrix) {
+    async #processTable(graphicFrame, parentMatrix) {
         const xfrmNode = graphicFrame.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
         let pos = { x: 0, y: 0, width: 0, height: 0 };
         const localMatrix = new Matrix();
@@ -631,7 +632,7 @@ export class PPTXRenderer {
                 }
 
                 // Render text content
-                await this.processCellText(cellNode, cellX, cellY, cellWidth, cellHeight, textStyle);
+                await this.#processCellText(cellNode, cellX, cellY, cellWidth, cellHeight, textStyle);
             }
         }
 
@@ -641,7 +642,7 @@ export class PPTXRenderer {
         };
     }
 
-    async processCellText(cellNode, cellX, cellY, cellWidth, cellHeight, tableTextStyle = {}) {
+    async #processCellText(cellNode, cellX, cellY, cellWidth, cellHeight, tableTextStyle = {}) {
         const txBodyNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
         if (!txBodyNode) return;
 
@@ -708,16 +709,16 @@ export class PPTXRenderer {
         const masterPlaceholders = {};
         const layoutPlaceholders = {};
 
-        await this.processParagraphs(txBodyNode, pos, null, 'body', listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, {});
+        await this.#processParagraphs(txBodyNode, pos, null, 'body', listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, {});
 
         this.renderer.currentGroup = originalGroup;
     }
 
-    async processParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr = {}, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders, imageMap) {
+    async #processParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr = {}, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders, imageMap) {
         const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
         if (paragraphs.length === 0) return;
 
-        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
+        const layout = this.#layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
 
         const paddedPos = {
             x: pos.x + (bodyPr.lIns || 0),
@@ -814,7 +815,7 @@ export class PPTXRenderer {
         this.renderer.currentGroup.appendChild(textGroup);
     }
 
-    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
+    #layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
         const paddedPos = {
             x: pos.x + (bodyPr.lIns || 0),
             y: pos.y + (bodyPr.tIns || 0),
@@ -963,7 +964,7 @@ export class PPTXRenderer {
         return { totalHeight, lines };
     }
 
-    async renderChart(graphicFrame, chartData) {
+    async #renderChart(graphicFrame, chartData) {
         const xfrmNode = graphicFrame.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
         if (!xfrmNode) return;
 

@@ -267,56 +267,9 @@
         const loadingIndicator = document.getElementById('loading-indicator');
         const debugOutput = document.getElementById('debug-output');
 
-        const initialPresentationState = {
-            status: 'idle', // idle, parsing, ready, error
-            slideSize: null,
-            theme: null,
-            error: null,
-        };
-
-        function presentationReducer(state = initialPresentationState, action) {
-            switch (action.type) {
-                case 'START_PRESENTATION':
-                    return { ...initialPresentationState, status: 'parsing' };
-                case 'SET_PRESENTATION_DATA':
-                    return { ...state, ...action.payload };
-                case 'SET_STATUS':
-                    return { ...state, status: action.payload };
-                case 'SET_ERROR':
-                    return { ...state, status: 'error', error: action.payload };
-                default:
-                    return state;
-            }
-        }
-
-        const initialSlideState = {
-            slideNum: -1,
-            shapes: [],
-            background: null,
-            slideContext: null,
-        };
-
-        function slideReducer(state = initialSlideState, action) {
-            switch (action.type) {
-                case 'SET_SLIDE_DATA':
-                    return { ...state, ...action.payload };
-                default:
-                    return state;
-            }
-        }
-
-        const presentationStore = new ReactiveStore({
-            initialState: initialPresentationState,
-            reducer: presentationReducer,
-        });
-
-        const slideStores = [];
-
         fileInput.addEventListener('change', async (event) => {
             const file = event.target.files[0];
             if (!file) return;
-
-            presentationStore.dispatch({ type: 'START_PRESENTATION' });
 
             fileInfo.textContent = `File selected: ${file.name}`;
             outputContainer.style.display = 'grid';

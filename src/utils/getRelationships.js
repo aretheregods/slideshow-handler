@@ -1,4 +1,4 @@
-import { getNormalizedXmlString } from "./getNormalizedXmlString.js";
+import { getNormalizedXmlString } from "utils";
 
 export async function getRelationships(entriesMap, path) {
     let xmlString = await getNormalizedXmlString(entriesMap, path);

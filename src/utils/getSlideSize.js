@@ -1,4 +1,4 @@
-import { EMU_PER_PIXEL } from "../constants.js";
+import { EMU_PER_PIXEL } from "constants";
 
 export function getSlideSize(xmlString) {
     // Two-step regex for robustness: first find the tag, then find the attributes within it.
