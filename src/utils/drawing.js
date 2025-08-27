@@ -1,5 +1,6 @@
 import { BlobWriter } from "zipjs";
-import { resolvePath, integerToRoman } from 'utils';
+import { ColorParser, resolvePath, integerToRoman, parseGradientFill } from 'utils';
+import { DML_NS, EMU_PER_PIXEL } from "constants";
 
 export function resolveFontFamily(finalRunProps, phType, slideContext) {
     const fontAlias = finalRunProps.font;
