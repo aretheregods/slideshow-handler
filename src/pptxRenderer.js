@@ -119,24 +119,24 @@ export class PPTXRenderer {
         const initialMatrix = new Matrix();
         if (this.showMasterShapes) {
             if (this.masterStaticShapes) {
-                await this.processShapeTree(this.masterStaticShapes, listCounters, initialMatrix.clone(), slideLevelVisibility);
+                await this.#processShapeTree(this.masterStaticShapes, listCounters, initialMatrix.clone(), slideLevelVisibility);
             }
             if (this.layoutStaticShapes) {
-                await this.processShapeTree(this.layoutStaticShapes, listCounters, initialMatrix.clone(), slideLevelVisibility);
+                await this.#processShapeTree(this.layoutStaticShapes, listCounters, initialMatrix.clone(), slideLevelVisibility);
             }
         }
 
         const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
         if (spTreeNode) {
-            await this.processShapeTree(spTreeNode.children, listCounters, initialMatrix.clone(), slideLevelVisibility);
+            await this.#processShapeTree(spTreeNode.children, listCounters, initialMatrix.clone(), slideLevelVisibility);
         }
     }
 
-    async processShapeTree(elements, listCounters, parentMatrix, slideLevelVisibility = null) {
+    async #processShapeTree(elements, listCounters, parentMatrix, slideLevelVisibility = null) {
         for (const element of elements) {
             const tagName = element.localName;
             if (tagName === 'sp' || tagName === 'cxnSp') {
-                await this.processShape(element, listCounters, parentMatrix, slideLevelVisibility);
+                await this.#processShape(element, listCounters, parentMatrix, slideLevelVisibility);
             } else if (tagName === 'grpSp') {
                 await this.processGroupShape(element, listCounters, parentMatrix, slideLevelVisibility);
             } else if (tagName === 'graphicFrame') {
@@ -162,7 +162,7 @@ export class PPTXRenderer {
         }
     }
 
-    async processShape(shape, listCounters, parentMatrix, slideLevelVisibility) {
+    async #processShape(shape, listCounters, parentMatrix, slideLevelVisibility) {
         const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
         let phKey = null, phType = null;
         if (nvPr) {
@@ -334,7 +334,7 @@ export class PPTXRenderer {
         for (const element of group.children) {
             const tagName = element.localName;
             if (tagName === 'sp' || tagName === 'cxnSp') {
-                await this.processShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
+                await this.#processShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
             } else if (tagName === 'grpSp') {
                 await this.processGroupShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
             } else if (tagName === 'pic') {

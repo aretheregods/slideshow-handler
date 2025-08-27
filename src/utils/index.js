@@ -1,8 +1,8 @@
 export { findPlaceholder } from './findPlaceholder.js';
 export { integerToRoman } from './integerToRoman.js';
 export { ReactiveStore } from './ReactiveStore.js';
-export { ShapeBuilder } from './shape-builder.js';
-export { SvgRenderer } from './svg-renderer.js';
+export { ShapeBuilder } from './shapeBuilder.js';
+export { SvgRenderer } from './svgRenderer.js';
 export { Matrix } from './matrix.js';
 export { parseXmlString } from './xml.js';
 export { ColorParser } from './colorParser.js';
@@ -11,5 +11,5 @@ export { getNormalizedXmlString } from './getNormalizedXmlString.js';
 export { getRelationships } from './getRelationships.js';
 export { getSlideOrder } from './getSlideOrder.js';
 export { getSlideSize } from './getSlideSize.js';
-export * from './pptx-parser.js';
+export * from './pptxParser.js';
 export * from './drawing.js';

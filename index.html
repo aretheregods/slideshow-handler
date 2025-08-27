@@ -247,7 +247,7 @@
             parseBackground, 
             populateImageMap
         } from 'utils';
-        import { PPTXRenderer } from './src/pptxRenderer.js';
+        import { slideshowHandler } from './src/slideshowHandler.js';
         import {
             EMU_PER_PIXEL,
             PT_TO_PX,
@@ -263,8 +263,7 @@
         const fileInput = document.getElementById('pptx-file');
         const fileInfo = document.getElementById('file-info');
         const outputContainer = document.getElementById('output-container');
-        let activeCharts = [];
-        const slideViewerContainer = document.getElementById('slide-viewer-container');
+        const slideshowContainer = document.getElementById('slide-viewer-container');
         const loadingIndicator = document.getElementById('loading-indicator');
         const debugOutput = document.getElementById('debug-output');
 
@@ -320,168 +319,18 @@
             presentationStore.dispatch({ type: 'START_PRESENTATION' });
 
             fileInfo.textContent = `File selected: ${file.name}`;
-            outputContainer.style.display = 'block';
-            slideViewerContainer.innerHTML = '';
+            outputContainer.style.display = 'grid';
+            slideshowContainer.innerHTML = '';
             debugOutput.style.display = 'none';
-            loadingIndicator.style.display = 'block';
+            loadingIndicator.style.display = 'grid';
             debugOutput.innerHTML = '';
 
-            const zipReader = new ZipReader(new BlobReader(file));
             try {
-                const entries = await zipReader.getEntries();
-                const entriesMap = new Map(entries.map(entry => [entry.filename, entry]));
-
-                const presRels = await getRelationships(entriesMap, "ppt/_rels/presentation.xml.rels");
-                const sortedPresRels = Object.values(presRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-
-                let theme = null;
-                const themeRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme');
-                if (themeRel) {
-                    const themePath = resolvePath('ppt', themeRel.target);
-                    const themeXml = await getNormalizedXmlString(entriesMap, themePath);
-                    if (themeXml) theme = parseTheme(themeXml);
-                }
-
-                let tableStyles = {};
-                let defaultTableStyleId = null;
-                const tableStylesRel = sortedPresRels.find(rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles');
-                if (tableStylesRel) {
-                    const tableStylesPath = resolvePath('ppt', tableStylesRel.target);
-                    const tableStylesXml = await getNormalizedXmlString(entriesMap, tableStylesPath);
-                    if (tableStylesXml) {
-                        const tableStylesResult = parseTableStyles(tableStylesXml);
-                        tableStyles = tableStylesResult.styles;
-                        defaultTableStyleId = tableStylesResult.defaultStyleId;
-                    }
-                }
-
-                const presentationXml = await getNormalizedXmlString(entriesMap, "ppt/presentation.xml");
-                const slideIds = getSlideOrder(presentationXml);
-
-                const slideSize = getSlideSize(presentationXml);
-
-                if (slideIds.length === 0) {
-                    fileInfo.textContent = "No slides found in the presentation.";
-                    return;
-                }
-
-                let allSlidesDebugText = '<h3>Raw Parsed Content:</h3>';
-                let totalElementsFound = 0;
-
-                for (let i = 0; i < slideIds.length; i++) {
-                    const slideNum = i + 1;
-                    const slideId = slideIds[i];
-                    const slideRel = presRels[slideId];
-                    if (!slideRel) continue;
-
-                    const slidePath = resolvePath('ppt', slideRel.target);
-                    const slideRelsPath = `ppt/slides/_rels/${slidePath.split('/').pop()}.rels`;
-                    const slideRels = await getRelationships(entriesMap, slideRelsPath);
-                    const sortedSlideRels = Object.values(slideRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-
-                    const imageMap = {};
-                    await populateImageMap(imageMap, slideRels, 'ppt/slides', entriesMap);
-
-
-                    const slideContext = {
-                        theme: theme,
-                        colorMap: {},
-                        tableStyles: tableStyles,
-                        defaultTableStyleId: defaultTableStyleId,
-                    };
-
-                    const layoutRel = sortedSlideRels.find(r => r.type.endsWith('/slideLayout'));
-
-                    let masterPlaceholders = {};
-                    let layoutPlaceholders = {};
-                    let defaultTextStyles = {};
-                    let masterXml, layoutXml;
-
-                    let masterStaticShapes = [], layoutStaticShapes = [];
-                    if (layoutRel) {
-                        const layoutPath = resolvePath('ppt/slides', layoutRel.target);
-                        const layoutRelsPath = `ppt/slideLayouts/_rels/${layoutPath.split('/').pop()}.rels`;
-                        const layoutRels = await getRelationships(entriesMap, layoutRelsPath);
-                        await populateImageMap(imageMap, layoutRels, 'ppt/slideLayouts', entriesMap);
-                        const sortedLayoutRels = Object.values(layoutRels).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-                        const masterRel = sortedLayoutRels.find(r => r.type.endsWith('/slideMaster'));
-
-                        let masterData;
-                        if (masterRel) {
-                            const masterPath = resolvePath('ppt/slideLayouts', masterRel.target);
-                            const masterRelsPath = `ppt/slideMasters/_rels/${masterPath.split('/').pop()}.rels`;
-                            const masterRels = await getRelationships(entriesMap, masterRelsPath);
-                            await populateImageMap(imageMap, masterRels, 'ppt/slideMasters', entriesMap);
-
-                            masterXml = await getNormalizedXmlString(entriesMap, masterPath);
-                            if (masterXml) {
-                                masterData = parseMasterOrLayout(masterXml, theme, null, false);
-                            }
-                            masterPlaceholders = masterData.placeholders;
-                            masterStaticShapes = masterData.staticShapes;
-                            defaultTextStyles = masterData.defaultTextStyles;
-                            slideContext.colorMap = masterData.colorMap;
-                        }
-
-                        let layoutData;
-                        layoutXml = await getNormalizedXmlString(entriesMap, layoutPath);
-                        if (layoutXml) {
-                            layoutData = parseMasterOrLayout(layoutXml, theme, masterData ? masterData.colorMap : null, true);
-                        }
-                        layoutPlaceholders = layoutData.placeholders;
-                        layoutStaticShapes = layoutData.staticShapes;
-                        if (layoutData.colorMapOverride) {
-                            slideContext.colorMap = { ...slideContext.colorMap, ...layoutData.colorMapOverride };
-                        }
-                    }
-
-                    const slideXml = await getNormalizedXmlString(entriesMap, slidePath);
-
-                    const slideXmlDoc = parseXmlString(slideXml, `slide ${slideId}`);
-                    const layoutXmlDoc = layoutXml ? parseXmlString(layoutXml, `layout for slide ${slideId}`) : null;
-                    const masterXmlDoc = masterXml ? parseXmlString(masterXml, `master for slide ${slideId}`) : null;
-
-                    const sldNode = slideXmlDoc.getElementsByTagNameNS(PML_NS, 'sld')[0];
-                    const showMasterShapes = !sldNode || sldNode.getAttribute('showMasterSp') !== '0';
-
-                    const slideBg = parseBackground(slideXmlDoc, slideContext);
-                    const layoutBg = layoutXmlDoc ? parseBackground(layoutXmlDoc, slideContext) : null;
-                    const masterBg = masterXmlDoc ? parseBackground(masterXmlDoc, slideContext) : null;
-                    const finalBg = slideBg || layoutBg || masterBg;
-
-                    const slideContainer = document.createElement('div');
-                    slideContainer.className = 'slide-viewer';
-                    slideContainer.id = `slide-${i + 1}`;
-                    slideContainer.style.aspectRatio = `${slideSize.width} / ${slideSize.height}`;
-                    slideContainer.style.width = `${slideSize.width}px`;
-                    slideContainer.style.height = `${slideSize.height}px`;
-                    slideViewerContainer.appendChild(slideContainer);
-
-                    const pptxRenderer = new PPTXRenderer({
-                        slideXml, 
-                        slideContainer, 
-                        masterPlaceholders, 
-                        layoutPlaceholders, 
-                        slideNum, 
-                        slideSize, 
-                        defaultTextStyles, 
-                        imageMap, 
-                        slideContext, 
-                        finalBg, 
-                        showMasterShapes, 
-                        masterStaticShapes, 
-                        layoutStaticShapes, 
-                        slideRels, 
-                        entriesMap
-                    });
-                    await pptxRenderer.render();
-                }
-
+                const fileData = await slideshowHandler( { file, slideshowContainer } );
+                if ( fileData ) fileInfo.textContent += ` slideshow length: ${fileData?.slideshowLength}`;
             } catch (error) {
-                console.error('Error parsing the presentation:', error);
                 fileInfo.textContent = `Error: Could not parse presentation. ${error.message}`;
             } finally {
-                await zipReader.close();
                 loadingIndicator.style.display = 'none';
             }
         });
