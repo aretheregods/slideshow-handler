@@ -606,14 +606,23 @@ export class PPTXHandler {
         }
         const finalBodyPr = { ...bodyPrFromTxBody, ...bodyPrFromTcPr };
 
-        return this.parseParagraphs(txBodyNode, pos, null, 'body', {}, finalBodyPr, tableTextStyle);
+        const listCounters = {};
+        const defaultTextStyles = { title: {}, body: {}, other: {} };
+        const masterPlaceholders = {};
+        const layoutPlaceholders = {};
+
+        return this.parseParagraphs(txBodyNode, pos, null, 'body', listCounters, finalBodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
     }
 
-    parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle) {
+    parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
         const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
         if (paragraphs.length === 0) return null;
 
-        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, this.defaultTextStyles, this.masterPlaceholders, this.layoutPlaceholders, listCounters);
+        const dts = defaultTextStyles || this.defaultTextStyles;
+        const mph = masterPlaceholders || this.masterPlaceholders;
+        const lph = layoutPlaceholders || this.layoutPlaceholders;
+
+        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, dts, mph, lph, listCounters);
         return { layout, bodyPr, pos };
     }
 
