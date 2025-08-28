@@ -721,13 +721,13 @@ export function parseShapeProperties(shapeNode, slideContext, slideNum) {
     return properties;
 }
 
-export function parseTextStyle(styleNode) {
+export function parseTextStyle(styleNode, slideContext) {
     if (!styleNode) return null;
     const styles = {};
     for (let i = 1; i <= 9; i++) {
         const lvlPr = styleNode.getElementsByTagNameNS(DML_NS, `lvl${i}pPr`)[0];
         if (lvlPr) {
-            styles[i - 1] = parseParagraphProperties(lvlPr);
+            styles[i - 1] = parseParagraphProperties(lvlPr, slideContext);
         }
     }
     return styles;
@@ -769,7 +769,7 @@ export function parseBodyProperties(txBodyNode) {
     return props;
 }
 
-export function parseParagraphProperties(pPrNode) {
+export function parseParagraphProperties(pPrNode, slideContext) {
     if (!pPrNode) return {};
 
     const properties = { bullet: {}, defRPr: {} };
@@ -850,9 +850,18 @@ export function parseParagraphProperties(pPrNode) {
             properties.defRPr.color = ColorParser.parseColor(solidFillNode);
         }
 
-        const latinFontNode = defRPrNode.getElementsByTagNameNS( DML_NS, 'latin' )[ 0 ];
-        if ( latinFontNode && latinFontNode.getAttribute( 'typeface' ) ) {
-            properties.defRPr.font = latinFontNode.getAttribute( 'typeface' );
+        const latinFontNode = defRPrNode.getElementsByTagNameNS(DML_NS, 'latin')[0];
+        if (latinFontNode) {
+            const typeface = latinFontNode.getAttribute('typeface');
+            if (typeface) {
+                if (typeface.startsWith('+mj-')) {
+                    properties.defRPr.font = slideContext?.theme?.fontScheme?.major || typeface;
+                } else if (typeface.startsWith('+mn-')) {
+                    properties.defRPr.font = slideContext?.theme?.fontScheme?.minor || typeface;
+                } else {
+                    properties.defRPr.font = typeface;
+                }
+            }
         }
     }
 
@@ -882,10 +891,14 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
     }
 
     const txStyles = xmlDoc.getElementsByTagNameNS(PML_NS, 'txStyles')[0];
+    const tempSlideContext = {
+        theme: theme,
+        colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
+    };
     if (txStyles) {
-        defaultTextStyles.title = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'titleStyle')[0]);
-        defaultTextStyles.body = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'bodyStyle')[0]);
-        defaultTextStyles.other = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'otherStyle')[0]);
+        defaultTextStyles.title = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'titleStyle')[0], tempSlideContext);
+        defaultTextStyles.body = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'bodyStyle')[0], tempSlideContext);
+        defaultTextStyles.other = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'otherStyle')[0], tempSlideContext);
     }
 
     const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
@@ -932,16 +945,12 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
                 if (txBodyNode) {
                     const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
                     if (lstStyleNode) {
-                        placeholderData.listStyle = parseTextStyle(lstStyleNode);
+                        placeholderData.listStyle = parseTextStyle(lstStyleNode, tempSlideContext);
                     }
                     placeholderData.bodyPr = parseBodyProperties(txBodyNode);
                     placeholderData.txBodyNode = txBodyNode;
                 }
 
-                const tempSlideContext = {
-                    theme: theme,
-                    colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
-                };
                 placeholderData.shapeProps = parseShapeProperties(shapeNode, tempSlideContext, "layout/master");
 
                 placeholders[key] = placeholderData;
