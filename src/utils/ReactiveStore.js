@@ -102,12 +102,19 @@ export class ReactiveStore {
      * @param {object} currentState - the state object from which to retrieve the key's value.
      * @returns {*} Can be any supported JavaScript value
      */
-    #getNestedState( key = '', currentState ) {
-        const keys = key.trim().split( '.' );
-        let state = currentState ?? this.state;
-        for ( const k of keys ) {
-            if ( k.trim() ) state = state[ k ];
-            if ( state === undefined ) {
+    #getNestedState( key = '', ) {
+        const keys = key.trim().split('.');
+        let state = this.state;
+        for (const k of keys) {
+            const trimmedKey = k.trim();
+            if (trimmedKey) {
+                if (state === undefined || state === null) {
+                    return undefined;
+                }
+                state = state[trimmedKey];
+            } else if (keys.length > 1) {
+                // This handles invalid paths like 'a..b' or 'a.b.'
+                // An empty key string which results in `keys = ['']` is valid and returns the whole state.
                 return undefined;
             }
         }
@@ -126,9 +133,19 @@ export class ReactiveStore {
         const keys = key.trim().split( '.' );
         let state = currentState;
         for ( const k of keys.slice( 0, -1 ) ) {
-            state = state[ k ];
+            const trimmedKey = k.trim();
+            if ( !trimmedKey ) continue;
+
+            // If a key in the path does not exist or is not an object, create it.
+            if ( state[ trimmedKey ] === undefined || typeof state[ trimmedKey ] !== 'object' || state[ trimmedKey ] === null ) {
+                state[ trimmedKey ] = {};
+            }
+            state = state[ trimmedKey ];
         }
-        state[ keys[ keys.length - 1 ] ] = value;
+        const lastKey = keys[ keys.length - 1 ].trim();
+        if ( lastKey ) {
+            state[ lastKey ] = value;
+        }
         return state;
     }
 
@@ -139,8 +156,14 @@ export class ReactiveStore {
      * State should only be changed via dispatch.
      * @returns {object} The current state.
      */
-    getState(key = '') {
-        return key ? this.#getNestedState( key ) : this.state;
+    getState( ...keys ) {
+        let response = {};
+        for ( const key of keys ) {
+            response[key] = this.#getNestedState( key );
+        }
+        return Object.keys( response ).length > 1
+            ? response
+            : response[ Object.keys( response )[ 0 ] ] || this.state;
     }
 
     /**
