@@ -336,17 +336,8 @@ export class PPTXHandler {
             }
         }
 
-        for (const element of group.children) {
-            const tagName = element.localName;
-            if (tagName === 'sp' || tagName === 'cxnSp') {
-                await this.processShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
-            } else if (tagName === 'grpSp') {
-                await this.processGroupShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
-            } else if (tagName === 'pic') {
-                await this.processPicture(element, finalMatrixForChildren.clone(), slideLevelVisibility);
-            }
-        }
-	}
+        await this.processShapeTree(group.children, listCounters, finalMatrixForChildren, slideLevelVisibility);
+    }
 
     async parsePicture( picNode, parentMatrix ) {
         const response = {}
