@@ -12,7 +12,8 @@ export const TABLE_NS = "http://schemas.openxmlformats.org/drawingml/2006/table"
 export const slideshowProcessingActions = {
     start: {
         presentation: 'START_PRESENTATION',
-        parsing: 'START_PARSING'
+        parsing: 'START_PARSING',
+        rendering: 'START_RENDERING'
     },
     set: {
         presentation: {

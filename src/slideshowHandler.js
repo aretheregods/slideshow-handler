@@ -23,6 +23,7 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
         const entriesMap = new Map( entries.map( entry => [ entry.filename, entry ] ) );
 
         presentationStore.dispatch( { type: actions.start.parsing } );
+        console.log( { presentationState: presentationStore.getState( 'status' ) } );
 
         const presRels = await getRelationships( entriesMap, "ppt/_rels/presentation.xml.rels" );
         const sortedPresRels = Object.values( presRels ).sort( ( a, b ) => a.id.localeCompare( b.id, undefined, { numeric: true } ) );
@@ -180,8 +181,18 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
             const slideData = await pptxHandler.parse();
             const slide = slideStores.get( slideId );
             slide.dispatch( { type: actions.set.slide.data, payload: { slideData } } );
-            await pptxHandler.render(slide.getState().slideData);
+
+            if ( presentationStore.getState( 'status' ) !== 'rendering' ) {
+                presentationStore.dispatch( { type: actions.start.rendering } );
+                console.log( { presentationState: presentationStore.getState( 'status' ) } );
+            }
+
+            await pptxHandler.render( slide.getState().slideData );
+            console.log({ slideData: slide.getState( 'slideData.background.type' )  })
         }
+
+        presentationStore.dispatch( { type: actions.start.presentation } );
+        console.log( { presentationState: presentationStore.getState() } );
 
         return { slideshowLength: slideIds.length }
 

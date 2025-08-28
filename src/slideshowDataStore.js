@@ -13,8 +13,10 @@ function presentationReducer( state = initialPresentationState, action ) {
     switch ( action.type ) {
         case actions.start.parsing:
             return { ...initialPresentationState, status: 'parsing' };
+        case actions.start.rendering:
+            return { ...initialPresentationState, status: 'rendering' };
         case actions.start.presentation:
-            return { ...initialPresentationState, status: 'presenting', initialSlideNum: action.payload ?? 0 };
+            return { ...initialPresentationState, status: 'presenting', initialSlideNum: action.payload ?? 1 };
         case actions.set.presentation.data:
             return { ...state, ...action.payload };
         case actions.set.presentation.status:
@@ -43,7 +45,6 @@ export function createSlideStore( { id, state = {} } ) {
         initialState: {
             id,
             slideNum: -1,
-            shapes: [],
             background: null,
             slideContext: null,
             ...state

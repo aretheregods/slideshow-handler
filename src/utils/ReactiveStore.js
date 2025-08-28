@@ -96,14 +96,51 @@ export class ReactiveStore {
     }
 
     /**
+     * @description The internal method to retrieve nested state values efficiently
+     * @param {string} key - a string of period separated object keys.
+     * The key can be of the form 'key1.key2.key3' in order to retrieve deeply nested state values.
+     * @param {object} currentState - the state object from which to retrieve the key's value.
+     * @returns {*} Can be any supported JavaScript value
+     */
+    #getNestedState( key = '', currentState ) {
+        const keys = key.trim().split( '.' );
+        let state = currentState ?? this.state;
+        for ( const k of keys ) {
+            if ( k.trim() ) state = state[ k ];
+            if ( state === undefined ) {
+                return undefined;
+            }
+        }
+        return state;
+    }
+
+    /**
+     * @description The internal method to set nested state values efficiently
+     * @param {object} currentState - The state object to be updated
+     * @param {object} update - The object containing the key and value to be updated.
+     * @param {string} [update.key=''] - The key path to the value to be updated.
+     * The key can be of the form 'key1.key2.key3' in order to update deeply nested state values
+     * @param {*} [update.value] - The value to which to update the state key
+     */
+    #setNestedState( currentState, { key = '', value } ) {
+        const keys = key.trim().split( '.' );
+        let state = currentState;
+        for ( const k of keys.slice( 0, -1 ) ) {
+            state = state[ k ];
+        }
+        state[ keys[ keys.length - 1 ] ] = value;
+        return state;
+    }
+
+    /**
      * Returns the current state object.
      * The returned object is a deep proxy; direct mutations will be detected
      * and will trigger notifications, though this is an anti-pattern.
      * State should only be changed via dispatch.
      * @returns {object} The current state.
      */
-    getState() {
-        return this.state;
+    getState(key = '') {
+        return key ? this.#getNestedState( key ) : this.state;
     }
 
     /**
@@ -122,8 +159,8 @@ export class ReactiveStore {
         // This preserves the root proxy reference and allows its `set` traps
         // to detect all the granular changes.
         Object.keys( nextState ).forEach( key => {
-            if ( !Object.is( this.state[ key ], nextState[ key ] ) ) {
-                this.state[ key ] = nextState[ key ];
+            if ( !Object.is( this.#getNestedState( key ), nextState[ key ] ) ) {
+                this.#setNestedState( this.state, { key, value: nextState[ key ] } );
             }
         } );
 
