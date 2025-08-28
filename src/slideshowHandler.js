@@ -154,8 +154,8 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
             slideContainer.className = 'slide-viewer';
             slideContainer.id = `slide-${ i + 1 }`;
             slideContainer.style.aspectRatio = `${ slideSize.width } / ${ slideSize.height }`;
-            slideContainer.style.width = `${ slideSize.width }px`;
-            slideContainer.style.height = `${ slideSize.height }px`;
+            slideContainer.style.width = `10em`;
+            slideContainer.style.height = `${ 10 / ( slideSize.width / slideSize.height ) }em`;
             slideshowContainer.appendChild( slideContainer );
 
             const pptxHandler = new PPTXHandler( {
