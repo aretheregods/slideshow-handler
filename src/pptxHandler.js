@@ -715,7 +715,7 @@ export class PPTXHandler {
             const masterListStyle = masterPh?.listStyle?.[level] || {};
             const layoutPh = layoutPlaceholders?.[phKey];
             const layoutListStyle = layoutPh?.listStyle?.[level] || {};
-            const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
+            const slideLevelProps = parseParagraphProperties(pPrNode, this.slideContext) || { bullet: {}, defRPr: {} };
 
             const finalProps = {
                 level, ...defaultLevelProps, ...masterListStyle, ...layoutListStyle, ...slideLevelProps,
