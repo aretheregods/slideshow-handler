@@ -385,4 +385,57 @@ export class SvgRenderer {
 
         this.currentGroup.appendChild(path);
     }
+
+    /**
+     * Draws text.
+     * @param {string} textContent - The text to draw.
+     * @param {number} x - The x-coordinate of the text.
+     * @param {number} y - The y-coordinate of the text.
+     * @param {object} [options] - The rendering options.
+     */
+    drawText(textContent, x, y, options = {}) {
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', x);
+        text.setAttribute('y', y);
+        text.textContent = textContent;
+
+        if (options.fill) {
+            text.setAttribute('fill', options.fill);
+        }
+        if (options.fontSize) {
+            text.setAttribute('font-size', options.fontSize);
+        }
+        if (options.fontFamily) {
+            text.setAttribute('font-family', options.fontFamily);
+        }
+        if (options.fontWeight) {
+            text.setAttribute('font-weight', options.fontWeight);
+        }
+        if (options.fontStyle) {
+            text.setAttribute('font-style', options.fontStyle);
+        }
+        if (options.textAnchor) {
+            text.setAttribute('text-anchor', options.textAnchor);
+        }
+
+        this.currentGroup.appendChild(text);
+    }
+
+    /**
+     * Draws an image.
+     * @param {string} href - The URL of the image.
+     * @param {number} x - The x-coordinate of the image.
+     * @param {number} y - The y-coordinate of the image.
+     * @param {number} width - The width of the image.
+     * @param {number} height - The height of the image.
+     */
+    drawImage(href, x, y, width, height) {
+        const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+        image.setAttribute('href', href);
+        image.setAttribute('x', x);
+        image.setAttribute('y', y);
+        image.setAttribute('width', width);
+        image.setAttribute('height', height);
+        this.currentGroup.appendChild(image);
+    }
 }
