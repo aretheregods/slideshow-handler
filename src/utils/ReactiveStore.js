@@ -6,11 +6,12 @@
  * @param {object} target - The object to make reactive.
  * @param {function} callback - The function to call when a mutation occurs.
  * @param {WeakMap} cache - The cache for storing created proxies.
+ * @param {string[]} [path=[]] - The path to the current target in the state tree.
  * @returns {Proxy} A reactive proxy of the target object.
  */
-function createReactiveProxy( target, callback, cache ) {
+function createReactiveProxy( target, callback, cache, path = [] ) {
     // If the target is not an object or is null, it cannot be proxied.
-    if ( typeof target !== 'object' || target === null ) {
+    if ( typeof target !== 'object' || target === null || target instanceof Date ) {
         return target;
     }
 
@@ -23,8 +24,11 @@ function createReactiveProxy( target, callback, cache ) {
         get( obj, prop, receiver ) {
             // Forward the property access to the original object.
             const value = Reflect.get( obj, prop, receiver );
-            // Recursively create a proxy for nested objects.
-            return createReactiveProxy( value, callback, cache );
+            // Recursively create a proxy for nested objects, passing down the path.
+            if (typeof value === 'object' && value !== null) {
+                return createReactiveProxy( value, callback, cache, [...path, prop] );
+            }
+            return value;
         },
         set( obj, prop, value, receiver ) {
             const oldValue = Reflect.get( obj, prop, receiver );
@@ -33,16 +37,19 @@ function createReactiveProxy( target, callback, cache ) {
                 const result = Reflect.set( obj, prop, value, receiver );
                 // If the set operation was successful, trigger the notification callback.
                 if ( result ) {
-                    callback();
+                    const fullPath = [...path, prop].join('.');
+                    callback(fullPath, value, oldValue);
                 }
                 return result;
             }
             return true; // Indicate success for no-op sets.
         },
         deleteProperty( obj, prop ) {
+            const oldValue = Reflect.get(obj, prop);
             const result = Reflect.deleteProperty( obj, prop );
             if ( result ) {
-                callback();
+                const fullPath = [...path, prop].join('.');
+                callback(fullPath, undefined, oldValue);
             }
             return result;
         }
@@ -54,7 +61,7 @@ function createReactiveProxy( target, callback, cache ) {
 };
 
 /**
- * A class for creating an instance-based, reactive state store.
+ * @description A class for creating an instance-based, reactive state store.
  * It combines the Observer pattern with Redux-like state management principles.
  */
 export class ReactiveStore {
@@ -74,24 +81,76 @@ export class ReactiveStore {
 
         this.reducer = reducer;
         this.listeners = new Set();
+        this.keyListeners = new Map();
         this.proxyCache = new WeakMap();
 
         // The state is wrapped in a reactive proxy.
         // The callback passed to the proxy is the store's own notify method.
         this.state = createReactiveProxy(
             initialState,
-            () => this.#notify(),
+            (path, value, oldValue) => this.#notify(path, value, oldValue),
             this.proxyCache
         );
     }
 
     /**
-     * The internal method to notify all subscribers of a change.
-     * This method is called by the proxy's `set` trap.
+     * @description The internal method to notify all subscribers of a change.
+     * This method is called by the proxy's `set` and `deleteProperty` traps.
+     * @param {string} path - The key path of the value that changed.
+     * @param {*} value - The new value.
+     * @param {*} oldValue - The old value.
      */
-    #notify() {
+    #notify(path, value, oldValue) {
+        // Notify global listeners. These get no arguments for simplicity and backward compatibility.
         for ( const callback of this.listeners ) {
-            callback();
+            callback(this.state);
+        }
+
+        const notifiedPaths = new Set();
+
+        // Notify listeners for the exact path that changed.
+        if (this.keyListeners.has(path)) {
+            for (const subscription of this.keyListeners.get(path)) {
+                subscription.callback(value, oldValue);
+            }
+            notifiedPaths.add(path);
+        }
+
+        // Notify listeners for parent paths.
+        const pathParts = path.split('.');
+        for (let i = pathParts.length - 1; i > 0; i--) {
+            const parentPath = pathParts.slice(0, i).join('.');
+            if (this.keyListeners.has(parentPath) && !notifiedPaths.has(parentPath)) {
+                const parentValue = this.#getNestedState(parentPath);
+                for (const subscription of this.keyListeners.get(parentPath)) {
+                    // If the subscriber opted out of bubble events, skip.
+                    if (subscription.noBubble) {
+                        continue;
+                    }
+                    // oldValue for parent is not available without deep cloning state on every change.
+                    subscription.callback(parentValue, undefined);
+                }
+                notifiedPaths.add(parentPath);
+            }
+        }
+
+        // Notify listeners for child paths if an object/array was replaced.
+        if ((typeof value === 'object' && value !== null) || (typeof oldValue === 'object' && oldValue !== null)) {
+            for (const listenerPath of this.keyListeners.keys()) {
+                if (listenerPath.startsWith(`${path}.`) && !notifiedPaths.has(listenerPath)) {
+                    const newSubValue = this.#getNestedState(listenerPath);
+                    let oldSubValue;
+                    if (oldValue && typeof oldValue === 'object') {
+                        const subPath = listenerPath.substring(path.length + 1);
+                        oldSubValue = subPath.split('.').reduce((obj, key) => obj?.[key], oldValue);
+                    }
+
+                    for (const subscription of this.keyListeners.get(listenerPath)) {
+                        subscription.callback(newSubValue, oldSubValue);
+                    }
+                    notifiedPaths.add(listenerPath);
+                }
+            }
         }
     }
 
@@ -99,10 +158,9 @@ export class ReactiveStore {
      * @description The internal method to retrieve nested state values efficiently
      * @param {string} key - a string of period separated object keys.
      * The key can be of the form 'key1.key2.key3' in order to retrieve deeply nested state values.
-     * @param {object} currentState - the state object from which to retrieve the key's value.
      * @returns {*} Can be any supported JavaScript value
      */
-    #getNestedState( key = '', ) {
+    #getNestedState( key = '' ) {
         const keys = key.trim().split('.');
         let state = this.state;
         for (const k of keys) {
@@ -127,7 +185,7 @@ export class ReactiveStore {
      * @param {object} update - The object containing the key and value to be updated.
      * @param {string} [update.key=''] - The key path to the value to be updated.
      * The key can be of the form 'key1.key2.key3' in order to update deeply nested state values
-     * @param {*} [update.value] - The value to which to update the state key
+     * @param {*} [update.value] - The value with which to update the update key in state
      */
     #setNestedState( currentState, { key = '', value } ) {
         const keys = key.trim().split( '.' );
@@ -150,10 +208,11 @@ export class ReactiveStore {
     }
 
     /**
-     * Returns the current state object.
+     * @description Returns the current state object.
      * The returned object is a deep proxy; direct mutations will be detected
      * and will trigger notifications, though this is an anti-pattern.
      * State should only be changed via dispatch.
+     * @param {string[]} keys - An array of state keys to retrieve
      * @returns {object} The current state.
      */
     getState( ...keys ) {
@@ -167,7 +226,7 @@ export class ReactiveStore {
     }
 
     /**
-     * Dispatches an action to the store. The action is processed by the
+     * @description Dispatches an action to the store. The action is processed by the
      * reducer to compute the next state.
      * @param {object} action - A plain object describing the change.
      */
@@ -196,16 +255,49 @@ export class ReactiveStore {
     }
 
     /**
-     * Registers a callback function to be executed on state changes.
+     * @description Registers a callback function to be executed on state changes.
      * Follows the Observer pattern's subscription model.
-     * @param {function} callback - The function to call on update.
+     * @param {object|function} subscription - The subscription options object or a callback function for global state changes.
+     * @param {string} [subscription.key] - The key path to subscribe to. If omitted, subscribes to all state changes.
+     * @param {function} subscription.callback - The function to call on update. It receives `(newValue, oldValue)`.
+     * @param {boolean} [subscription.noBubble=false] - If true, this listener will not be notified of changes in nested properties.
      * @returns {function} An `unsubscribe` function to remove the listener.
      */
-    subscribe( callback ) {
-        this.listeners.add( callback );
+    subscribe( subscription ) {
+        if (typeof subscription === 'function') {
+            // Handle subscribe(callback) for global listeners for backward compatibility.
+            this.listeners.add(subscription);
+            return () => this.listeners.delete(subscription);
+        }
+
+        const { key, callback, noBubble = false } = subscription || {};
+
+        if (typeof callback !== 'function') {
+            throw new Error('A callback function must be provided to subscribe.');
+        }
+
+        if (key) {
+            if (typeof key !== 'string') {
+                throw new Error('The key to subscribe to must be a string.');
+            }
+            if (!this.keyListeners.has(key)) {
+                this.keyListeners.set(key, new Set());
+            }
+            const keyListeners = this.keyListeners.get(key);
+            const sub = { callback, noBubble };
+            keyListeners.add(sub);
+            // Return a function that allows the consumer to unsubscribe.
+            return () => {
+                keyListeners.delete(sub);
+                if (keyListeners.size === 0) {
+                    this.keyListeners.delete(key);
+                }
+            };
+        }
+
+        // Global subscription via subscribe({ callback })
+        this.listeners.add(callback);
         // Return a function that allows the consumer to unsubscribe.
-        return () => {
-            this.listeners.delete( callback );
-        };
+        return () => this.listeners.delete(callback);
     }
 }
