@@ -12,24 +12,19 @@ export class ShapeBuilder {
         this.slideSize = slideSize;
     }
 
-    build(shapeNode, parentMatrix, shapeProps) {
-        const { phKey, phType, shapeName } = this.#shapeAttr( shapeNode );
-
-        const isConnector = shapeName.startsWith('Straight Connector');
-
-        if (isConnector && !shapeProps.geometry) {
-            shapeProps.geometry = { type: 'line' };
-        }
-
-        let { pos, localMatrix, flipH, flipV } = this.#localMatrix( phKey, phType, shapeNode );
-
-        if (!pos) return { shape: null, pos: null, phKey, phType };
+    getShapeProperties(shapeNode, parentMatrix) {
+        const { phKey, phType } = this.#shapeAttr(shapeNode);
+        const { pos, localMatrix, flipH, flipV } = this.#localMatrix(phKey, phType, shapeNode);
+        if (!pos) return { pos: null, transform: null };
 
         const finalMatrix = parentMatrix.clone().multiply(localMatrix);
+        const transform = `matrix(${finalMatrix.m.join(' ')})`;
 
-        this.renderer.setTransform(finalMatrix);
+        return { pos, transform, flipH, flipV };
+    }
 
-        const txBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+    renderShape(pos, shapeProps, matrix, flipH, flipV) {
+        const txBody = shapeProps.txBody; // Assuming txBody is passed in shapeProps if needed
 
         if (shapeProps && shapeProps.geometry) {
              const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
@@ -49,25 +44,28 @@ export class ShapeBuilder {
                     });
                     break;
                 case 'line':
-                    const decomp = finalMatrix.decompose();
-                    if (decomp.scale.x === 0 || decomp.scale.y === 0) {
-                        break;
+                    const m = matrix.m;
+                    const sx = Math.sqrt(m[0] * m[0] + m[1] * m[1]);
+                    const sy = Math.sqrt(m[2] * m[2] + m[3] * m[3]);
+
+                    const noScaleMatrix = matrix.clone();
+                    if (sx !== 0 && sy !== 0) {
+                        noScaleMatrix.scale(1 / sx, 1 / sy);
                     }
-                    const noScaleMatrix = new Matrix();
-                    noScaleMatrix.translate(decomp.translation.x, decomp.translation.y);
-                    noScaleMatrix.rotate(decomp.rotation);
+
+                    const scaledWidth = pos.width * sx;
+                    const scaledHeight = pos.height * sy;
+
+                    const originalGroup = this.renderer.currentGroup;
+                    this.renderer.currentGroup = this.renderer.svg;
 
                     this.renderer.setTransform(noScaleMatrix);
-
-                    const scaledWidth = pos.width * decomp.scale.x;
-                    const scaledHeight = pos.height * decomp.scale.y;
-
                     this.renderer.drawLine(0, 0, scaledWidth, scaledHeight, {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                     });
 
-                    this.renderer.setTransform(finalMatrix);
+                    this.renderer.currentGroup = originalGroup;
                     break;
                 case 'arc':
                     const arcAdj = shapeProps.geometry.adjustments;
@@ -265,8 +263,6 @@ export class ShapeBuilder {
             // This is a shapeless textbox. Create a transparent rectangle to host the text.
             this.renderer.drawRect(0, 0, pos.width, pos.height, { fill: 'transparent', effect: shapeProps.effect });
         }
-
-        return { pos, phKey, phType };
     }
 
 

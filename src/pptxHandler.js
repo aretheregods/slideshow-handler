@@ -26,7 +26,6 @@ import {
     INDENTATION_AMOUNT,
     BULLET_OFFSET,
     PML_NS, DML_NS, CHART_NS, TABLE_NS,
-    slideshowProcessingActions as actions
 } from 'constants';
 
 export class PPTXHandler {
@@ -46,8 +45,7 @@ export class PPTXHandler {
         masterStaticShapes,
         layoutStaticShapes,
         slideRels,
-        entriesMap,
-        task
+        entriesMap
     } ) {
         this.slideXml = slideXml;
         this.slideContainer = slideContainer;
@@ -68,9 +66,6 @@ export class PPTXHandler {
 
         this.svg = this.createSvg();
         this.renderer = new SvgRenderer( this.svg, this.slideContext );
-        this.task = task;
-        this.parse = this.parse.bind( this );
-        this.render = this.render.bind( this );
     }
 
     createSvg() {
@@ -83,20 +78,7 @@ export class PPTXHandler {
         return svg;
     }
 
-    parse(slideshowStore) {
-        this.task = 'parse';
-        const xmlDoc = parseXmlString( this.slideXml, `slide number ${ this.slideNum }` );
-        const hfNode = xmlDoc.getElementsByTagNameNS( PML_NS, 'hf' )[ 0 ];
-        const slideLevelVisibility = {
-            ftr: !hfNode || hfNode.getAttribute( 'ftr' ) !== '0',
-            dt: !hfNode || hfNode.getAttribute( 'dt' ) !== '0',
-            sldNum: !hfNode || hfNode.getAttribute( 'sldNum' ) !== '0',
-        };
-        return this;
-    }
-
-    async render() {
-        this.task = 'render';
+    async parse() {
         const xmlDoc = parseXmlString(this.slideXml, `slide number ${this.slideNum}`);
         const hfNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'hf')[0];
         const slideLevelVisibility = {
@@ -105,31 +87,49 @@ export class PPTXHandler {
             sldNum: !hfNode || hfNode.getAttribute('sldNum') !== '0',
         };
 
-        const listCounters = {};
+        const initialMatrix = new Matrix();
+        const masterShapes = this.showMasterShapes && this.masterStaticShapes
+            ? await this.parseShapeTree(this.masterStaticShapes, initialMatrix.clone(), slideLevelVisibility)
+            : [];
+        const layoutShapes = this.showMasterShapes && this.layoutStaticShapes
+            ? await this.parseShapeTree(this.layoutStaticShapes, initialMatrix.clone(), slideLevelVisibility)
+            : [];
 
+        const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
+        const slideShapes = spTreeNode
+            ? await this.parseShapeTree(spTreeNode.children, initialMatrix.clone(), slideLevelVisibility)
+            : [];
+
+        return {
+            background: this.finalBg,
+            shapes: [...masterShapes, ...layoutShapes, ...slideShapes],
+        };
+    }
+
+    async render(slideData) {
         const SVG_NS = "http://www.w3.org/2000/svg";
-
         const defs = document.createElementNS(SVG_NS, 'defs');
         this.svg.appendChild(defs);
         this.renderer.defs = defs;
 
-        if (this.finalBg) {
-            if (this.finalBg.type === 'color') {
+        // Render background
+        if (slideData.background) {
+            if (slideData.background.type === 'color') {
                 const bgRect = document.createElementNS(SVG_NS, 'rect');
                 bgRect.setAttribute('width', '100%');
                 bgRect.setAttribute('height', '100%');
-                bgRect.setAttribute('fill', this.finalBg.value);
+                bgRect.setAttribute('fill', slideData.background.value);
                 this.svg.insertBefore(bgRect, this.svg.firstChild);
-            } else if (this.finalBg.type === 'gradient') {
+            } else if (slideData.background.type === 'gradient') {
                 const bgRect = document.createElementNS(SVG_NS, 'rect');
                 bgRect.setAttribute('width', '100%');
                 bgRect.setAttribute('height', '100%');
-                const gradientUrl = this.renderer._createGradient(this.finalBg);
+                const gradientUrl = this.renderer._createGradient(slideData.background);
                 bgRect.setAttribute('fill', gradientUrl);
                 this.svg.insertBefore(bgRect, this.svg.firstChild);
-            } else if (this.finalBg.type === 'image' && this.finalBg.relId && this.imageMap[this.finalBg.relId]) {
+            } else if (slideData.background.type === 'image' && slideData.background.relId && this.imageMap[slideData.background.relId]) {
                 const bgImage = document.createElementNS(SVG_NS, 'image');
-                bgImage.setAttribute('href', this.imageMap[this.finalBg.relId]);
+                bgImage.setAttribute('href', this.imageMap[slideData.background.relId]);
                 bgImage.setAttribute('width', this.slideSize.width);
                 bgImage.setAttribute('height', this.slideSize.height);
                 bgImage.setAttribute('preserveAspectRatio', 'xMidYMid slice');
@@ -137,54 +137,75 @@ export class PPTXHandler {
             }
         }
 
-        const initialMatrix = new Matrix();
-        if (this.showMasterShapes) {
-            if (this.masterStaticShapes) {
-                await this.processShapeTree(this.masterStaticShapes, listCounters, initialMatrix.clone(), slideLevelVisibility);
-            }
-            if (this.layoutStaticShapes) {
-                await this.processShapeTree(this.layoutStaticShapes, listCounters, initialMatrix.clone(), slideLevelVisibility);
-            }
-        }
-
-        const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
-        if (spTreeNode) {
-            await this.processShapeTree(spTreeNode.children, listCounters, initialMatrix.clone(), slideLevelVisibility);
-        }
+        await this.renderShapeTree(slideData.shapes);
     }
 
-    async processShapeTree(elements, listCounters, parentMatrix, slideLevelVisibility = null) {
+    async parseShapeTree(elements, parentMatrix, slideLevelVisibility) {
+        const shapes = [];
+        const listCounters = {}; // Reset for each shape tree (master, layout, slide)
+
         for (const element of elements) {
             const tagName = element.localName;
+            let shapeData;
+
             if (tagName === 'sp' || tagName === 'cxnSp') {
-                await this.processShape(element, listCounters, parentMatrix, slideLevelVisibility);
+                shapeData = await this.parseShape(element, listCounters, parentMatrix, slideLevelVisibility);
             } else if (tagName === 'grpSp') {
-                await this.processGroupShape(element, listCounters, parentMatrix, slideLevelVisibility);
+                shapeData = await this.parseGroupShape(element, listCounters, parentMatrix, slideLevelVisibility);
+                // For groups, we get an array of shapes, so we need to flatten it
+                if (shapeData) {
+                    shapes.push(...shapeData.shapes);
+                    shapeData = null; // Prevent pushing the group container itself
+                }
             } else if (tagName === 'graphicFrame') {
                 const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
-                if (graphicData && graphicData.getAttribute('uri') === TABLE_NS) {
-                    const tableData = await this.processTable(element, parentMatrix.clone());
-                } else if (graphicData && graphicData.getAttribute('uri') === CHART_NS) {
+                if (graphicData?.getAttribute('uri') === TABLE_NS) {
+                    shapeData = await this.parseTable(element, parentMatrix.clone());
+                } else if (graphicData?.getAttribute('uri') === CHART_NS) {
                     const chartRelId = graphicData.getElementsByTagNameNS(CHART_NS, "chart")[0].getAttribute("r:id");
-                    if (chartRelId && this.slideRels && this.slideRels[chartRelId]) {
+                    if (chartRelId && this.slideRels?.[chartRelId]) {
                         const chartPath = resolvePath('ppt/slides', this.slideRels[chartRelId].target);
                         const chartXml = await getNormalizedXmlString(this.entriesMap, chartPath);
                         if (chartXml) {
-                            const chartData = parseChart(chartXml);
-                            if (chartData) {
-                                await this.renderChart(element, chartData, parentMatrix.clone());
-                            }
+                            shapeData = await this.parseChart(element, chartXml, parentMatrix.clone());
                         }
                     }
                 }
             } else if (tagName === 'pic') {
-                await this.processPicture(element, parentMatrix, slideLevelVisibility);
+                shapeData = await this.parsePicture(element, parentMatrix, slideLevelVisibility);
+            }
+
+            if (shapeData) {
+                shapes.push(shapeData);
+            }
+        }
+        return shapes;
+    }
+
+    async renderShapeTree(shapes) {
+        for (const shapeData of shapes) {
+            switch (shapeData.type) {
+                case 'shape':
+                    await this.renderShape(shapeData);
+                    break;
+                case 'group':
+                     // Groups are not rendered directly in a flat model
+                    break;
+                case 'table':
+                    await this.renderTable(shapeData);
+                    break;
+                case 'chart':
+                    await this.renderChart(shapeData);
+                    break;
+                case 'picture':
+                    await this.renderPicture(shapeData);
+                    break;
             }
         }
     }
 
-    async processShape(shape, listCounters, parentMatrix, slideLevelVisibility) {
-        const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
+    async parseShape(shapeNode, listCounters, parentMatrix, slideLevelVisibility) {
+        const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
         let phKey = null, phType = null;
         if (nvPr) {
             const placeholder = nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0];
@@ -192,31 +213,27 @@ export class PPTXHandler {
                 phType = placeholder.getAttribute('type');
                 const phIdx = placeholder.getAttribute('idx');
                 phKey = phIdx ? `idx_${phIdx}` : phType;
-                if (!phType && phIdx) {
-                    phType = 'body';
-                }
+                if (!phType && phIdx) phType = 'body';
             }
         }
 
-        if (slideLevelVisibility && phType && slideLevelVisibility[phType] === false) {
-            return null;
-        }
+        if (slideLevelVisibility?.[phType] === false) return null;
 
-        const masterPh = this.masterPlaceholders ? (this.masterPlaceholders[phKey] || Object.values(this.masterPlaceholders).find(p => p.type === phType)) : null;
-        const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
+        const masterPh = this.masterPlaceholders?.[phKey] || Object.values(this.masterPlaceholders || {}).find(p => p.type === phType);
+        const layoutPh = this.layoutPlaceholders?.[phKey];
 
-        const masterShapeProps = masterPh ? masterPh.shapeProps : {};
-        const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
-        const slideShapeProps = parseShapeProperties(shape, this.slideContext, this.slideNum);
+        const masterShapeProps = masterPh?.shapeProps || {};
+        const layoutShapeProps = layoutPh?.shapeProps || {};
+        const slideShapeProps = parseShapeProperties(shapeNode, this.slideContext, this.slideNum);
         let finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
         const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
         const finalEffect = slideShapeProps.effect ?? layoutShapeProps.effect ?? masterShapeProps.effect;
 
-        if (shape.getAttribute('useBgFill') === '1') {
-            if (this.finalBg && this.finalBg.type === 'color') {
+        if (shapeNode.getAttribute('useBgFill') === '1') {
+            if (this.finalBg?.type === 'color') {
                 finalFill = { type: 'solid', color: this.finalBg.value };
             } else {
-                finalFill = 'none'; // Or handle image backgrounds if necessary
+                finalFill = 'none';
             }
         }
 
@@ -227,76 +244,72 @@ export class PPTXHandler {
             effect: finalEffect,
         };
 
-        const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize);
+        const shapeBuilder = new ShapeBuilder(null, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize);
+        const { pos, transform, flipH, flipV } = shapeBuilder.getShapeProperties(shapeNode, parentMatrix);
 
-        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        this.renderer.currentGroup.appendChild(group);
-        this.renderer.currentGroup = group;
-
-        const { pos } = shapeBuilder.build(shape, parentMatrix, shapeProps);
-
+        let textData = null;
         if (pos) {
-            const slideTxBody = shape.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-            let txBodyToRender = slideTxBody;
+            const slideTxBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+            let txBodyToParse = slideTxBody;
 
-            const slideTextContent = slideTxBody ? slideTxBody.textContent.trim() : '';
-
+            const slideTextContent = slideTxBody?.textContent.trim() ?? '';
             if (slideTextContent === '') {
-                if (layoutPh && layoutPh.txBodyNode) {
-                    txBodyToRender = layoutPh.txBodyNode;
-                } else if (masterPh && masterPh.txBodyNode) {
-                    txBodyToRender = masterPh.txBodyNode;
-                }
+                if (layoutPh?.txBodyNode) txBodyToParse = layoutPh.txBodyNode;
+                else if (masterPh?.txBodyNode) txBodyToParse = masterPh.txBodyNode;
             }
 
-            if (txBodyToRender) {
+            if (txBodyToParse) {
                 const slideBodyPr = parseBodyProperties(slideTxBody);
-                const masterBodyPr = masterPh ? masterPh.bodyPr : {};
-                const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
+                const masterBodyPr = masterPh?.bodyPr || {};
+                const layoutBodyPr = layoutPh?.bodyPr || {};
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-                await this.processParagraphs(
-                    txBodyToRender,
-                    { x: 0, y: 0, width: pos.width, height: pos.height },
-                    phKey,
-                    phType,
-                    listCounters,
-                    finalBodyPr,
-                    {},
-                    this.defaultTextStyles,
-                    this.masterPlaceholders,
-                    this.layoutPlaceholders,
-                    this.imageMap
-                );
+                textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {});
             }
         }
 
-        this.renderer.currentGroup = group.parentNode;
-        return pos;
+        return {
+            type: 'shape',
+            transform,
+            pos,
+            shapeProps,
+            text: textData,
+            flipH,
+            flipV,
+        };
     }
 
-    async processGroupShape(group, listCounters, parentMatrix, slideLevelVisibility) {
+    async renderShape(shapeData) {
+        const matrix = new Matrix();
+        if (shapeData.transform) {
+            const transformString = shapeData.transform.replace('matrix(', '').replace(')', '');
+            const transformValues = transformString.split(' ').map(Number);
+            matrix.m = transformValues;
+        }
+        this.renderer.setTransform(matrix);
+
+        const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
+        shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
+
+        if (shapeData.text) {
+            this.renderParagraphs(shapeData.text);
+        }
+    }
+
+    async parseGroupShape(groupNode, listCounters, parentMatrix, slideLevelVisibility) {
         if (slideLevelVisibility) {
-            const placeholders = Array.from(group.getElementsByTagNameNS(PML_NS, 'ph'));
+            const placeholders = Array.from(groupNode.getElementsByTagNameNS(PML_NS, 'ph'));
             if (placeholders.length > 0) {
                 const placeholderTypes = placeholders.map(ph => ph.getAttribute('type')).filter(Boolean);
-                const uniquePlaceholderTypes = [...new Set(placeholderTypes)];
-
-                if (uniquePlaceholderTypes.length > 0 && uniquePlaceholderTypes.every(phType => slideLevelVisibility[phType] === false)) {
-                    return;
+                if (placeholderTypes.length > 0 && placeholderTypes.every(phType => slideLevelVisibility[phType] === false)) {
+                    return null;
                 }
             }
         }
 
-        const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
-        const cNvPrNode = group.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
-        const groupName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unknown Group';
+        const cNvPrNode = groupNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+        const groupName = cNvPrNode?.getAttribute('name') || 'Unknown Group';
 
-        const groupElement = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        groupElement.setAttribute('data-name', groupName);
-        this.renderer.currentGroup.appendChild(groupElement);
-        const originalGroup = this.renderer.currentGroup;
-        this.renderer.currentGroup = groupElement;
-
+        const grpSpPrNode = groupNode.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
         let finalMatrixForChildren = parentMatrix.clone();
 
         if (grpSpPrNode) {
@@ -312,6 +325,9 @@ export class PPTXHandler {
                 const flipH = xfrmNode.getAttribute('flipH') === '1';
                 const flipV = xfrmNode.getAttribute('flipV') === '1';
 
+                const placementMatrix = new Matrix();
+                placementMatrix.translate(x, y).translate(w / 2, h / 2).rotate(rot * Math.PI / 180).scale(flipH ? -1 : 1, flipV ? -1 : 1).translate(-w / 2, -h / 2);
+
                 const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
                 const chExtNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chExt')[0];
                 const chX = chOffNode ? parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL : 0;
@@ -319,144 +335,43 @@ export class PPTXHandler {
                 const chW = chExtNode ? parseInt(chExtNode.getAttribute("cx")) / EMU_PER_PIXEL : 1;
                 const chH = chExtNode ? parseInt(chExtNode.getAttribute("cy")) / EMU_PER_PIXEL : 1;
 
-                const placementMatrix = new Matrix();
-                placementMatrix.translate(x, y);
-                placementMatrix.translate(w / 2, h / 2);
-                placementMatrix.rotate(rot * Math.PI / 180);
-                placementMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-                placementMatrix.translate(-w / 2, -h / 2);
+                const scaleX = w && chW ? w / chW : 1;
+                const scaleY = h && chH ? h / chH : 1;
+                const mappingMatrix = new Matrix().scale(scaleX, scaleY).translate(-chX, -chY);
 
-                const finalGroupMatrix = parentMatrix.clone().multiply(placementMatrix);
-                groupElement.setAttribute('transform', `matrix(${finalGroupMatrix.m.join(' ')})`);
-
-                const mappingMatrix = new Matrix();
-                mappingMatrix.scale(w / chW, h / chH);
-                mappingMatrix.translate(-chX, -chY);
-
-                finalMatrixForChildren = mappingMatrix;
+                finalMatrixForChildren = parentMatrix.clone().multiply(placementMatrix).multiply(mappingMatrix);
             }
         }
 
-        await this.processShapeTree(group.children, listCounters, finalMatrixForChildren, slideLevelVisibility);
+        const childShapes = await this.parseShapeTree(groupNode.children, finalMatrixForChildren, slideLevelVisibility);
 
-        this.renderer.currentGroup = originalGroup;
+        return {
+            type: 'group',
+            name: groupName,
+            shapes: childShapes,
+        };
     }
 
-    async parsePicture( picNode, parentMatrix ) {
-        const response = {}
+    async renderGroupShape(groupData) {
+        // In a flat rendering model, the group itself doesn't have a transform.
+        // We just need to render its children, which have their own absolute transforms.
+        await this.renderShapeTree(groupData.shapes);
+    }
+
+    async parsePicture(picNode, parentMatrix, slideLevelVisibility) {
         let localMatrix = new Matrix();
         let pos;
 
-        const nvPicPrNode = picNode.getElementsByTagNameNS( PML_NS, 'nvPicPr' )[ 0 ];
-        const nvPrNode = nvPicPrNode ? nvPicPrNode.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ] : null;
-        const phNode = nvPrNode ? nvPrNode.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ] : null;
-
-        if ( phNode ) {
-            const phType = phNode.getAttribute( 'type' );
-            if ( slideLevelVisibility && phType && slideLevelVisibility[ phType ] === false ) {
-                return { width: 0, height: 0 };
-            }
-        }
-
-        const spPrNode = picNode.getElementsByTagNameNS( PML_NS, 'spPr' )[ 0 ];
-        const xfrmNode = spPrNode ? spPrNode.getElementsByTagNameNS( DML_NS, 'xfrm' )[ 0 ] : null;
-
-        if ( xfrmNode ) {
-            const offNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
-            const extNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
-            if ( offNode && extNode ) {
-                const x = parseInt( offNode.getAttribute( "x" ) ) / EMU_PER_PIXEL;
-                const y = parseInt( offNode.getAttribute( "y" ) ) / EMU_PER_PIXEL;
-                const w = parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL;
-                const h = parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL;
-                const rot = parseInt( xfrmNode.getAttribute( 'rot' ) || '0' ) / 60000;
-                const flipH = xfrmNode.getAttribute( 'flipH' ) === '1';
-                const flipV = xfrmNode.getAttribute( 'flipV' ) === '1';
-
-                pos = { width: w, height: h };
-
-                localMatrix.translate( x, y );
-                localMatrix.translate( w / 2, h / 2 );
-                localMatrix.rotate( rot * Math.PI / 180 );
-                localMatrix.scale( flipH ? -1 : 1, flipV ? -1 : 1 );
-                localMatrix.translate( -w / 2, -h / 2 );
-            }
-        } else if ( phNode ) {
-            const phType = phNode.getAttribute( 'type' );
-            const phIdx = phNode.getAttribute( 'idx' );
-            const phKey = phIdx ? `idx_${ phIdx }` : phType;
-
-            const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[ phKey ] : null;
-            const masterPh = this.masterPlaceholders ? this.masterPlaceholders[ phKey ] : null;
-            const placeholder = layoutPh || masterPh;
-
-            if ( placeholder && placeholder.pos ) {
-                pos = { ...placeholder.pos };
-                localMatrix.translate( pos.x, pos.y );
-            }
-        }
-
-        if ( !pos ) return { width: 0, height: 0 };
-
-        const finalMatrix = parentMatrix.clone().multiply( localMatrix );
-
-        response[ 'transform' ] = finalMatrix.m.join( ' ' );
-
-        let placeholderProps = null;
-        if ( phNode ) {
-            const phType = phNode.getAttribute( 'type' );
-            const phIdx = phNode.getAttribute( 'idx' );
-            const phKey = phIdx ? `idx_${ phIdx }` : phType;
-            const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[ phKey ] : null;
-            const masterPh = this.masterPlaceholders ? this.masterPlaceholders[ phKey ] : null;
-
-            const masterShapeProps = masterPh ? masterPh.shapeProps : {};
-            const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
-
-            placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
-        }
-
-        const pathString = ( placeholderProps && placeholderProps.geometry )
-            ? buildPathStringFromGeom( placeholderProps.geometry, pos )
-            : null;
-
-        response[ 'placeholderProps' ] = placeholderProps;
-
-        response[ 'pathString' ] = pathString;
-
-        const blipFillNode = picNode.getElementsByTagNameNS( PML_NS, 'blipFill' )[ 0 ];
-        if ( blipFillNode ) {
-            const blipNode = blipFillNode.getElementsByTagNameNS( DML_NS, 'blip' )[ 0 ];
-            const relId = blipNode ? blipNode.getAttribute( 'r:embed' ) : null;
-            if ( relId && this.imageMap[ relId ] ) {
-                response[ 'image' ] = { href: this.imageMap[ relId ] };
-
-                const srcRect = parseSourceRectangle( blipFillNode );
-                if ( srcRect ) {
-                    response[ 'image' ][ 'srcRect' ] = srcRect;
-                }
-            }
-        }
-        return response;
-    }
-
-    async processPicture(picNode, parentMatrix, slideLevelVisibility) {
-		let localMatrix = new Matrix();
-        let pos;
-
         const nvPicPrNode = picNode.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0];
-        const nvPrNode = nvPicPrNode ? nvPicPrNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0] : null;
-        const phNode = nvPrNode ? nvPrNode.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
+        const phNode = nvPicPrNode?.getElementsByTagNameNS(PML_NS, 'nvPr')[0]?.getElementsByTagNameNS(PML_NS, 'ph')[0];
 
         if (phNode) {
             const phType = phNode.getAttribute('type');
-            if (slideLevelVisibility && phType && slideLevelVisibility[phType] === false) {
-                return { width: 0, height: 0 };
-            }
+            if (slideLevelVisibility?.[phType] === false) return null;
         }
 
         const spPrNode = picNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
-        const xfrmNode = spPrNode ? spPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0] : null;
+        const xfrmNode = spPrNode?.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
 
         if (xfrmNode) {
             const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
@@ -469,628 +384,442 @@ export class PPTXHandler {
                 const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
                 const flipH = xfrmNode.getAttribute('flipH') === '1';
                 const flipV = xfrmNode.getAttribute('flipV') === '1';
-
                 pos = { width: w, height: h };
-
-                localMatrix.translate(x, y);
-                localMatrix.translate(w / 2, h / 2);
-                localMatrix.rotate(rot * Math.PI / 180);
-                localMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-                localMatrix.translate(-w / 2, -h / 2);
+                localMatrix.translate(x, y).translate(w / 2, h / 2).rotate(rot * Math.PI / 180).scale(flipH ? -1 : 1, flipV ? -1 : 1).translate(-w / 2, -h / 2);
             }
         } else if (phNode) {
-            const phType = phNode.getAttribute('type');
-            const phIdx = phNode.getAttribute('idx');
-            const phKey = phIdx ? `idx_${phIdx}` : phType;
-
-            const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
-            const masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
-            const placeholder = layoutPh || masterPh;
-
-            if (placeholder && placeholder.pos) {
+            const phKey = phNode.getAttribute('idx') ? `idx_${phNode.getAttribute('idx')}` : phNode.getAttribute('type');
+            const placeholder = this.layoutPlaceholders?.[phKey] || this.masterPlaceholders?.[phKey];
+            if (placeholder?.pos) {
                 pos = { ...placeholder.pos };
                 localMatrix.translate(pos.x, pos.y);
             }
-		}
+        }
 
-        if (!pos) return { width: 0, height: 0 };
+        if (!pos) return null;
 
-		const finalMatrix = parentMatrix.clone().multiply(localMatrix);
-
-        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        group.setAttribute('transform', `matrix(${finalMatrix.m.join(' ')})`);
-        this.renderer.currentGroup.appendChild(group);
-
-        const originalGroup = this.renderer.currentGroup;
-        this.renderer.currentGroup = group;
+        const finalMatrix = parentMatrix.clone().multiply(localMatrix);
+        const transform = `matrix(${finalMatrix.m.join(' ')})`;
 
         let placeholderProps = null;
         if (phNode) {
-            const phType = phNode.getAttribute('type');
-            const phIdx = phNode.getAttribute('idx');
-            const phKey = phIdx ? `idx_${phIdx}` : phType;
-            const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[phKey] : null;
-            const masterPh = this.masterPlaceholders ? this.masterPlaceholders[phKey] : null;
-
-            const masterShapeProps = masterPh ? masterPh.shapeProps : {};
-            const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
-
-            placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
+            const phKey = phNode.getAttribute('idx') ? `idx_${phNode.getAttribute('idx')}` : phNode.getAttribute('type');
+            const masterPh = this.masterPlaceholders?.[phKey];
+            const layoutPh = this.layoutPlaceholders?.[phKey];
+            placeholderProps = { ...(masterPh?.shapeProps || {}), ...(layoutPh?.shapeProps || {}) };
         }
 
-        const pathString = (placeholderProps && placeholderProps.geometry)
-            ? buildPathStringFromGeom(placeholderProps.geometry, pos)
-			: null;
+        const pathString = placeholderProps?.geometry ? buildPathStringFromGeom(placeholderProps.geometry, pos) : null;
 
-        // 1. Draw Placeholder Fill
-        if ( placeholderProps?.fill?.type === 'solid' || placeholderProps?.fill?.type === 'gradient' ) {
-            if ( pathString ) {
-				this.renderer.drawPath( pathString, {
-					fill: placeholderProps.fill.type === 'gradient'
-						? placeholderProps.fill 
-						: placeholderProps.fill.color 
-				} );
-            } else {
-				this.renderer.drawRect( 0, 0, pos.width, pos.height, {
-					fill: placeholderProps.fill.type === 'gradient' 
-						? placeholderProps.fill 
-						: placeholderProps.fill.color
-				} );
-            }
-        }
-
-        // 2. Draw Image
+        let imageInfo = null;
         const blipFillNode = picNode.getElementsByTagNameNS(PML_NS, 'blipFill')[0];
         if (blipFillNode) {
             const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
-            const relId = blipNode ? blipNode.getAttribute('r:embed') : null;
+            const relId = blipNode?.getAttribute('r:embed');
             if (relId && this.imageMap[relId]) {
-                const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-                image.setAttribute('href', this.imageMap[relId]);
-
-                const srcRect = parseSourceRectangle(blipFillNode);
-                if (srcRect) {
-                    const img = await createImage(this.imageMap[relId]);
-                    const naturalWidth = img.width;
-                    const naturalHeight = img.height;
-
-                    const cropLeft = naturalWidth * srcRect.l;
-                    const cropTop = naturalHeight * srcRect.t;
-                    const cropWidth = naturalWidth * (1 - srcRect.l - srcRect.r);
-                    const cropHeight = naturalHeight * (1 - srcRect.t - srcRect.b);
-
-                    image.setAttribute('viewBox', `${cropLeft} ${cropTop} ${cropWidth} ${cropHeight}`);
-                    image.setAttribute('preserveAspectRatio', 'none');
-                }
-
-                image.setAttribute('x', 0);
-                image.setAttribute('y', 0);
-                image.setAttribute('width', pos.width);
-                image.setAttribute('height', pos.height);
-
-                if (pathString) {
-                    const clipId = `clip-${Math.random().toString(36).slice(2, 11)}`;
-                    const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
-                    clipPath.setAttribute('id', clipId);
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    path.setAttribute('d', pathString);
-                    clipPath.appendChild(path);
-                    this.renderer.defs.appendChild(clipPath);
-                    image.setAttribute('clip-path', `url(#${clipId})`);
-                }
-
-                group.appendChild(image);
+                imageInfo = {
+                    href: this.imageMap[relId],
+                    srcRect: parseSourceRectangle(blipFillNode),
+                };
             }
         }
 
-        // 3. Draw Placeholder Stroke
-        if ( placeholderProps?.stroke ) {
-            if (pathString) {
-                this.renderer.drawPath(pathString, { stroke: placeholderProps.stroke });
-            } else {
-                this.renderer.drawRect(0, 0, pos.width, pos.height, { stroke: placeholderProps.stroke });
-            }
-        }
-
-        this.renderer.currentGroup = originalGroup;
-
-        return { width: pos.width, height: pos.height };
+        return {
+            type: 'picture',
+            transform,
+            pos,
+            placeholderProps,
+            pathString,
+            image: imageInfo,
+        };
     }
 
-    async processTable(graphicFrame, parentMatrix) {
-        const xfrmNode = graphicFrame.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
+    async renderPicture(picData) {
+        const matrix = new Matrix();
+        if (picData.transform) {
+            const transformString = picData.transform.replace('matrix(', '').replace(')', '');
+            const transformValues = transformString.split(' ').map(Number);
+            matrix.m = transformValues;
+        }
+        this.renderer.setTransform(matrix);
+
+        if (picData.placeholderProps?.fill?.type === 'solid' || picData.placeholderProps?.fill?.type === 'gradient') {
+            const fillOptions = { fill: picData.placeholderProps.fill.type === 'gradient' ? picData.placeholderProps.fill : picData.placeholderProps.fill.color };
+            if (picData.pathString) this.renderer.drawPath(picData.pathString, fillOptions);
+            else this.renderer.drawRect(0, 0, picData.pos.width, picData.pos.height, fillOptions);
+        }
+
+        if (picData.image) {
+            const imageEl = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            imageEl.setAttribute('href', picData.image.href);
+
+            if (picData.image.srcRect) {
+                const img = await createImage(picData.image.href);
+                const crop = picData.image.srcRect;
+                const viewBox = `${img.width * crop.l} ${img.height * crop.t} ${img.width * (1 - crop.l - crop.r)} ${img.height * (1 - crop.t - crop.b)}`;
+                imageEl.setAttribute('viewBox', viewBox);
+                imageEl.setAttribute('preserveAspectRatio', 'none');
+            }
+
+            imageEl.setAttribute('x', 0);
+            imageEl.setAttribute('y', 0);
+            imageEl.setAttribute('width', picData.pos.width);
+            imageEl.setAttribute('height', picData.pos.height);
+
+            if (picData.pathString) {
+                const clipId = `clip-${Math.random().toString(36).slice(2, 11)}`;
+                const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+                clipPath.id = clipId;
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', picData.pathString);
+                clipPath.appendChild(path);
+                this.renderer.defs.appendChild(clipPath);
+                imageEl.setAttribute('clip-path', `url(#${clipId})`);
+            }
+            this.renderer.currentGroup.appendChild(imageEl);
+        }
+
+        if (picData.placeholderProps?.stroke) {
+            const strokeOpts = { stroke: picData.placeholderProps.stroke };
+            if (picData.pathString) this.renderer.drawPath(picData.pathString, strokeOpts);
+            else this.renderer.drawRect(0, 0, picData.pos.width, picData.pos.height, strokeOpts);
+        }
+    }
+
+    async parseTable(frameNode, parentMatrix) {
+        const xfrmNode = frameNode.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
         let pos = { x: 0, y: 0, width: 0, height: 0 };
         const localMatrix = new Matrix();
 
         if (xfrmNode) {
-            const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
-            const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
-            if (offNode && extNode) {
-                const x = parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL;
-                const y = parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
-                const w = parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL;
-                const h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
-                const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
-                const flipH = xfrmNode.getAttribute('flipH') === '1';
-                const flipV = xfrmNode.getAttribute('flipV') === '1';
-
-                pos = { x: 0, y: 0, width: w, height: h }; // Position is now relative to the container
-
+            const off = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+            const ext = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+            if (off && ext) {
+                const x = parseInt(off.getAttribute("x")) / EMU_PER_PIXEL;
+                const y = parseInt(off.getAttribute("y")) / EMU_PER_PIXEL;
+                const w = parseInt(ext.getAttribute("cx")) / EMU_PER_PIXEL;
+                const h = parseInt(ext.getAttribute("cy")) / EMU_PER_PIXEL;
+                pos = { x: 0, y: 0, width: w, height: h };
                 localMatrix.translate(x, y);
-                localMatrix.translate(w / 2, h / 2);
-                localMatrix.rotate(rot * Math.PI / 180);
-                localMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-                localMatrix.translate(-w / 2, -h / 2);
             }
         }
-
         const finalMatrix = parentMatrix.clone().multiply(localMatrix);
-        this.renderer.setTransform(finalMatrix);
+        const transform = `matrix(${finalMatrix.m.join(' ')})`;
 
-        const tblNode = graphicFrame.getElementsByTagNameNS(DML_NS, 'tbl')[0];
-        if (!tblNode) return {
-            width: pos.width,
-            height: pos.height
-        };
+        const tblNode = frameNode.getElementsByTagNameNS(DML_NS, 'tbl')[0];
+        if (!tblNode) return null;
 
         const tblPrNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblPr')[0];
+        const styleId = tblPrNode?.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0]?.textContent || `{${this.slideContext.defaultTableStyleId}}`;
+        const tableStyle = this.slideContext.tableStyles[styleId];
 
-        const tableStyleIdNode = tblPrNode ? tblPrNode.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0] : null;
-        let styleId = tableStyleIdNode ? tableStyleIdNode.textContent : null;
-
-        if (!styleId && this.slideContext.defaultTableStyleId) {
-            styleId = `{${this.slideContext.defaultTableStyleId}}`;
-        }
-
-        const tableStyle = styleId ? this.slideContext.tableStyles[styleId] : null;
-
-        // 2. Parse grid and column widths
-        const tblGridNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblGrid')[0];
-        const gridColNodes = tblGridNode ? tblGridNode.getElementsByTagNameNS(DML_NS, 'gridCol') : [];
-        const colWidths = Array.from(gridColNodes).map(node => parseInt(node.getAttribute('w')) / EMU_PER_PIXEL);
-
-        // 3. Iterate through rows and cells to build a renderable grid
+        const colWidths = Array.from(tblNode.getElementsByTagNameNS(DML_NS, 'gridCol')).map(n => parseInt(n.getAttribute('w')) / EMU_PER_PIXEL);
         const rowNodes = Array.from(tblNode.getElementsByTagNameNS(DML_NS, 'tr'));
         const numRows = rowNodes.length;
         const numCols = colWidths.length;
-        if (numRows === 0 || numCols === 0) return {
-            width: pos.width,
-            height: pos.height
-        };
+        if (numRows === 0 || numCols === 0) return null;
 
-        const renderedGrid = Array( numRows ).fill( 0 ).map( () => Array( numCols ).fill( false ) );
+        const cells = [];
+        const renderedGrid = Array(numRows).fill(0).map(() => Array(numCols).fill(false));
 
         for (let r = 0; r < numRows; r++) {
             const cellNodes = Array.from(rowNodes[r].getElementsByTagNameNS(DML_NS, 'tc'));
-
             for (let c = 0; c < numCols; c++) {
-                if (renderedGrid[r][c]) {
-                    continue; // Already handled by a previous rowspan
-                }
-
+                if (renderedGrid[r][c]) continue;
                 const cellNode = cellNodes[c];
-                if (!cellNode) continue;
-
-                const hMerge = cellNode.getAttribute('hMerge') === '1';
-                const vMerge = cellNode.getAttribute('vMerge') === '1';
-
-                if (hMerge || vMerge) {
-                    continue; // Handled by the primary cell of the merge
-                }
+                if (!cellNode || cellNode.getAttribute('hMerge') || cellNode.getAttribute('vMerge')) continue;
 
                 const gridSpan = parseInt(cellNode.getAttribute('gridSpan') || '1');
                 const rowSpan = parseInt(cellNode.getAttribute('rowSpan') || '1');
 
-                // Calculate cell dimensions based on spans
-                let cellWidth = 0;
-                for (let i = 0; i < gridSpan; i++) {
-                    if (c + i < numCols) cellWidth += colWidths[c + i];
+                let cellWidth = colWidths.slice(c, c + gridSpan).reduce((a, b) => a + b, 0);
+                let cellHeight = rowNodes.slice(r, r + rowSpan).reduce((acc, row) => acc + parseInt(row.getAttribute('h')) / EMU_PER_PIXEL, 0);
+                let cellX = colWidths.slice(0, c).reduce((a, b) => a + b, 0);
+                let cellY = rowNodes.slice(0, r).reduce((acc, row) => acc + parseInt(row.getAttribute('h')) / EMU_PER_PIXEL, 0);
+
+                for (let i = 0; i < rowSpan; i++) for (let j = 0; j < gridSpan; j++) {
+                    if (r + i < numRows && c + j < numCols) renderedGrid[r + i][c + j] = true;
                 }
 
-                let cellHeight = 0;
-                for (let i = 0; i < rowSpan; i++) {
-                    if (r + i < numRows) {
-                        cellHeight += parseInt(rowNodes[r + i].getAttribute('h')) / EMU_PER_PIXEL;
-                    }
-                }
-
-                // Calculate cell position
-                let cellX = pos.x;
-                for (let i = 0; i < c; i++) {
-                    cellX += colWidths[i];
-                }
-
-                let cellY = pos.y;
-                for (let i = 0; i < r; i++) {
-                    cellY += parseInt(rowNodes[i].getAttribute('h')) / EMU_PER_PIXEL;
-                }
-
-                // Mark grid cells covered by this span as rendered
-                for (let i = 0; i < rowSpan; i++) {
-                    for (let j = 0; j < gridSpan; j++) {
-                        if (r + i < numRows && c + j < numCols) {
-                            renderedGrid[r + i][c + j] = true;
-                        }
-                    }
-                }
-
-                // Step 4: Get cell styling
-                const fillColor = getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext);
-                const textStyle = getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle);
-
-                // Draw borders using a strategy to avoid double-drawing
-                const borders = getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext);
-                const borderDefs = {
-                    top: { p: [cellX, cellY, cellX + cellWidth, cellY], draw: (r === 0) },
-                    right: { p: [cellX + cellWidth, cellY, cellX + cellWidth, cellY + cellHeight], draw: true },
-                    bottom: { p: [cellX + cellWidth, cellY + cellHeight, cellX, cellY + cellHeight], draw: true },
-                    left: { p: [cellX, cellY + cellHeight, cellX, cellY], draw: (c === 0) },
-                };
-
-                if ( this.task === 'render' ) {
-                    this.renderer.drawRect( cellX, cellY, cellWidth, cellHeight, { fill: fillColor || 'transparent' } );
-                    for (const side in borderDefs) {
-                        const borderStyle = borders[side];
-                        if (borderStyle && borderStyle !== 'none' && borderDefs[side].draw) {
-                            this.renderer.drawLine(borderDefs[side].p[0], borderDefs[side].p[1], borderDefs[side].p[2], borderDefs[side].p[3], { stroke: borderStyle });
-                        }
-                    }
-                    await this.processCellText( cellNode, cellX, cellY, cellWidth, cellHeight, textStyle );
-                }
-
-                if ( this.task === 'parse' ) {
-                    // Render text content
-                    const cellText = await this.processCellText( cellNode, cellX, cellY, cellWidth, cellHeight, textStyle );
-                    renderedGrid[ c ][ r ] = { cellText, textStyle, borders, borderDefs, fillColor };
-                }
+                cells.push({
+                    pos: { x: cellX, y: cellY, width: cellWidth, height: cellHeight },
+                    fill: getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext),
+                    borders: getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext),
+                    text: this.parseCellText(cellNode, { x: cellX, y: cellY, width: cellWidth, height: cellHeight }, getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle)),
+                });
             }
         }
-
-        return { tablePos: pos, grid: renderedGrid };
+        return { type: 'table', transform, pos, cells };
     }
 
-    async processCellText(cellNode, cellX, cellY, cellWidth, cellHeight, tableTextStyle = {}) {
+    async renderTable(tableData) {
+        const matrix = new Matrix();
+        if (tableData.transform) {
+            const transformString = tableData.transform.replace('matrix(', '').replace(')', '');
+            const transformValues = transformString.split(' ').map(Number);
+            matrix.m = transformValues;
+        }
+        this.renderer.setTransform(matrix);
+
+        for (const cell of tableData.cells) {
+            this.renderer.drawRect(cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent' });
+
+            const { x, y, width, height } = cell.pos;
+            if (cell.borders.top) this.renderer.drawLine(x, y, x + width, y, { stroke: cell.borders.top });
+            if (cell.borders.right) this.renderer.drawLine(x + width, y, x + width, y + height, { stroke: cell.borders.right });
+            if (cell.borders.bottom) this.renderer.drawLine(x + width, y + height, x, y + height, { stroke: cell.borders.bottom });
+            if (cell.borders.left) this.renderer.drawLine(x, y + height, x, y, { stroke: cell.borders.left });
+
+            if (cell.text) {
+                const clipId = `clip-${Math.random().toString(36).slice(2, 11)}`;
+                const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+                clipPath.id = clipId;
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', x);
+                rect.setAttribute('y', y);
+                rect.setAttribute('width', width);
+                rect.setAttribute('height', height);
+                clipPath.appendChild(rect);
+                this.renderer.defs.appendChild(clipPath);
+
+                const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                group.setAttribute('clip-path', `url(#${clipId})`);
+                this.renderer.currentGroup.appendChild(group);
+
+                const originalGroup = this.renderer.currentGroup;
+                this.renderer.currentGroup = group;
+                this.renderParagraphs(cell.text);
+                this.renderer.currentGroup = originalGroup;
+            }
+        }
+    }
+
+    parseCellText(cellNode, pos, tableTextStyle) {
         const txBodyNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
-        if (!txBodyNode) return;
+        if (!txBodyNode) return null;
 
         const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
         const bodyPrFromTxBody = parseBodyProperties(txBodyNode);
 
-        // Default OOXML table cell margins in EMUs
-        const DEFAULT_L_R_MARGIN_EMU = 91440;
-        const DEFAULT_T_B_MARGIN_EMU = 45720;
-
         const bodyPrFromTcPr = {
-            // Apply defaults first
-            lIns: DEFAULT_L_R_MARGIN_EMU / EMU_PER_PIXEL,
-            rIns: DEFAULT_L_R_MARGIN_EMU / EMU_PER_PIXEL,
-            tIns: DEFAULT_T_B_MARGIN_EMU / EMU_PER_PIXEL,
-            bIns: DEFAULT_T_B_MARGIN_EMU / EMU_PER_PIXEL,
+            lIns: 91440 / EMU_PER_PIXEL, rIns: 91440 / EMU_PER_PIXEL,
+            tIns: 45720 / EMU_PER_PIXEL, bIns: 45720 / EMU_PER_PIXEL,
         };
-
         if (tcPrNode) {
-            const anchor = tcPrNode.getAttribute('anchor');
-            if (anchor) bodyPrFromTcPr.anchor = anchor;
-
-            const marL = tcPrNode.getAttribute('marL');
-            if (marL) bodyPrFromTcPr.lIns = parseInt(marL) / EMU_PER_PIXEL;
-
-            const marT = tcPrNode.getAttribute('marT');
-            if (marT) bodyPrFromTcPr.tIns = parseInt(marT) / EMU_PER_PIXEL;
-
-            const marR = tcPrNode.getAttribute('marR');
-            if (marR) bodyPrFromTcPr.rIns = parseInt(marR) / EMU_PER_PIXEL;
-
-            const marB = tcPrNode.getAttribute('marB');
-            if (marB) bodyPrFromTcPr.bIns = parseInt(marB) / EMU_PER_PIXEL;
+            bodyPrFromTcPr.anchor = tcPrNode.getAttribute('anchor');
+            if (tcPrNode.getAttribute('marL')) bodyPrFromTcPr.lIns = parseInt(tcPrNode.getAttribute('marL')) / EMU_PER_PIXEL;
+            if (tcPrNode.getAttribute('marR')) bodyPrFromTcPr.rIns = parseInt(tcPrNode.getAttribute('marR')) / EMU_PER_PIXEL;
+            if (tcPrNode.getAttribute('marT')) bodyPrFromTcPr.tIns = parseInt(tcPrNode.getAttribute('marT')) / EMU_PER_PIXEL;
+            if (tcPrNode.getAttribute('marB')) bodyPrFromTcPr.bIns = parseInt(tcPrNode.getAttribute('marB')) / EMU_PER_PIXEL;
         }
-
-        const bodyPr = { ...bodyPrFromTxBody, ...bodyPrFromTcPr };
-
-        const pos = {
-            x: cellX,
-            y: cellY,
-            width: cellWidth,
-            height: cellHeight
-        };
+        const finalBodyPr = { ...bodyPrFromTxBody, ...bodyPrFromTcPr };
 
         const listCounters = {};
         const defaultTextStyles = { title: {}, body: {}, other: {} };
         const masterPlaceholders = {};
         const layoutPlaceholders = {};
 
-        const paragraphs = await this.processParagraphs( txBodyNode, pos, null, 'body', listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, {} );
-        if ( this.task === 'parse' ) {
-            return { pos, paragraphs };
-        }
-
-        const clipId = `clip-${Math.random().toString(36).slice(2, 11)}`;
-        const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
-        clipPath.setAttribute('id', clipId);
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', cellX);
-        rect.setAttribute('y', cellY);
-        rect.setAttribute('width', cellWidth);
-        rect.setAttribute('height', cellHeight);
-        clipPath.appendChild(rect);
-        this.renderer.defs.appendChild(clipPath);
-
-        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        group.setAttribute('clip-path', `url(#${clipId})`);
-        this.renderer.currentGroup.appendChild(group);
-        const originalGroup = this.renderer.currentGroup;
-        this.renderer.currentGroup = group;
-
-        this.renderer.currentGroup = originalGroup;
+        return this.parseParagraphs(txBodyNode, pos, null, 'body', listCounters, finalBodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
     }
 
-    async processParagraphs( txBody, pos, phKey, phType, listCounters, bodyPr = {}, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders ) {
-        const paragraphs = Array.from( txBody.getElementsByTagNameNS( DML_NS, 'p' ) );
-        if ( paragraphs.length === 0 ) return;
+    parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
+        const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
+        if (paragraphs.length === 0) return null;
 
-        const layout = this.layoutParagraphs( paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders );
-        if ( this.task === 'parse' ) {
-            return { layout, bodyPr };
-        }
+        const dts = defaultTextStyles || this.defaultTextStyles;
+        const mph = masterPlaceholders || this.masterPlaceholders;
+        const lph = layoutPlaceholders || this.layoutPlaceholders;
+
+        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, dts, mph, lph, listCounters);
+        return { layout, bodyPr, pos };
+    }
+
+    renderParagraphs(textData) {
+        const { layout, bodyPr, pos } = textData;
         const paddedPos = {
-            x: pos.x + ( bodyPr.lIns || 0 ),
-            y: pos.y + ( bodyPr.tIns || 0 ),
-            width: pos.width - ( bodyPr.lIns || 0 ) - ( bodyPr.rIns || 0 ),
-            height: pos.height - ( bodyPr.tIns || 0 ) - ( bodyPr.bIns || 0 ),
+            x: pos.x + (bodyPr.lIns || 0),
+            y: pos.y + (bodyPr.tIns || 0),
+            width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
+            height: pos.height - (bodyPr.tIns || 0) - (bodyPr.bIns || 0),
         };
 
         let startY = paddedPos.y;
-        const anchor = bodyPr.anchor || 't';
-        if ( anchor === 'ctr' ) {
-            startY += ( paddedPos.height - layout.totalHeight ) / 2;
-        } else if ( anchor === 'b' ) {
-            startY += paddedPos.height - layout.totalHeight;
-        }
+        if (bodyPr.anchor === 'ctr') startY += (paddedPos.height - layout.totalHeight) / 2;
+        else if (bodyPr.anchor === 'b') startY += paddedPos.height - layout.totalHeight;
 
-        const textGroup = document.createElementNS( 'http://www.w3.org/2000/svg', 'g' );
+        const textGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
-        for ( const line of layout.lines ) {
-            const finalProps = line.paragraphProps;
-            const bulletOffset = ( finalProps.bullet.type && finalProps.bullet.type !== 'none' ) ? BULLET_OFFSET : 0;
-
-            if ( bulletOffset > 0 && line.isFirstLine ) {
-                const bulletColor = ColorParser.resolveColor( finalProps.bullet.color, this.slideContext ) || ColorParser.resolveColor( finalProps.defRPr.color, this.slideContext ) || '#000';
-                const firstRunSize = line.runs.length > 0 ? line.runs[ 0 ].font.size : ( finalProps.defRPr.size || 18 * PT_TO_PX );
+        for (const line of layout.lines) {
+            const { paragraphProps: finalProps } = line;
+            if (line.isFirstLine && finalProps.bullet?.type && finalProps.bullet.type !== 'none') {
+                const bulletColor = ColorParser.resolveColor(finalProps.bullet.color, this.slideContext) || ColorParser.resolveColor(finalProps.defRPr.color, this.slideContext) || '#000';
+                const firstRunSize = line.runs[0]?.font.size || (finalProps.defRPr.size || 18 * PT_TO_PX);
                 const bulletBaselineY = startY + line.startY + firstRunSize;
+                const bulletX = line.x - BULLET_OFFSET;
 
-                if ( finalProps.bullet.type === 'char' ) {
-                    const bulletFontSize = finalProps.defRPr.size || ( 18 * PT_TO_PX );
-                    const bulletText = document.createElementNS( 'http://www.w3.org/2000/svg', 'text' );
-                    bulletText.setAttribute( 'x', line.x - bulletOffset );
-                    bulletText.setAttribute( 'y', bulletBaselineY );
-                    bulletText.setAttribute( 'fill', bulletColor );
-                    bulletText.setAttribute( 'font-size', `${ bulletFontSize }px` );
-                    bulletText.setAttribute( 'font-family', finalProps.bullet.font || 'Arial' );
-                    bulletText.textContent = finalProps.bullet.char;
-                    textGroup.appendChild( bulletText );
-                } else if ( finalProps.bullet.type === 'auto' ) {
-                    const level = finalProps.level || 0;
-                    if ( listCounters[ level ] === undefined ) listCounters[ level ] = finalProps.bullet.startAt || 1; else listCounters[ level ]++;
-                    const bulletChar = getAutoNumberingChar( finalProps.bullet.scheme, listCounters[ level ] );
-                    const bulletFontSize = finalProps.defRPr.size || ( 18 * PT_TO_PX );
-                    const bulletText = document.createElementNS( 'http://www.w3.org/2000/svg', 'text' );
-                    bulletText.setAttribute( 'x', line.x - bulletOffset );
-                    bulletText.setAttribute( 'y', bulletBaselineY );
-                    bulletText.setAttribute( 'fill', bulletColor );
-                    bulletText.setAttribute( 'font-size', `${ bulletFontSize }px` );
-                    bulletText.setAttribute( 'font-family', finalProps.bullet.font || 'Arial' );
-                    bulletText.textContent = bulletChar;
-                    textGroup.appendChild( bulletText );
-                } else if ( finalProps.bullet.type === 'image' && finalProps.bullet.relId && this.imageMap[ finalProps.bullet.relId ] ) {
-                    const imageY = bulletBaselineY - 8; // Approximation
-                    const image = document.createElementNS( 'http://www.w3.org/2000/svg', 'image' );
-                    image.setAttribute( 'x', line.x - bulletOffset );
-                    image.setAttribute( 'y', imageY );
-                    image.setAttribute( 'width', 16 );
-                    image.setAttribute( 'height', 16 );
-                    image.setAttribute( 'href', this.imageMap[ finalProps.bullet.relId ] );
-                    textGroup.appendChild( image );
+                if (finalProps.bullet.type === 'char') {
+                    this.renderer.drawText(finalProps.bullet.char, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${finalProps.defRPr.size || 18 * PT_TO_PX}px`, fontFamily: finalProps.bullet.font || 'Arial' });
+                } else if (finalProps.bullet.type === 'auto') {
+                    this.renderer.drawText(line.bulletChar, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${finalProps.defRPr.size || 18 * PT_TO_PX}px`, fontFamily: finalProps.bullet.font || 'Arial' });
+                } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && this.imageMap[finalProps.bullet.relId]) {
+                    this.renderer.drawImage(this.imageMap[finalProps.bullet.relId], bulletX, bulletBaselineY - 8, 16, 16);
                 }
             }
 
-            const textElement = document.createElementNS( 'http://www.w3.org/2000/svg', 'text' );
-            let align = finalProps.align || 'l';
-            if ( bodyPr.anchor === 'ctr' && !finalProps.align ) {
-                align = 'ctr';
-            }
-            const xPos = line.x;
-
-            if ( align === 'ctr' ) {
-                textElement.setAttribute( 'x', xPos + line.width / 2 );
-                textElement.setAttribute( 'text-anchor', 'middle' );
-            } else if ( align === 'r' ) {
-                textElement.setAttribute( 'x', xPos + line.width );
-                textElement.setAttribute( 'text-anchor', 'end' );
+            const textElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            const align = finalProps.align || 'l';
+            let xPos = line.x;
+            if (align === 'ctr') {
+                textElement.setAttribute('x', xPos + line.width / 2);
+                textElement.setAttribute('text-anchor', 'middle');
+            } else if (align === 'r') {
+                textElement.setAttribute('x', xPos + line.width);
+                textElement.setAttribute('text-anchor', 'end');
             } else {
-                textElement.setAttribute( 'x', xPos );
-                textElement.setAttribute( 'text-anchor', 'start' );
+                textElement.setAttribute('x', xPos);
+                textElement.setAttribute('text-anchor', 'start');
             }
-            textElement.setAttribute( 'y', startY + line.startY + ( line.runs.length > 0 ? line.runs[ 0 ].font.size : 0 ) );
+            textElement.setAttribute('y', startY + line.startY + (line.runs[0]?.font.size || 0));
 
-            for ( const run of line.runs ) {
-                const tspan = document.createElementNS( 'http://www.w3.org/2000/svg', 'tspan' );
-                tspan.setAttribute( 'font-family', run.font.family );
-                tspan.setAttribute( 'font-size', `${ run.font.size }px` );
-                tspan.setAttribute( 'font-style', run.font.style );
-                tspan.setAttribute( 'font-weight', run.font.weight );
-                tspan.setAttribute( 'fill', run.color );
+            for (const run of line.runs) {
+                const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+                tspan.setAttribute('font-family', run.font.family);
+                tspan.setAttribute('font-size', `${run.font.size}px`);
+                tspan.setAttribute('font-style', run.font.style);
+                tspan.setAttribute('font-weight', run.font.weight);
+                tspan.setAttribute('fill', run.color);
                 tspan.textContent = run.text;
-                textElement.appendChild( tspan );
+                textElement.appendChild(tspan);
             }
-            textGroup.appendChild( textElement );
+            textGroup.appendChild(textElement);
         }
-        this.renderer.currentGroup.appendChild( textGroup );
+        this.renderer.currentGroup.appendChild(textGroup);
     }
 
-    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
+    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters) {
         const paddedPos = {
-            x: pos.x + ( bodyPr.lIns || 0 ),
-            y: pos.y + ( bodyPr.tIns || 0 ),
-            width: pos.width - ( bodyPr.lIns || 0 ) - ( bodyPr.rIns || 0 ),
-            height: pos.height - ( bodyPr.tIns || 0 ) - ( bodyPr.bIns || 0 ),
+            x: pos.x + (bodyPr.lIns || 0), y: pos.y + (bodyPr.tIns || 0),
+            width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
+            height: pos.height - (bodyPr.tIns || 0) - (bodyPr.bIns || 0),
         };
 
         const lines = [];
         let currentY = 0;
 
-        for ( const pNode of paragraphs ) {
-            const pPrNode = pNode.getElementsByTagNameNS( DML_NS, 'pPr' )[ 0 ];
-            const level = pPrNode ? parseInt( pPrNode.getAttribute( 'lvl' ) || '0' ) : 0;
-            let defaultStyle = defaultTextStyles.other;
-            if ( phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle' ) defaultStyle = defaultTextStyles.title;
-            else if ( phType === 'body' ) defaultStyle = defaultTextStyles.body;
-
-            const defaultLevelProps = ( defaultStyle && defaultStyle[ level ] ) ? defaultStyle[ level ] : {};
-
-            const masterPh = masterPlaceholders ? ( masterPlaceholders[ phKey ] || Object.values( masterPlaceholders ).find( p => p.type === phType ) ) : null;
-            let masterListStyle = ( masterPh?.listStyle?.[ level ] ) || {};
-            if ( masterPh?.type && phType && masterPh.type !== phType ) {
-                masterListStyle = {};
-            }
-
-            const layoutPh = layoutPlaceholders ? layoutPlaceholders[ phKey ] : null;
-            let layoutListStyle = ( layoutPh?.listStyle?.[ level ] ) || {};
-            if ( layoutPh?.type && phType && layoutPh.type !== phType ) {
-                layoutListStyle = {};
-            }
-            const slideLevelProps = parseParagraphProperties( pPrNode ) || { bullet: {}, defRPr: {} };
+        for (const pNode of paragraphs) {
+            const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
+            const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
+            const defaultStyle = (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') ? defaultTextStyles.title : (phType === 'body' ? defaultTextStyles.body : defaultTextStyles.other);
+            const defaultLevelProps = defaultStyle?.[level] || {};
+            const masterPh = masterPlaceholders?.[phKey] || Object.values(masterPlaceholders || {}).find(p => p.type === phType);
+            const masterListStyle = masterPh?.listStyle?.[level] || {};
+            const layoutPh = layoutPlaceholders?.[phKey];
+            const layoutListStyle = layoutPh?.listStyle?.[level] || {};
+            const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
 
             const finalProps = {
-                level,
-                ...defaultLevelProps,
-                ...masterListStyle,
-                ...layoutListStyle,
-                ...slideLevelProps,
+                level, ...defaultLevelProps, ...masterListStyle, ...layoutListStyle, ...slideLevelProps,
                 bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
                 defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
             };
 
-            const marL = ( finalProps.marL !== undefined ) ? finalProps.marL : ( level > 0 ? ( level * INDENTATION_AMOUNT ) : 0 );
-            const indent = ( finalProps.indent !== undefined ) ? finalProps.indent : 0;
-            const bulletOffset = ( finalProps.bullet.type && finalProps.bullet.type !== 'none' ) ? BULLET_OFFSET : 0;
+            const marL = finalProps.marL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
+            const indent = finalProps.indent ?? 0;
+            const bulletOffset = (finalProps.bullet?.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
 
             let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: true };
-
-            const pushCurrentLine = () => {
-                if ( currentLine.runs.length > 0 ) {
-                    lines.push( currentLine );
+            const pushLine = () => {
+                if (currentLine.runs.length > 0) {
+                    lines.push(currentLine);
                     currentY += currentLine.height || LINE_HEIGHT;
                 }
                 currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: false };
             };
 
-            const runsAndBreaks = Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName));
+            if (finalProps.bullet?.type === 'auto') {
+                if (listCounters[level] === undefined) listCounters[level] = finalProps.bullet.startAt || 1; else listCounters[level]++;
+                currentLine.bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]);
+            }
 
-            for ( const childNode of runsAndBreaks ) {
-                if ( childNode.localName === 'br' ) {
-                    pushCurrentLine();
-                    continue;
-                }
-
+            for (const childNode of Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName))) {
+                if (childNode.localName === 'br') { pushLine(); continue; }
                 const text = childNode.textContent;
                 if (!text) continue;
 
                 const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                const finalRunProps = { ...finalProps.defRPr };
+                const runProps = { ...finalProps.defRPr };
                 if (rPr) {
-                    if ( rPr.getAttribute( 'sz' ) ) finalRunProps.size = ( parseInt( rPr.getAttribute( 'sz' ) ) / 100 ) * PT_TO_PX;
-                    if ( rPr.getAttribute( 'b' ) === '1' ) finalRunProps.bold = true; else if ( rPr.getAttribute( 'b' ) === '0' ) finalRunProps.bold = false;
-                    if ( rPr.getAttribute( 'i' ) === '1' ) finalRunProps.italic = true; else if ( rPr.getAttribute( 'i' ) === '0' ) finalRunProps.italic = false;
-                    const solidFill = rPr.getElementsByTagNameNS( DML_NS, 'solidFill' )[ 0 ];
-                    if ( solidFill ) finalRunProps.color = ColorParser.parseColor( solidFill );
-                    const latinFontNode = rPr.getElementsByTagNameNS( DML_NS, 'latin' )[ 0 ];
-                    if ( latinFontNode?.getAttribute( 'typeface' ) ) finalRunProps.font = latinFontNode.getAttribute( 'typeface' );
+                    if (rPr.getAttribute('sz')) runProps.size = (parseInt(rPr.getAttribute('sz')) / 100) * PT_TO_PX;
+                    if (rPr.getAttribute('b') === '1') runProps.bold = true; else if (rPr.getAttribute('b') === '0') runProps.bold = false;
+                    if (rPr.getAttribute('i') === '1') runProps.italic = true; else if (rPr.getAttribute('i') === '0') runProps.italic = false;
+                    const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                    if (solidFill) runProps.color = ColorParser.parseColor(solidFill);
+                    const latinFont = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                    if (latinFont?.getAttribute('typeface')) runProps.font = latinFont.getAttribute('typeface');
                 }
 
-                const textColor = ColorParser.resolveColor( finalRunProps.color, this.slideContext ) || '#000000';
-                let fontSize = finalRunProps.size || ( 18 * PT_TO_PX );
-                if ( bodyPr.fontScale ) {
-                    fontSize *= bodyPr.fontScale;
-                }
-                const fontStyle = finalRunProps.italic ? 'italic' : 'normal';
-                const fontWeight = finalRunProps.bold ? 'bold' : 'normal';
-                const fontFamily = resolveFontFamily( finalRunProps, phType, this.slideContext );
+                let fontSize = runProps.size || (18 * PT_TO_PX);
+                if (bodyPr.fontScale) fontSize *= bodyPr.fontScale;
+                const fontFamily = resolveFontFamily(runProps, phType, this.slideContext);
+                const tempCtx = document.createElement('canvas').getContext('2d');
+                tempCtx.font = `${runProps.italic ? 'italic' : 'normal'} ${runProps.bold ? 'bold' : 'normal'} ${fontSize}px ${fontFamily}`;
 
-                const tempCtx = document.createElement( 'canvas' ).getContext( '2d' );
-                tempCtx.font = `${ fontStyle } ${ fontWeight } ${ fontSize }px ${ fontFamily }`;
-                const words = text.split( /(\s+)/ ); // Split on whitespace but keep it
-
-                for ( const word of words ) {
-                    if ( !word ) continue;
-
-                    const wordWidth = tempCtx.measureText( word ).width;
-                    const currentIndent = currentLine.isFirstLine ? marL + indent : marL;
-                    const effectiveWidth = paddedPos.width - currentIndent - bulletOffset;
-
-                    if ( currentLine.width + wordWidth > effectiveWidth && currentLine.runs.length > 0 ) {
-                        pushCurrentLine();
-                    }
-
-                    currentLine.runs.push( {
+                for (const word of text.split(/(\s+)/)) {
+                    if (!word) continue;
+                    const wordWidth = tempCtx.measureText(word).width;
+                    const effectiveWidth = paddedPos.width - (currentLine.isFirstLine ? marL + indent : marL) - bulletOffset;
+                    if (currentLine.width + wordWidth > effectiveWidth && currentLine.runs.length > 0) pushLine();
+                    currentLine.runs.push({
                         text: word,
-                        width: wordWidth,
-                        font: {
-                            style: fontStyle,
-                            weight: fontWeight,
-                            size: fontSize,
-                            family: fontFamily
-                        },
-                        color: textColor
-                    } );
+                        font: { style: runProps.italic ? 'italic' : 'normal', weight: runProps.bold ? 'bold' : 'normal', size: fontSize, family: fontFamily },
+                        color: ColorParser.resolveColor(runProps.color, this.slideContext) || '#000000'
+                    });
                     currentLine.width += wordWidth;
-                    let lineHeight = fontSize * 1.25; // Approximate height
-                    if ( bodyPr.lnSpcReduction ) {
-                        lineHeight *= ( 1 - bodyPr.lnSpcReduction );
-                    }
-                    currentLine.height = Math.max( currentLine.height, lineHeight );
+                    currentLine.height = Math.max(currentLine.height, fontSize * (bodyPr.lnSpcReduction ? 1 - bodyPr.lnSpcReduction : 1.25));
                 }
             }
-            pushCurrentLine(); // Push the last line of the paragraph
+            pushLine();
         }
 
-        const totalHeight = currentY;
-        for ( const line of lines ) {
-            const align = line.paragraphProps.align || 'l';
-            const level = line.paragraphProps.level || 0;
-            const marL = ( line.paragraphProps.marL !== undefined ) ? line.paragraphProps.marL : ( level > 0 ? ( level * INDENTATION_AMOUNT ) : 0 );
-            const indent = ( line.paragraphProps.indent !== undefined ) ? line.paragraphProps.indent : 0;
-            const bulletOffset = ( line.paragraphProps.bullet.type && line.paragraphProps.bullet.type !== 'none' ) ? BULLET_OFFSET : 0;
-
+        for (const line of lines) {
+            const { align, level, marL: pMarL, indent: pIndent } = line.paragraphProps;
+            const marL = pMarL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
+            const indent = pIndent ?? 0;
+            const bulletOffset = (line.paragraphProps.bullet?.type && line.paragraphProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
             const lineIndent = line.isFirstLine ? marL + indent : marL;
             const effectiveWidth = paddedPos.width - lineIndent - bulletOffset;
-
             let lineXOffset = 0;
-            if ( align === 'ctr' ) {
-                lineXOffset = ( effectiveWidth - line.width ) / 2;
-            } else if ( align === 'r' ) {
-                lineXOffset = effectiveWidth - line.width;
-            }
+            if (align === 'ctr') lineXOffset = (effectiveWidth - line.width) / 2;
+            else if (align === 'r') lineXOffset = effectiveWidth - line.width;
             line.x = paddedPos.x + lineIndent + bulletOffset + lineXOffset;
         }
 
-        return { totalHeight, lines };
+        return { totalHeight: currentY, lines };
     }
 
-    async renderChart(graphicFrame, chartData) {
-        const xfrmNode = graphicFrame.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
-        if (!xfrmNode) return;
-
-        const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
-        const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
-        if (!offNode || !extNode) return;
+    async parseChart(frameNode, chartXml, parentMatrix) {
+        const xfrmNode = frameNode.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
+        if (!xfrmNode) return null;
+        const off = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+        const ext = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+        if (!off || !ext) return null;
 
         const pos = {
-            x: parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL,
-            y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
-            width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
-            height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
+            x: parseInt(off.getAttribute("x")) / EMU_PER_PIXEL,
+            y: parseInt(off.getAttribute("y")) / EMU_PER_PIXEL,
+            width: parseInt(ext.getAttribute("cx")) / EMU_PER_PIXEL,
+            height: parseInt(ext.getAttribute("cy")) / EMU_PER_PIXEL,
         };
 
+        return {
+            type: 'chart',
+            pos,
+            chartData: parseChart(chartXml),
+        };
+    }
+
+    async renderChart(chartData) {
+        const { pos, chartData: data } = chartData;
         const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
         foreignObject.setAttribute('x', pos.x);
         foreignObject.setAttribute('y', pos.y);
@@ -1100,38 +829,22 @@ export class PPTXHandler {
         const chartContainer = document.createElement('div');
         chartContainer.style.width = `${pos.width}px`;
         chartContainer.style.height = `${pos.height}px`;
-
         const canvas = document.createElement('canvas');
         chartContainer.appendChild(canvas);
         foreignObject.appendChild(chartContainer);
-        this.svg.appendChild(foreignObject);
+        this.renderer.currentGroup.appendChild(foreignObject);
 
-        const ctx = canvas.getContext('2d');
-        new Chart(ctx, {
-            type: chartData.type,
+        // Assuming Chart.js and ChartDataLabels are available globally or imported elsewhere
+        new Chart(canvas.getContext('2d'), {
+            type: data.type,
             plugins: [ChartDataLabels],
-            data: {
-                labels: chartData.labels,
-                datasets: chartData.datasets
-            },
+            data: { labels: data.labels, datasets: data.datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    title: {
-                        display: !!chartData.title,
-                        text: chartData.title
-                    },
-                    datalabels: {
-                        anchor: 'center',
-                        align: 'center',
-                        formatter: Math.round,
-                        font: {
-                            weight: 'bold',
-                            size: 14
-                        },
-                        color: '#fff'
-                    }
+                    title: { display: !!data.title, text: data.title },
+                    datalabels: { anchor: 'center', align: 'center', formatter: Math.round, font: { weight: 'bold', size: 14 }, color: '#fff' }
                 }
             }
         });
