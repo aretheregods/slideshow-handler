@@ -291,12 +291,17 @@ export class PPTXHandler {
         const cNvPrNode = group.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
         const groupName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unknown Group';
 
-        const finalMatrixForChildren = parentMatrix.clone();
+        const groupElement = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        groupElement.setAttribute('data-name', groupName);
+        this.renderer.currentGroup.appendChild(groupElement);
+        const originalGroup = this.renderer.currentGroup;
+        this.renderer.currentGroup = groupElement;
+
+        let finalMatrixForChildren = parentMatrix.clone();
 
         if (grpSpPrNode) {
             const xfrmNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
             if (xfrmNode) {
-                // Group's position and orientation on the parent canvas
                 const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
                 const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
                 const x = offNode ? parseInt(offNode.getAttribute("x")) / EMU_PER_PIXEL : 0;
@@ -307,15 +312,13 @@ export class PPTXHandler {
                 const flipH = xfrmNode.getAttribute('flipH') === '1';
                 const flipV = xfrmNode.getAttribute('flipV') === '1';
 
-                // Bounding box for the child elements
                 const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
                 const chExtNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chExt')[0];
                 const chX = chOffNode ? parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL : 0;
                 const chY = chOffNode ? parseInt(chOffNode.getAttribute("y")) / EMU_PER_PIXEL : 0;
-                const chW = chExtNode ? parseInt(chExtNode.getAttribute("cx")) / EMU_PER_PIXEL : 1; // Avoid divide by zero
+                const chW = chExtNode ? parseInt(chExtNode.getAttribute("cx")) / EMU_PER_PIXEL : 1;
                 const chH = chExtNode ? parseInt(chExtNode.getAttribute("cy")) / EMU_PER_PIXEL : 1;
 
-                // Placement Matrix: Transforms the group's frame from local to parent space
                 const placementMatrix = new Matrix();
                 placementMatrix.translate(x, y);
                 placementMatrix.translate(w / 2, h / 2);
@@ -323,30 +326,21 @@ export class PPTXHandler {
                 placementMatrix.scale(flipH ? -1 : 1, flipV ? -1 : 1);
                 placementMatrix.translate(-w / 2, -h / 2);
 
-                // Mapping Matrix: Maps children from their virtual canvas to the group's frame
-                const scaleX = (chW === 0) ? 1 : w / chW;
-                const scaleY = (chH === 0) ? 1 : h / chH;
+                const finalGroupMatrix = parentMatrix.clone().multiply(placementMatrix);
+                groupElement.setAttribute('transform', `matrix(${finalGroupMatrix.m.join(' ')})`);
+
                 const mappingMatrix = new Matrix();
-                mappingMatrix.scale(scaleX, scaleY);
+                mappingMatrix.scale(w / chW, h / chH);
                 mappingMatrix.translate(-chX, -chY);
 
-                // Combine them: Final = Parent * Placement * Mapping
-                finalMatrixForChildren.multiply(placementMatrix);
-                finalMatrixForChildren.multiply(mappingMatrix);
+                finalMatrixForChildren = mappingMatrix;
             }
         }
 
-        for (const element of group.children) {
-            const tagName = element.localName;
-            if (tagName === 'sp' || tagName === 'cxnSp') {
-                await this.processShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
-            } else if (tagName === 'grpSp') {
-                await this.processGroupShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
-            } else if (tagName === 'pic') {
-                await this.processPicture(element, finalMatrixForChildren.clone(), slideLevelVisibility);
-            }
-        }
-	}
+        await this.processShapeTree(group.children, listCounters, finalMatrixForChildren, slideLevelVisibility);
+
+        this.renderer.currentGroup = originalGroup;
+    }
 
     async parsePicture( picNode, parentMatrix ) {
         const response = {}
