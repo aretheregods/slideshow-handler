@@ -150,7 +150,6 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
                 id: slideId,
                 state: { background: finalBg, slideContext: slideStoreProps, slideNum }
             } ) );
-            console.log( ...slideStores.entries() );
 
             const slideContainer = document.createElement( 'div' );
             slideContainer.className = 'slide-viewer';
@@ -179,7 +178,8 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
                 entriesMap
             } );
             const slideData = await pptxHandler.parse();
-            await pptxHandler.render(slideData);
+            slideStores.get( slideId ).dispatch( { type: actions.set.slide.data, payload: { slideData } } );
+            await pptxHandler.render(slideStores.get( slideId ).getState().slideData);
         }
 
         return { slideshowLength: slideIds.length }
