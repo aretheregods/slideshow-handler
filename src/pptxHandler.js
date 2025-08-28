@@ -245,7 +245,7 @@ export class PPTXHandler {
         };
 
         const shapeBuilder = new ShapeBuilder(null, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize);
-        const { pos, transform } = shapeBuilder.getShapeProperties(shapeNode, parentMatrix, shapeProps);
+        const { pos, transform, flipH, flipV } = shapeBuilder.getShapeProperties(shapeNode, parentMatrix);
 
         let textData = null;
         if (pos) {
@@ -273,13 +273,21 @@ export class PPTXHandler {
             pos,
             shapeProps,
             text: textData,
+            flipH,
+            flipV,
         };
     }
 
     async renderShape(shapeData) {
         this.renderer.setTransform(shapeData.transform);
         const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
-        shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps);
+        const matrix = new Matrix();
+        if (shapeData.transform) {
+            const transformString = shapeData.transform.replace('matrix(', '').replace(')', '');
+            const transformValues = transformString.split(' ').map(Number);
+            matrix.m = transformValues;
+        }
+        shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
 
         if (shapeData.text) {
             this.renderParagraphs(shapeData.text);
