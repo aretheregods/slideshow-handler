@@ -152,6 +152,11 @@ export class PPTXHandler {
                 shapeData = await this.parseShape(element, listCounters, parentMatrix, slideLevelVisibility);
             } else if (tagName === 'grpSp') {
                 shapeData = await this.parseGroupShape(element, listCounters, parentMatrix, slideLevelVisibility);
+                // For groups, we get an array of shapes, so we need to flatten it
+                if (shapeData) {
+                    shapes.push(...shapeData.shapes);
+                    shapeData = null; // Prevent pushing the group container itself
+                }
             } else if (tagName === 'graphicFrame') {
                 const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                 if (graphicData?.getAttribute('uri') === TABLE_NS) {
@@ -184,7 +189,7 @@ export class PPTXHandler {
                     await this.renderShape(shapeData);
                     break;
                 case 'group':
-                    await this.renderGroupShape(shapeData);
+                     // Groups are not rendered directly in a flat model
                     break;
                 case 'table':
                     await this.renderTable(shapeData);
@@ -273,17 +278,13 @@ export class PPTXHandler {
         };
     }
 
-    getMatrix(transformString) {
-        const matrix = new Matrix();
-        if (transformString) {
-            const matrixValues = transformString.replace('matrix(', '').replace(')', '').split(' ').map(Number);
-            matrix.m = matrixValues;
-        }
-        return matrix;
-    }
-
     async renderShape(shapeData) {
-        const matrix = this.getMatrix(shapeData.transform);
+        const matrix = new Matrix();
+        if (shapeData.transform) {
+            const transformString = shapeData.transform.replace('matrix(', '').replace(')', '');
+            const transformValues = transformString.split(' ').map(Number);
+            matrix.m = transformValues;
+        }
         this.renderer.setTransform(matrix);
 
         const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
@@ -292,8 +293,6 @@ export class PPTXHandler {
         if (shapeData.text) {
             this.renderParagraphs(shapeData.text);
         }
-
-        this.renderer.restoreTransform();
     }
 
     async parseGroupShape(groupNode, listCounters, parentMatrix, slideLevelVisibility) {
@@ -310,10 +309,9 @@ export class PPTXHandler {
         const cNvPrNode = groupNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
         const groupName = cNvPrNode?.getAttribute('name') || 'Unknown Group';
 
-        let finalMatrixForChildren = parentMatrix.clone();
-        let groupTransform = '';
-
         const grpSpPrNode = groupNode.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
+        let finalMatrixForChildren = parentMatrix.clone();
+
         if (grpSpPrNode) {
             const xfrmNode = grpSpPrNode.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
             if (xfrmNode) {
@@ -327,6 +325,9 @@ export class PPTXHandler {
                 const flipH = xfrmNode.getAttribute('flipH') === '1';
                 const flipV = xfrmNode.getAttribute('flipV') === '1';
 
+                const placementMatrix = new Matrix();
+                placementMatrix.translate(x, y).translate(w / 2, h / 2).rotate(rot * Math.PI / 180).scale(flipH ? -1 : 1, flipV ? -1 : 1).translate(-w / 2, -h / 2);
+
                 const chOffNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chOff')[0];
                 const chExtNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'chExt')[0];
                 const chX = chOffNode ? parseInt(chOffNode.getAttribute("x")) / EMU_PER_PIXEL : 0;
@@ -334,13 +335,12 @@ export class PPTXHandler {
                 const chW = chExtNode ? parseInt(chExtNode.getAttribute("cx")) / EMU_PER_PIXEL : 1;
                 const chH = chExtNode ? parseInt(chExtNode.getAttribute("cy")) / EMU_PER_PIXEL : 1;
 
-                const placementMatrix = new Matrix();
-                placementMatrix.translate(x, y).translate(w / 2, h / 2).rotate(rot * Math.PI / 180).scale(flipH ? -1 : 1, flipV ? -1 : 1).translate(-w / 2, -h / 2);
+                const mappingMatrix = new Matrix();
+                if (w > 0 && h > 0 && chW > 0 && chH > 0) {
+                    mappingMatrix.scale(w / chW, h / chH).translate(-chX, -chY);
+                }
 
-                const finalGroupMatrix = parentMatrix.clone().multiply(placementMatrix);
-                groupTransform = `matrix(${finalGroupMatrix.m.join(' ')})`;
-
-                finalMatrixForChildren = new Matrix().scale(w / chW, h / chH).translate(-chX, -chY);
+                finalMatrixForChildren = parentMatrix.clone().multiply(placementMatrix).multiply(mappingMatrix);
             }
         }
 
@@ -349,19 +349,14 @@ export class PPTXHandler {
         return {
             type: 'group',
             name: groupName,
-            transform: groupTransform,
             shapes: childShapes,
         };
     }
 
     async renderGroupShape(groupData) {
-        const matrix = this.getMatrix(groupData.transform);
-        const groupElement = this.renderer.setTransform(matrix);
-        groupElement.setAttribute('data-name', groupData.name);
-
+        // In a flat rendering model, the group itself doesn't have a transform.
+        // We just need to render its children, which have their own absolute transforms.
         await this.renderShapeTree(groupData.shapes);
-
-        this.renderer.restoreTransform();
     }
 
     async parsePicture(picNode, parentMatrix, slideLevelVisibility) {
@@ -441,7 +436,12 @@ export class PPTXHandler {
     }
 
     async renderPicture(picData) {
-        const matrix = this.getMatrix(picData.transform);
+        const matrix = new Matrix();
+        if (picData.transform) {
+            const transformString = picData.transform.replace('matrix(', '').replace(')', '');
+            const transformValues = transformString.split(' ').map(Number);
+            matrix.m = transformValues;
+        }
         this.renderer.setTransform(matrix);
 
         if (picData.placeholderProps?.fill?.type === 'solid' || picData.placeholderProps?.fill?.type === 'gradient') {
@@ -485,8 +485,6 @@ export class PPTXHandler {
             if (picData.pathString) this.renderer.drawPath(picData.pathString, strokeOpts);
             else this.renderer.drawRect(0, 0, picData.pos.width, picData.pos.height, strokeOpts);
         }
-
-        this.renderer.restoreTransform();
     }
 
     async parseTable(frameNode, parentMatrix) {
@@ -556,7 +554,12 @@ export class PPTXHandler {
     }
 
     async renderTable(tableData) {
-        const matrix = this.getMatrix(tableData.transform);
+        const matrix = new Matrix();
+        if (tableData.transform) {
+            const transformString = tableData.transform.replace('matrix(', '').replace(')', '');
+            const transformValues = transformString.split(' ').map(Number);
+            matrix.m = transformValues;
+        }
         this.renderer.setTransform(matrix);
 
         for (const cell of tableData.cells) {
@@ -584,14 +587,12 @@ export class PPTXHandler {
                 group.setAttribute('clip-path', `url(#${clipId})`);
                 this.renderer.currentGroup.appendChild(group);
 
-                this.renderer.transformStack.push(this.renderer.currentGroup);
+                const originalGroup = this.renderer.currentGroup;
                 this.renderer.currentGroup = group;
                 this.renderParagraphs(cell.text);
-                this.renderer.restoreTransform();
+                this.renderer.currentGroup = originalGroup;
             }
         }
-
-        this.renderer.restoreTransform();
     }
 
     parseCellText(cellNode, pos, tableTextStyle) {

@@ -48,21 +48,27 @@ export class ShapeBuilder {
                     if (decomp.scale.x === 0 || decomp.scale.y === 0) {
                         break;
                     }
+
+                    // For lines, we don't want the stroke to be scaled.
+                    // We apply the scaling to the line's dimensions and the rotation/translation directly to the line element.
                     const noScaleMatrix = new Matrix();
                     noScaleMatrix.translate(decomp.translation.x, decomp.translation.y);
                     noScaleMatrix.rotate(decomp.rotation);
 
-                    this.renderer.setTransform(noScaleMatrix);
-
                     const scaledWidth = pos.width * decomp.scale.x;
                     const scaledHeight = pos.height * decomp.scale.y;
 
+                    // The renderer's currentGroup already has the shape's full (scaled) transform.
+                    // We draw the line without position and apply the non-scaled transform directly to it.
+                    // This is a bit of a hack to work around SVG's transform behavior.
+                    const originalGroup = this.renderer.currentGroup;
+                    this.renderer.currentGroup = this.renderer.svg; // Draw at root
+                    this.renderer.setTransform(noScaleMatrix);
                     this.renderer.drawLine(0, 0, scaledWidth, scaledHeight, {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                     });
-
-                    this.renderer.restoreTransform();
+                    this.renderer.currentGroup = originalGroup; // Restore group
                     break;
                 case 'arc':
                     const arcAdj = shapeProps.geometry.adjustments;

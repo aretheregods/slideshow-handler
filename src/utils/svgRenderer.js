@@ -12,7 +12,6 @@ export class SvgRenderer {
         this.slideContext = slideContext;
         this.defs = this.createDefs();
         this.currentGroup = this.svg;
-        this.transformStack = [];
         this.filterIdCounter = 0;
     }
 
@@ -97,20 +96,10 @@ export class SvgRenderer {
      * @param {Matrix} matrix - The transformation matrix.
      */
     setTransform(matrix) {
-        this.transformStack.push(this.currentGroup);
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        if (matrix) {
-            g.setAttribute('transform', `matrix(${matrix.m.join(' ')})`);
-        }
-        this.currentGroup.appendChild(g);
+        g.setAttribute('transform', `matrix(${matrix.m.join(' ')})`);
+        this.svg.appendChild(g);
         this.currentGroup = g;
-        return g;
-    }
-
-    restoreTransform() {
-        if (this.transformStack.length > 0) {
-            this.currentGroup = this.transformStack.pop();
-        }
     }
 
     /**
