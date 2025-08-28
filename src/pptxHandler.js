@@ -335,10 +335,9 @@ export class PPTXHandler {
                 const chW = chExtNode ? parseInt(chExtNode.getAttribute("cx")) / EMU_PER_PIXEL : 1;
                 const chH = chExtNode ? parseInt(chExtNode.getAttribute("cy")) / EMU_PER_PIXEL : 1;
 
-                const mappingMatrix = new Matrix();
-                if (w > 0 && h > 0 && chW > 0 && chH > 0) {
-                    mappingMatrix.scale(w / chW, h / chH).translate(-chX, -chY);
-                }
+                const scaleX = w && chW ? w / chW : 1;
+                const scaleY = h && chH ? h / chH : 1;
+                const mappingMatrix = new Matrix().scale(scaleX, scaleY).translate(-chX, -chY);
 
                 finalMatrixForChildren = parentMatrix.clone().multiply(placementMatrix).multiply(mappingMatrix);
             }
