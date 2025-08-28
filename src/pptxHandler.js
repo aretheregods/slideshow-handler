@@ -279,7 +279,6 @@ export class PPTXHandler {
     }
 
     async renderShape(shapeData) {
-        this.renderer.setTransform(shapeData.transform);
         const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
         const matrix = new Matrix();
         if (shapeData.transform) {
@@ -287,6 +286,7 @@ export class PPTXHandler {
             const transformValues = transformString.split(' ').map(Number);
             matrix.m = transformValues;
         }
+        this.renderer.setTransform(matrix);
         shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
 
         if (shapeData.text) {
@@ -547,7 +547,13 @@ export class PPTXHandler {
     }
 
     async renderTable(tableData) {
-        this.renderer.setTransform(tableData.transform);
+        const matrix = new Matrix();
+        if (tableData.transform) {
+            const transformString = tableData.transform.replace('matrix(', '').replace(')', '');
+            const transformValues = transformString.split(' ').map(Number);
+            matrix.m = transformValues;
+        }
+        this.renderer.setTransform(matrix);
         for (const cell of tableData.cells) {
             this.renderer.drawRect(cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent' });
 
