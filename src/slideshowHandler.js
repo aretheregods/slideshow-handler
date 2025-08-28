@@ -12,14 +12,17 @@ import {
     parseBackground,
     populateImageMap
 } from 'utils';
-import { PML_NS } from 'constants';
-import { PPTXRenderer } from './pptxRenderer.js';
+import { PML_NS, slideshowProcessingActions as actions } from 'constants';
+import { PPTXHandler } from './pptxHandler.js';
+import { createSlideStore, presentationStore, slideStores } from './slideshowDataStore.js';
 
 export async function slideshowHandler( { file, slideshowContainer } ) {
     const zipReader = new ZipReader( new BlobReader( file ) );
     try {
         const entries = await zipReader.getEntries();
         const entriesMap = new Map( entries.map( entry => [ entry.filename, entry ] ) );
+
+        presentationStore.dispatch( { type: actions.start.parsing } );
 
         const presRels = await getRelationships( entriesMap, "ppt/_rels/presentation.xml.rels" );
         const sortedPresRels = Object.values( presRels ).sort( ( a, b ) => a.id.localeCompare( b.id, undefined, { numeric: true } ) );
@@ -29,7 +32,10 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
         if ( themeRel ) {
             const themePath = resolvePath( 'ppt', themeRel.target );
             const themeXml = await getNormalizedXmlString( entriesMap, themePath );
-            if ( themeXml ) theme = parseTheme( themeXml );
+            if ( themeXml ) {
+                theme = parseTheme( themeXml );
+                presentationStore.dispatch( { type: actions.set.presentation.data, payload: { theme } } );
+            };
         }
 
         let tableStyles = {};
@@ -42,6 +48,10 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
                 const tableStylesResult = parseTableStyles( tableStylesXml );
                 tableStyles = tableStylesResult.styles;
                 defaultTableStyleId = tableStylesResult.defaultStyleId;
+                presentationStore.dispatch( {
+                    type: actions.set.presentation.data,
+                    payload: { tableStyles, defaultTableStyleId }
+                } );
             }
         }
 
@@ -134,6 +144,13 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
             const layoutBg = layoutXmlDoc ? parseBackground( layoutXmlDoc, slideContext ) : null;
             const masterBg = masterXmlDoc ? parseBackground( masterXmlDoc, slideContext ) : null;
             const finalBg = slideBg || layoutBg || masterBg;
+            const { theme: _, ...slideStoreProps } = slideContext;
+
+            slideStores.set( slideId, createSlideStore( {
+                id: slideId,
+                state: { background: finalBg, slideContext: slideStoreProps, slideNum }
+            } ) );
+            console.log( ...slideStores.entries() );
 
             const slideContainer = document.createElement( 'div' );
             slideContainer.className = 'slide-viewer';
@@ -143,11 +160,12 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
             slideContainer.style.height = `${ slideSize.height }px`;
             slideshowContainer.appendChild( slideContainer );
 
-            const pptxRenderer = new PPTXRenderer( {
+            const pptxHandler = new PPTXHandler( {
                 slideXml,
                 slideContainer,
                 masterPlaceholders,
                 layoutPlaceholders,
+                slideId,
                 slideNum,
                 slideSize,
                 defaultTextStyles,
@@ -160,7 +178,7 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
                 slideRels,
                 entriesMap
             } );
-            await pptxRenderer.render();
+            await pptxHandler.parse(presentationStore).render();
         }
 
         return { slideshowLength: slideIds.length }

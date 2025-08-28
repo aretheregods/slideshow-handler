@@ -57,7 +57,6 @@ export class SvgRenderer {
     }
 
     _createGradient(fillData) {
-        console.log("[DEBUG] Creating gradient with data:", JSON.stringify(fillData, null, 2));
         const gradientId = `grad-${this.defs.children.length}`;
         const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
         gradient.setAttribute('id', gradientId);

@@ -338,10 +338,7 @@ export class ShapeBuilder {
 
                 // Special handling for footers to stretch across the slide
                 if ( phType === 'ftr' ) {
-                    console.log( '[WIDTH DEBUG] Original pos:', JSON.stringify( pos, null, 2 ) );
-                    console.log( '[WIDTH DEBUG] Slide size:', JSON.stringify( this.slideSize, null, 2 ) );
                     pos.width = this.slideSize.width - ( pos.x * 2 );
-                    console.log( `[WIDTH DEBUG] New calculated width: ${ pos.width }` );
                 }
 
                 localMatrix.translate( pos.x, pos.y );

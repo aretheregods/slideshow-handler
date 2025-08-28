@@ -8,3 +8,20 @@ export const PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/mai
 export const DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 export const CHART_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 export const TABLE_NS = "http://schemas.openxmlformats.org/drawingml/2006/table";
+
+export const slideshowProcessingActions = {
+    start: {
+        presentation: 'START_PRESENTATION',
+        parsing: 'START_PARSING'
+    },
+    set: {
+        presentation: {
+            data: 'SET_PRESENTATION_DATA',
+            status: 'SET_PRESENTATION_STATUS',
+            error: 'SET_PRESENTATION_ERROR'
+        },
+        slide: {
+            data: 'SET_SLIDE_DATA'
+        }
+    }
+}

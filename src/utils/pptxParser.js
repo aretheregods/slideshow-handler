@@ -462,7 +462,6 @@ export function parseCustomGeometry(custGeomNode) {
 }
 
 export function parseGradientFill(fillNode, slideContext) {
-    console.log("[DEBUG] Parsing gradient fill:", fillNode.outerHTML);
     const gsLstNode = fillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
     const stops = [];
     if (gsLstNode) {

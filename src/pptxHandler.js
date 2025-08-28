@@ -25,15 +25,17 @@ import {
     LINE_HEIGHT,
     INDENTATION_AMOUNT,
     BULLET_OFFSET,
-    PML_NS, DML_NS, CHART_NS, TABLE_NS
+    PML_NS, DML_NS, CHART_NS, TABLE_NS,
+    slideshowProcessingActions as actions
 } from 'constants';
 
-export class PPTXRenderer {
+export class PPTXHandler {
     constructor( {
         slideXml,
         slideContainer,
         masterPlaceholders,
         layoutPlaceholders,
+        slideId,
         slideNum,
         slideSize,
         defaultTextStyles,
@@ -44,12 +46,14 @@ export class PPTXRenderer {
         masterStaticShapes,
         layoutStaticShapes,
         slideRels,
-        entriesMap
+        entriesMap,
+        task
     } ) {
         this.slideXml = slideXml;
         this.slideContainer = slideContainer;
         this.masterPlaceholders = masterPlaceholders;
         this.layoutPlaceholders = layoutPlaceholders;
+        this.slideId = slideId;
         this.slideNum = slideNum;
         this.slideSize = slideSize;
         this.defaultTextStyles = defaultTextStyles;
@@ -63,7 +67,10 @@ export class PPTXRenderer {
         this.entriesMap = entriesMap;
 
         this.svg = this.createSvg();
-        this.renderer = new SvgRenderer(this.svg, this.slideContext);
+        this.renderer = new SvgRenderer( this.svg, this.slideContext );
+        this.task = task;
+        this.parse = this.parse.bind( this );
+        this.render = this.render.bind( this );
     }
 
     createSvg() {
@@ -76,7 +83,20 @@ export class PPTXRenderer {
         return svg;
     }
 
+    parse(slideshowStore) {
+        this.task = 'parse';
+        const xmlDoc = parseXmlString( this.slideXml, `slide number ${ this.slideNum }` );
+        const hfNode = xmlDoc.getElementsByTagNameNS( PML_NS, 'hf' )[ 0 ];
+        const slideLevelVisibility = {
+            ftr: !hfNode || hfNode.getAttribute( 'ftr' ) !== '0',
+            dt: !hfNode || hfNode.getAttribute( 'dt' ) !== '0',
+            sldNum: !hfNode || hfNode.getAttribute( 'sldNum' ) !== '0',
+        };
+        return this;
+    }
+
     async render() {
+        this.task = 'render';
         const xmlDoc = parseXmlString(this.slideXml, `slide number ${this.slideNum}`);
         const hfNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'hf')[0];
         const slideLevelVisibility = {
@@ -84,9 +104,10 @@ export class PPTXRenderer {
             dt: !hfNode || hfNode.getAttribute('dt') !== '0',
             sldNum: !hfNode || hfNode.getAttribute('sldNum') !== '0',
         };
-        const SVG_NS = "http://www.w3.org/2000/svg";
 
         const listCounters = {};
+
+        const SVG_NS = "http://www.w3.org/2000/svg";
 
         const defs = document.createElementNS(SVG_NS, 'defs');
         this.svg.appendChild(defs);
@@ -119,30 +140,30 @@ export class PPTXRenderer {
         const initialMatrix = new Matrix();
         if (this.showMasterShapes) {
             if (this.masterStaticShapes) {
-                await this.#processShapeTree(this.masterStaticShapes, listCounters, initialMatrix.clone(), slideLevelVisibility);
+                await this.processShapeTree(this.masterStaticShapes, listCounters, initialMatrix.clone(), slideLevelVisibility);
             }
             if (this.layoutStaticShapes) {
-                await this.#processShapeTree(this.layoutStaticShapes, listCounters, initialMatrix.clone(), slideLevelVisibility);
+                await this.processShapeTree(this.layoutStaticShapes, listCounters, initialMatrix.clone(), slideLevelVisibility);
             }
         }
 
         const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
         if (spTreeNode) {
-            await this.#processShapeTree(spTreeNode.children, listCounters, initialMatrix.clone(), slideLevelVisibility);
+            await this.processShapeTree(spTreeNode.children, listCounters, initialMatrix.clone(), slideLevelVisibility);
         }
     }
 
-    async #processShapeTree(elements, listCounters, parentMatrix, slideLevelVisibility = null) {
+    async processShapeTree(elements, listCounters, parentMatrix, slideLevelVisibility = null) {
         for (const element of elements) {
             const tagName = element.localName;
             if (tagName === 'sp' || tagName === 'cxnSp') {
-                await this.#processShape(element, listCounters, parentMatrix, slideLevelVisibility);
+                await this.processShape(element, listCounters, parentMatrix, slideLevelVisibility);
             } else if (tagName === 'grpSp') {
-                await this.#processGroupShape(element, listCounters, parentMatrix, slideLevelVisibility);
+                await this.processGroupShape(element, listCounters, parentMatrix, slideLevelVisibility);
             } else if (tagName === 'graphicFrame') {
                 const graphicData = element.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
                 if (graphicData && graphicData.getAttribute('uri') === TABLE_NS) {
-                    await this.#processTable(element, parentMatrix.clone());
+                    const tableData = await this.processTable(element, parentMatrix.clone());
                 } else if (graphicData && graphicData.getAttribute('uri') === CHART_NS) {
                     const chartRelId = graphicData.getElementsByTagNameNS(CHART_NS, "chart")[0].getAttribute("r:id");
                     if (chartRelId && this.slideRels && this.slideRels[chartRelId]) {
@@ -151,18 +172,18 @@ export class PPTXRenderer {
                         if (chartXml) {
                             const chartData = parseChart(chartXml);
                             if (chartData) {
-                                await this.#renderChart(element, chartData, parentMatrix.clone());
+                                await this.renderChart(element, chartData, parentMatrix.clone());
                             }
                         }
                     }
                 }
             } else if (tagName === 'pic') {
-                await this.#processPicture(element, parentMatrix, slideLevelVisibility);
+                await this.processPicture(element, parentMatrix, slideLevelVisibility);
             }
         }
     }
 
-    async #processShape(shape, listCounters, parentMatrix, slideLevelVisibility) {
+    async processShape(shape, listCounters, parentMatrix, slideLevelVisibility) {
         const nvPr = shape.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
         let phKey = null, phType = null;
         if (nvPr) {
@@ -233,7 +254,7 @@ export class PPTXRenderer {
                 const masterBodyPr = masterPh ? masterPh.bodyPr : {};
                 const layoutBodyPr = layoutPh ? layoutPh.bodyPr : {};
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-                await this.#processParagraphs(
+                await this.processParagraphs(
                     txBodyToRender,
                     { x: 0, y: 0, width: pos.width, height: pos.height },
                     phKey,
@@ -253,7 +274,7 @@ export class PPTXRenderer {
         return pos;
     }
 
-    async #processGroupShape(group, listCounters, parentMatrix, slideLevelVisibility) {
+    async processGroupShape(group, listCounters, parentMatrix, slideLevelVisibility) {
         if (slideLevelVisibility) {
             const placeholders = Array.from(group.getElementsByTagNameNS(PML_NS, 'ph'));
             if (placeholders.length > 0) {
@@ -269,11 +290,6 @@ export class PPTXRenderer {
         const grpSpPrNode = group.getElementsByTagNameNS(PML_NS, 'grpSpPr')[0];
         const cNvPrNode = group.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
         const groupName = cNvPrNode ? cNvPrNode.getAttribute('name') : 'Unknown Group';
-
-        if (groupName === 'Group 6') {
-            console.log(`[GROUP DEBUG] Processing group: "${groupName}"`);
-            console.log('[GROUP DEBUG] Parent Matrix:', parentMatrix.m);
-        }
 
         const finalMatrixForChildren = parentMatrix.clone();
 
@@ -299,11 +315,6 @@ export class PPTXRenderer {
                 const chW = chExtNode ? parseInt(chExtNode.getAttribute("cx")) / EMU_PER_PIXEL : 1; // Avoid divide by zero
                 const chH = chExtNode ? parseInt(chExtNode.getAttribute("cy")) / EMU_PER_PIXEL : 1;
 
-
-                if (groupName === 'Group 6') {
-                    console.table({ x, y, w, h, chX, chY, chW, chH, rot, flipH, flipV });
-                }
-
                 // Placement Matrix: Transforms the group's frame from local to parent space
                 const placementMatrix = new Matrix();
                 placementMatrix.translate(x, y);
@@ -322,29 +333,121 @@ export class PPTXRenderer {
                 // Combine them: Final = Parent * Placement * Mapping
                 finalMatrixForChildren.multiply(placementMatrix);
                 finalMatrixForChildren.multiply(mappingMatrix);
-
-                if (groupName === 'Group 6') {
-                    console.log('[GROUP DEBUG] Placement Matrix:', placementMatrix.m);
-                    console.log('[GROUP DEBUG] Mapping Matrix:', mappingMatrix.m);
-                    console.log('[GROUP DEBUG] Final Matrix for Children:', finalMatrixForChildren.m);
-                }
             }
         }
 
         for (const element of group.children) {
             const tagName = element.localName;
             if (tagName === 'sp' || tagName === 'cxnSp') {
-                await this.#processShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
+                await this.processShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
             } else if (tagName === 'grpSp') {
-                await this.#processGroupShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
+                await this.processGroupShape(element, listCounters, finalMatrixForChildren.clone(), slideLevelVisibility);
             } else if (tagName === 'pic') {
-                await this.#processPicture(element, finalMatrixForChildren.clone(), slideLevelVisibility);
+                await this.processPicture(element, finalMatrixForChildren.clone(), slideLevelVisibility);
             }
         }
+	}
+
+    async parsePicture( picNode, parentMatrix ) {
+        const response = {}
+        let localMatrix = new Matrix();
+        let pos;
+
+        const nvPicPrNode = picNode.getElementsByTagNameNS( PML_NS, 'nvPicPr' )[ 0 ];
+        const nvPrNode = nvPicPrNode ? nvPicPrNode.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ] : null;
+        const phNode = nvPrNode ? nvPrNode.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ] : null;
+
+        if ( phNode ) {
+            const phType = phNode.getAttribute( 'type' );
+            if ( slideLevelVisibility && phType && slideLevelVisibility[ phType ] === false ) {
+                return { width: 0, height: 0 };
+            }
+        }
+
+        const spPrNode = picNode.getElementsByTagNameNS( PML_NS, 'spPr' )[ 0 ];
+        const xfrmNode = spPrNode ? spPrNode.getElementsByTagNameNS( DML_NS, 'xfrm' )[ 0 ] : null;
+
+        if ( xfrmNode ) {
+            const offNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
+            const extNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
+            if ( offNode && extNode ) {
+                const x = parseInt( offNode.getAttribute( "x" ) ) / EMU_PER_PIXEL;
+                const y = parseInt( offNode.getAttribute( "y" ) ) / EMU_PER_PIXEL;
+                const w = parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL;
+                const h = parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL;
+                const rot = parseInt( xfrmNode.getAttribute( 'rot' ) || '0' ) / 60000;
+                const flipH = xfrmNode.getAttribute( 'flipH' ) === '1';
+                const flipV = xfrmNode.getAttribute( 'flipV' ) === '1';
+
+                pos = { width: w, height: h };
+
+                localMatrix.translate( x, y );
+                localMatrix.translate( w / 2, h / 2 );
+                localMatrix.rotate( rot * Math.PI / 180 );
+                localMatrix.scale( flipH ? -1 : 1, flipV ? -1 : 1 );
+                localMatrix.translate( -w / 2, -h / 2 );
+            }
+        } else if ( phNode ) {
+            const phType = phNode.getAttribute( 'type' );
+            const phIdx = phNode.getAttribute( 'idx' );
+            const phKey = phIdx ? `idx_${ phIdx }` : phType;
+
+            const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[ phKey ] : null;
+            const masterPh = this.masterPlaceholders ? this.masterPlaceholders[ phKey ] : null;
+            const placeholder = layoutPh || masterPh;
+
+            if ( placeholder && placeholder.pos ) {
+                pos = { ...placeholder.pos };
+                localMatrix.translate( pos.x, pos.y );
+            }
+        }
+
+        if ( !pos ) return { width: 0, height: 0 };
+
+        const finalMatrix = parentMatrix.clone().multiply( localMatrix );
+
+        response[ 'transform' ] = finalMatrix.m.join( ' ' );
+
+        let placeholderProps = null;
+        if ( phNode ) {
+            const phType = phNode.getAttribute( 'type' );
+            const phIdx = phNode.getAttribute( 'idx' );
+            const phKey = phIdx ? `idx_${ phIdx }` : phType;
+            const layoutPh = this.layoutPlaceholders ? this.layoutPlaceholders[ phKey ] : null;
+            const masterPh = this.masterPlaceholders ? this.masterPlaceholders[ phKey ] : null;
+
+            const masterShapeProps = masterPh ? masterPh.shapeProps : {};
+            const layoutShapeProps = layoutPh ? layoutPh.shapeProps : {};
+
+            placeholderProps = { ...masterShapeProps, ...layoutShapeProps };
+        }
+
+        const pathString = ( placeholderProps && placeholderProps.geometry )
+            ? buildPathStringFromGeom( placeholderProps.geometry, pos )
+            : null;
+
+        response[ 'placeholderProps' ] = placeholderProps;
+
+        response[ 'pathString' ] = pathString;
+
+        const blipFillNode = picNode.getElementsByTagNameNS( PML_NS, 'blipFill' )[ 0 ];
+        if ( blipFillNode ) {
+            const blipNode = blipFillNode.getElementsByTagNameNS( DML_NS, 'blip' )[ 0 ];
+            const relId = blipNode ? blipNode.getAttribute( 'r:embed' ) : null;
+            if ( relId && this.imageMap[ relId ] ) {
+                response[ 'image' ] = { href: this.imageMap[ relId ] };
+
+                const srcRect = parseSourceRectangle( blipFillNode );
+                if ( srcRect ) {
+                    response[ 'image' ][ 'srcRect' ] = srcRect;
+                }
+            }
+        }
+        return response;
     }
 
-    async #processPicture(picNode, parentMatrix, slideLevelVisibility) {
-        let localMatrix = new Matrix();
+    async processPicture(picNode, parentMatrix, slideLevelVisibility) {
+		let localMatrix = new Matrix();
         let pos;
 
         const nvPicPrNode = picNode.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0];
@@ -394,11 +497,11 @@ export class PPTXRenderer {
                 pos = { ...placeholder.pos };
                 localMatrix.translate(pos.x, pos.y);
             }
-        }
+		}
 
         if (!pos) return { width: 0, height: 0 };
 
-        const finalMatrix = parentMatrix.clone().multiply(localMatrix);
+		const finalMatrix = parentMatrix.clone().multiply(localMatrix);
 
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.setAttribute('transform', `matrix(${finalMatrix.m.join(' ')})`);
@@ -423,14 +526,22 @@ export class PPTXRenderer {
 
         const pathString = (placeholderProps && placeholderProps.geometry)
             ? buildPathStringFromGeom(placeholderProps.geometry, pos)
-            : null;
+			: null;
 
         // 1. Draw Placeholder Fill
-        if ( placeholderProps?.fill?.type === ( 'solid' || 'gradient' ) ) {
+        if ( placeholderProps?.fill?.type === 'solid' || placeholderProps?.fill?.type === 'gradient' ) {
             if ( pathString ) {
-                this.renderer.drawPath(pathString, { fill: placeholderProps.fill.type ? placeholderProps.fill : placeholderProps.fill.color });
+				this.renderer.drawPath( pathString, {
+					fill: placeholderProps.fill.type === 'gradient'
+						? placeholderProps.fill 
+						: placeholderProps.fill.color 
+				} );
             } else {
-                this.renderer.drawRect( 0, 0, pos.width, pos.height, { fill: placeholderProps.fill.type ? placeholderProps.fill : placeholderProps.fill.color });
+				this.renderer.drawRect( 0, 0, pos.width, pos.height, {
+					fill: placeholderProps.fill.type === 'gradient' 
+						? placeholderProps.fill 
+						: placeholderProps.fill.color
+				} );
             }
         }
 
@@ -464,7 +575,7 @@ export class PPTXRenderer {
                 image.setAttribute('height', pos.height);
 
                 if (pathString) {
-                    const clipId = `clip-${Math.random().toString(36).substr(2, 9)}`;
+                    const clipId = `clip-${Math.random().toString(36).slice(2, 11)}`;
                     const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
                     clipPath.setAttribute('id', clipId);
                     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -492,7 +603,7 @@ export class PPTXRenderer {
         return { width: pos.width, height: pos.height };
     }
 
-    async #processTable(graphicFrame, parentMatrix) {
+    async processTable(graphicFrame, parentMatrix) {
         const xfrmNode = graphicFrame.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
         let pos = { x: 0, y: 0, width: 0, height: 0 };
         const localMatrix = new Matrix();
@@ -553,7 +664,7 @@ export class PPTXRenderer {
             height: pos.height
         };
 
-        const renderedGrid = Array(numRows).fill(0).map(() => Array(numCols).fill(false));
+        const renderedGrid = Array( numRows ).fill( 0 ).map( () => Array( numCols ).fill( false ) );
 
         for (let r = 0; r < numRows; r++) {
             const cellNodes = Array.from(rowNodes[r].getElementsByTagNameNS(DML_NS, 'tc'));
@@ -613,8 +724,6 @@ export class PPTXRenderer {
                 const fillColor = getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext);
                 const textStyle = getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle);
 
-                this.renderer.drawRect(cellX, cellY, cellWidth, cellHeight, { fill: fillColor || 'transparent' });
-
                 // Draw borders using a strategy to avoid double-drawing
                 const borders = getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext);
                 const borderDefs = {
@@ -624,25 +733,29 @@ export class PPTXRenderer {
                     left: { p: [cellX, cellY + cellHeight, cellX, cellY], draw: (c === 0) },
                 };
 
-                for (const side in borderDefs) {
-                    const borderStyle = borders[side];
-                    if (borderStyle && borderStyle !== 'none' && borderDefs[side].draw) {
-                        this.renderer.drawLine(borderDefs[side].p[0], borderDefs[side].p[1], borderDefs[side].p[2], borderDefs[side].p[3], { stroke: borderStyle });
+                if ( this.task === 'render' ) {
+                    this.renderer.drawRect( cellX, cellY, cellWidth, cellHeight, { fill: fillColor || 'transparent' } );
+                    for (const side in borderDefs) {
+                        const borderStyle = borders[side];
+                        if (borderStyle && borderStyle !== 'none' && borderDefs[side].draw) {
+                            this.renderer.drawLine(borderDefs[side].p[0], borderDefs[side].p[1], borderDefs[side].p[2], borderDefs[side].p[3], { stroke: borderStyle });
+                        }
                     }
+                    await this.processCellText( cellNode, cellX, cellY, cellWidth, cellHeight, textStyle );
                 }
 
-                // Render text content
-                await this.#processCellText(cellNode, cellX, cellY, cellWidth, cellHeight, textStyle);
+                if ( this.task === 'parse' ) {
+                    // Render text content
+                    const cellText = await this.processCellText( cellNode, cellX, cellY, cellWidth, cellHeight, textStyle );
+                    renderedGrid[ c ][ r ] = { cellText, textStyle, borders, borderDefs, fillColor };
+                }
             }
         }
 
-        return {
-            width: pos.width,
-            height: pos.height
-        };
+        return { tablePos: pos, grid: renderedGrid };
     }
 
-    async #processCellText(cellNode, cellX, cellY, cellWidth, cellHeight, tableTextStyle = {}) {
+    async processCellText(cellNode, cellX, cellY, cellWidth, cellHeight, tableTextStyle = {}) {
         const txBodyNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
         if (!txBodyNode) return;
 
@@ -687,7 +800,17 @@ export class PPTXRenderer {
             height: cellHeight
         };
 
-        const clipId = `clip-${Math.random().toString(36).substr(2, 9)}`;
+        const listCounters = {};
+        const defaultTextStyles = { title: {}, body: {}, other: {} };
+        const masterPlaceholders = {};
+        const layoutPlaceholders = {};
+
+        const paragraphs = await this.processParagraphs( txBodyNode, pos, null, 'body', listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, {} );
+        if ( this.task === 'parse' ) {
+            return { pos, paragraphs };
+        }
+
+        const clipId = `clip-${Math.random().toString(36).slice(2, 11)}`;
         const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
         clipPath.setAttribute('id', clipId);
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -704,149 +827,144 @@ export class PPTXRenderer {
         const originalGroup = this.renderer.currentGroup;
         this.renderer.currentGroup = group;
 
-        const listCounters = {};
-        const defaultTextStyles = { title: {}, body: {}, other: {} };
-        const masterPlaceholders = {};
-        const layoutPlaceholders = {};
-
-        await this.#processParagraphs(txBodyNode, pos, null, 'body', listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, {});
-
         this.renderer.currentGroup = originalGroup;
     }
 
-    async #processParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr = {}, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders, imageMap) {
-        const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
-        if (paragraphs.length === 0) return;
+    async processParagraphs( txBody, pos, phKey, phType, listCounters, bodyPr = {}, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders ) {
+        const paragraphs = Array.from( txBody.getElementsByTagNameNS( DML_NS, 'p' ) );
+        if ( paragraphs.length === 0 ) return;
 
-        const layout = this.#layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
-
+        const layout = this.layoutParagraphs( paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders );
+        if ( this.task === 'parse' ) {
+            return { layout, bodyPr };
+        }
         const paddedPos = {
-            x: pos.x + (bodyPr.lIns || 0),
-            y: pos.y + (bodyPr.tIns || 0),
-            width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
-            height: pos.height - (bodyPr.tIns || 0) - (bodyPr.bIns || 0),
+            x: pos.x + ( bodyPr.lIns || 0 ),
+            y: pos.y + ( bodyPr.tIns || 0 ),
+            width: pos.width - ( bodyPr.lIns || 0 ) - ( bodyPr.rIns || 0 ),
+            height: pos.height - ( bodyPr.tIns || 0 ) - ( bodyPr.bIns || 0 ),
         };
 
         let startY = paddedPos.y;
         const anchor = bodyPr.anchor || 't';
-        if (anchor === 'ctr') {
-            startY += (paddedPos.height - layout.totalHeight) / 2;
-        } else if (anchor === 'b') {
+        if ( anchor === 'ctr' ) {
+            startY += ( paddedPos.height - layout.totalHeight ) / 2;
+        } else if ( anchor === 'b' ) {
             startY += paddedPos.height - layout.totalHeight;
         }
 
-        const textGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const textGroup = document.createElementNS( 'http://www.w3.org/2000/svg', 'g' );
 
-        for (const line of layout.lines) {
+        for ( const line of layout.lines ) {
             const finalProps = line.paragraphProps;
-            const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
+            const bulletOffset = ( finalProps.bullet.type && finalProps.bullet.type !== 'none' ) ? BULLET_OFFSET : 0;
 
-            if (bulletOffset > 0 && line.isFirstLine) {
-                const bulletColor = ColorParser.resolveColor(finalProps.bullet.color, this.slideContext) || ColorParser.resolveColor(finalProps.defRPr.color, this.slideContext) || '#000';
-                const firstRunSize = line.runs.length > 0 ? line.runs[0].font.size : (finalProps.defRPr.size || 18 * PT_TO_PX);
+            if ( bulletOffset > 0 && line.isFirstLine ) {
+                const bulletColor = ColorParser.resolveColor( finalProps.bullet.color, this.slideContext ) || ColorParser.resolveColor( finalProps.defRPr.color, this.slideContext ) || '#000';
+                const firstRunSize = line.runs.length > 0 ? line.runs[ 0 ].font.size : ( finalProps.defRPr.size || 18 * PT_TO_PX );
                 const bulletBaselineY = startY + line.startY + firstRunSize;
 
-                if (finalProps.bullet.type === 'char') {
-                    const bulletFontSize = finalProps.defRPr.size || (18 * PT_TO_PX);
-                    const bulletText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                    bulletText.setAttribute('x', line.x - bulletOffset);
-                    bulletText.setAttribute('y', bulletBaselineY);
-                    bulletText.setAttribute('fill', bulletColor);
-                    bulletText.setAttribute('font-size', `${bulletFontSize}px`);
-                    bulletText.setAttribute('font-family', finalProps.bullet.font || 'Arial');
+                if ( finalProps.bullet.type === 'char' ) {
+                    const bulletFontSize = finalProps.defRPr.size || ( 18 * PT_TO_PX );
+                    const bulletText = document.createElementNS( 'http://www.w3.org/2000/svg', 'text' );
+                    bulletText.setAttribute( 'x', line.x - bulletOffset );
+                    bulletText.setAttribute( 'y', bulletBaselineY );
+                    bulletText.setAttribute( 'fill', bulletColor );
+                    bulletText.setAttribute( 'font-size', `${ bulletFontSize }px` );
+                    bulletText.setAttribute( 'font-family', finalProps.bullet.font || 'Arial' );
                     bulletText.textContent = finalProps.bullet.char;
-                    textGroup.appendChild(bulletText);
-                } else if (finalProps.bullet.type === 'auto') {
+                    textGroup.appendChild( bulletText );
+                } else if ( finalProps.bullet.type === 'auto' ) {
                     const level = finalProps.level || 0;
-                    if (listCounters[level] === undefined) listCounters[level] = finalProps.bullet.startAt || 1; else listCounters[level]++;
-                    const bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]);
-                    const bulletFontSize = finalProps.defRPr.size || (18 * PT_TO_PX);
-                    const bulletText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                    bulletText.setAttribute('x', line.x - bulletOffset);
-                    bulletText.setAttribute('y', bulletBaselineY);
-                    bulletText.setAttribute('fill', bulletColor);
-                    bulletText.setAttribute('font-size', `${bulletFontSize}px`);
-                    bulletText.setAttribute('font-family', finalProps.bullet.font || 'Arial');
+                    if ( listCounters[ level ] === undefined ) listCounters[ level ] = finalProps.bullet.startAt || 1; else listCounters[ level ]++;
+                    const bulletChar = getAutoNumberingChar( finalProps.bullet.scheme, listCounters[ level ] );
+                    const bulletFontSize = finalProps.defRPr.size || ( 18 * PT_TO_PX );
+                    const bulletText = document.createElementNS( 'http://www.w3.org/2000/svg', 'text' );
+                    bulletText.setAttribute( 'x', line.x - bulletOffset );
+                    bulletText.setAttribute( 'y', bulletBaselineY );
+                    bulletText.setAttribute( 'fill', bulletColor );
+                    bulletText.setAttribute( 'font-size', `${ bulletFontSize }px` );
+                    bulletText.setAttribute( 'font-family', finalProps.bullet.font || 'Arial' );
                     bulletText.textContent = bulletChar;
-                    textGroup.appendChild(bulletText);
-                } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && this.imageMap[finalProps.bullet.relId]) {
+                    textGroup.appendChild( bulletText );
+                } else if ( finalProps.bullet.type === 'image' && finalProps.bullet.relId && this.imageMap[ finalProps.bullet.relId ] ) {
                     const imageY = bulletBaselineY - 8; // Approximation
-                    const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-                    image.setAttribute('x', line.x - bulletOffset);
-                    image.setAttribute('y', imageY);
-                    image.setAttribute('width', 16);
-                    image.setAttribute('height', 16);
-                    image.setAttribute('href', this.imageMap[finalProps.bullet.relId]);
-                    textGroup.appendChild(image);
+                    const image = document.createElementNS( 'http://www.w3.org/2000/svg', 'image' );
+                    image.setAttribute( 'x', line.x - bulletOffset );
+                    image.setAttribute( 'y', imageY );
+                    image.setAttribute( 'width', 16 );
+                    image.setAttribute( 'height', 16 );
+                    image.setAttribute( 'href', this.imageMap[ finalProps.bullet.relId ] );
+                    textGroup.appendChild( image );
                 }
             }
 
-            const textElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            const textElement = document.createElementNS( 'http://www.w3.org/2000/svg', 'text' );
             let align = finalProps.align || 'l';
-            if (bodyPr.anchor === 'ctr' && !finalProps.align) {
+            if ( bodyPr.anchor === 'ctr' && !finalProps.align ) {
                 align = 'ctr';
             }
             const xPos = line.x;
 
-            if (align === 'ctr') {
-                textElement.setAttribute('x', xPos + line.width / 2);
-                textElement.setAttribute('text-anchor', 'middle');
-            } else if (align === 'r') {
-                textElement.setAttribute('x', xPos + line.width);
-                textElement.setAttribute('text-anchor', 'end');
+            if ( align === 'ctr' ) {
+                textElement.setAttribute( 'x', xPos + line.width / 2 );
+                textElement.setAttribute( 'text-anchor', 'middle' );
+            } else if ( align === 'r' ) {
+                textElement.setAttribute( 'x', xPos + line.width );
+                textElement.setAttribute( 'text-anchor', 'end' );
             } else {
-                textElement.setAttribute('x', xPos);
-                textElement.setAttribute('text-anchor', 'start');
+                textElement.setAttribute( 'x', xPos );
+                textElement.setAttribute( 'text-anchor', 'start' );
             }
-            textElement.setAttribute('y', startY + line.startY + (line.runs.length > 0 ? line.runs[0].font.size : 0));
+            textElement.setAttribute( 'y', startY + line.startY + ( line.runs.length > 0 ? line.runs[ 0 ].font.size : 0 ) );
 
-            for (const run of line.runs) {
-                const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-                tspan.setAttribute('font-family', run.font.family);
-                tspan.setAttribute('font-size', `${run.font.size}px`);
-                tspan.setAttribute('font-style', run.font.style);
-                tspan.setAttribute('font-weight', run.font.weight);
-                tspan.setAttribute('fill', run.color);
+            for ( const run of line.runs ) {
+                const tspan = document.createElementNS( 'http://www.w3.org/2000/svg', 'tspan' );
+                tspan.setAttribute( 'font-family', run.font.family );
+                tspan.setAttribute( 'font-size', `${ run.font.size }px` );
+                tspan.setAttribute( 'font-style', run.font.style );
+                tspan.setAttribute( 'font-weight', run.font.weight );
+                tspan.setAttribute( 'fill', run.color );
                 tspan.textContent = run.text;
-                textElement.appendChild(tspan);
+                textElement.appendChild( tspan );
             }
-            textGroup.appendChild(textElement);
+            textGroup.appendChild( textElement );
         }
-        this.renderer.currentGroup.appendChild(textGroup);
+        this.renderer.currentGroup.appendChild( textGroup );
     }
 
-    #layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
+    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle = {}, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
         const paddedPos = {
-            x: pos.x + (bodyPr.lIns || 0),
-            y: pos.y + (bodyPr.tIns || 0),
-            width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
-            height: pos.height - (bodyPr.tIns || 0) - (bodyPr.bIns || 0),
+            x: pos.x + ( bodyPr.lIns || 0 ),
+            y: pos.y + ( bodyPr.tIns || 0 ),
+            width: pos.width - ( bodyPr.lIns || 0 ) - ( bodyPr.rIns || 0 ),
+            height: pos.height - ( bodyPr.tIns || 0 ) - ( bodyPr.bIns || 0 ),
         };
 
         const lines = [];
         let currentY = 0;
 
-        for (const pNode of paragraphs) {
-            const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
-            const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
+        for ( const pNode of paragraphs ) {
+            const pPrNode = pNode.getElementsByTagNameNS( DML_NS, 'pPr' )[ 0 ];
+            const level = pPrNode ? parseInt( pPrNode.getAttribute( 'lvl' ) || '0' ) : 0;
             let defaultStyle = defaultTextStyles.other;
-            if (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') defaultStyle = defaultTextStyles.title;
-            else if (phType === 'body') defaultStyle = defaultTextStyles.body;
+            if ( phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle' ) defaultStyle = defaultTextStyles.title;
+            else if ( phType === 'body' ) defaultStyle = defaultTextStyles.body;
 
-            const defaultLevelProps = (defaultStyle && defaultStyle[level]) ? defaultStyle[level] : {};
+            const defaultLevelProps = ( defaultStyle && defaultStyle[ level ] ) ? defaultStyle[ level ] : {};
 
-            const masterPh = masterPlaceholders ? (masterPlaceholders[phKey] || Object.values(masterPlaceholders).find(p => p.type === phType)) : null;
-            let masterListStyle = (masterPh?.listStyle?.[level]) || {};
-            if (masterPh && masterPh.type && phType && masterPh.type !== phType) {
+            const masterPh = masterPlaceholders ? ( masterPlaceholders[ phKey ] || Object.values( masterPlaceholders ).find( p => p.type === phType ) ) : null;
+            let masterListStyle = ( masterPh?.listStyle?.[ level ] ) || {};
+            if ( masterPh?.type && phType && masterPh.type !== phType ) {
                 masterListStyle = {};
             }
 
-            const layoutPh = layoutPlaceholders ? layoutPlaceholders[phKey] : null;
-            let layoutListStyle = (layoutPh?.listStyle?.[level]) || {};
-            if (layoutPh && layoutPh.type && phType && layoutPh.type !== phType) {
+            const layoutPh = layoutPlaceholders ? layoutPlaceholders[ phKey ] : null;
+            let layoutListStyle = ( layoutPh?.listStyle?.[ level ] ) || {};
+            if ( layoutPh?.type && phType && layoutPh.type !== phType ) {
                 layoutListStyle = {};
             }
-            const slideLevelProps = parseParagraphProperties(pPrNode) || { bullet: {}, defRPr: {} };
+            const slideLevelProps = parseParagraphProperties( pPrNode ) || { bullet: {}, defRPr: {} };
 
             const finalProps = {
                 level,
@@ -858,15 +976,15 @@ export class PPTXRenderer {
                 defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
             };
 
-            const marL = (finalProps.marL !== undefined) ? finalProps.marL : (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
-            const indent = (finalProps.indent !== undefined) ? finalProps.indent : 0;
-            const bulletOffset = (finalProps.bullet.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
+            const marL = ( finalProps.marL !== undefined ) ? finalProps.marL : ( level > 0 ? ( level * INDENTATION_AMOUNT ) : 0 );
+            const indent = ( finalProps.indent !== undefined ) ? finalProps.indent : 0;
+            const bulletOffset = ( finalProps.bullet.type && finalProps.bullet.type !== 'none' ) ? BULLET_OFFSET : 0;
 
             let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: true };
 
             const pushCurrentLine = () => {
-                if (currentLine.runs.length > 0) {
-                    lines.push(currentLine);
+                if ( currentLine.runs.length > 0 ) {
+                    lines.push( currentLine );
                     currentY += currentLine.height || LINE_HEIGHT;
                 }
                 currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: false };
@@ -874,8 +992,8 @@ export class PPTXRenderer {
 
             const runsAndBreaks = Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName));
 
-            for (const childNode of runsAndBreaks) {
-                if (childNode.localName === 'br') {
+            for ( const childNode of runsAndBreaks ) {
+                if ( childNode.localName === 'br' ) {
                     pushCurrentLine();
                     continue;
                 }
@@ -886,40 +1004,40 @@ export class PPTXRenderer {
                 const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
                 const finalRunProps = { ...finalProps.defRPr };
                 if (rPr) {
-                    if (rPr.getAttribute('sz')) finalRunProps.size = (parseInt(rPr.getAttribute('sz')) / 100) * PT_TO_PX;
-                    if (rPr.getAttribute('b') === '1') finalRunProps.bold = true; else if (rPr.getAttribute('b') === '0') finalRunProps.bold = false;
-                    if (rPr.getAttribute('i') === '1') finalRunProps.italic = true; else if (rPr.getAttribute('i') === '0') finalRunProps.italic = false;
-                    const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                    if (solidFill) finalRunProps.color = ColorParser.parseColor(solidFill);
-                    const latinFontNode = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
-                    if (latinFontNode && latinFontNode.getAttribute('typeface')) finalRunProps.font = latinFontNode.getAttribute('typeface');
+                    if ( rPr.getAttribute( 'sz' ) ) finalRunProps.size = ( parseInt( rPr.getAttribute( 'sz' ) ) / 100 ) * PT_TO_PX;
+                    if ( rPr.getAttribute( 'b' ) === '1' ) finalRunProps.bold = true; else if ( rPr.getAttribute( 'b' ) === '0' ) finalRunProps.bold = false;
+                    if ( rPr.getAttribute( 'i' ) === '1' ) finalRunProps.italic = true; else if ( rPr.getAttribute( 'i' ) === '0' ) finalRunProps.italic = false;
+                    const solidFill = rPr.getElementsByTagNameNS( DML_NS, 'solidFill' )[ 0 ];
+                    if ( solidFill ) finalRunProps.color = ColorParser.parseColor( solidFill );
+                    const latinFontNode = rPr.getElementsByTagNameNS( DML_NS, 'latin' )[ 0 ];
+                    if ( latinFontNode?.getAttribute( 'typeface' ) ) finalRunProps.font = latinFontNode.getAttribute( 'typeface' );
                 }
 
-                const textColor = ColorParser.resolveColor(finalRunProps.color, this.slideContext) || '#000000';
-                let fontSize = finalRunProps.size || (18 * PT_TO_PX);
-                if (bodyPr.fontScale) {
+                const textColor = ColorParser.resolveColor( finalRunProps.color, this.slideContext ) || '#000000';
+                let fontSize = finalRunProps.size || ( 18 * PT_TO_PX );
+                if ( bodyPr.fontScale ) {
                     fontSize *= bodyPr.fontScale;
                 }
                 const fontStyle = finalRunProps.italic ? 'italic' : 'normal';
                 const fontWeight = finalRunProps.bold ? 'bold' : 'normal';
-                const fontFamily = resolveFontFamily(finalRunProps, phType, this.slideContext);
+                const fontFamily = resolveFontFamily( finalRunProps, phType, this.slideContext );
 
-                const tempCtx = document.createElement('canvas').getContext('2d');
-                tempCtx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
-                const words = text.split(/(\s+)/); // Split on whitespace but keep it
+                const tempCtx = document.createElement( 'canvas' ).getContext( '2d' );
+                tempCtx.font = `${ fontStyle } ${ fontWeight } ${ fontSize }px ${ fontFamily }`;
+                const words = text.split( /(\s+)/ ); // Split on whitespace but keep it
 
-                for (const word of words) {
-                    if (!word) continue;
+                for ( const word of words ) {
+                    if ( !word ) continue;
 
-                    const wordWidth = tempCtx.measureText(word).width;
+                    const wordWidth = tempCtx.measureText( word ).width;
                     const currentIndent = currentLine.isFirstLine ? marL + indent : marL;
                     const effectiveWidth = paddedPos.width - currentIndent - bulletOffset;
 
-                    if (currentLine.width + wordWidth > effectiveWidth && currentLine.runs.length > 0) {
+                    if ( currentLine.width + wordWidth > effectiveWidth && currentLine.runs.length > 0 ) {
                         pushCurrentLine();
                     }
 
-                    currentLine.runs.push({
+                    currentLine.runs.push( {
                         text: word,
                         width: wordWidth,
                         font: {
@@ -929,33 +1047,33 @@ export class PPTXRenderer {
                             family: fontFamily
                         },
                         color: textColor
-                    });
+                    } );
                     currentLine.width += wordWidth;
-                    let lineHeight = fontSize * 1.2; // Approximate height
-                    if (bodyPr.lnSpcReduction) {
-                        lineHeight *= (1 - bodyPr.lnSpcReduction);
+                    let lineHeight = fontSize * 1.25; // Approximate height
+                    if ( bodyPr.lnSpcReduction ) {
+                        lineHeight *= ( 1 - bodyPr.lnSpcReduction );
                     }
-                    currentLine.height = Math.max(currentLine.height, lineHeight);
+                    currentLine.height = Math.max( currentLine.height, lineHeight );
                 }
             }
             pushCurrentLine(); // Push the last line of the paragraph
         }
 
         const totalHeight = currentY;
-        for (const line of lines) {
+        for ( const line of lines ) {
             const align = line.paragraphProps.align || 'l';
             const level = line.paragraphProps.level || 0;
-            const marL = (line.paragraphProps.marL !== undefined) ? line.paragraphProps.marL : (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
-            const indent = (line.paragraphProps.indent !== undefined) ? line.paragraphProps.indent : 0;
-            const bulletOffset = (line.paragraphProps.bullet.type && line.paragraphProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
+            const marL = ( line.paragraphProps.marL !== undefined ) ? line.paragraphProps.marL : ( level > 0 ? ( level * INDENTATION_AMOUNT ) : 0 );
+            const indent = ( line.paragraphProps.indent !== undefined ) ? line.paragraphProps.indent : 0;
+            const bulletOffset = ( line.paragraphProps.bullet.type && line.paragraphProps.bullet.type !== 'none' ) ? BULLET_OFFSET : 0;
 
             const lineIndent = line.isFirstLine ? marL + indent : marL;
             const effectiveWidth = paddedPos.width - lineIndent - bulletOffset;
 
             let lineXOffset = 0;
-            if (align === 'ctr') {
-                lineXOffset = (effectiveWidth - line.width) / 2;
-            } else if (align === 'r') {
+            if ( align === 'ctr' ) {
+                lineXOffset = ( effectiveWidth - line.width ) / 2;
+            } else if ( align === 'r' ) {
                 lineXOffset = effectiveWidth - line.width;
             }
             line.x = paddedPos.x + lineIndent + bulletOffset + lineXOffset;
@@ -964,7 +1082,7 @@ export class PPTXRenderer {
         return { totalHeight, lines };
     }
 
-    async #renderChart(graphicFrame, chartData) {
+    async renderChart(graphicFrame, chartData) {
         const xfrmNode = graphicFrame.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
         if (!xfrmNode) return;
 
