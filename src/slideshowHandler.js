@@ -83,8 +83,6 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
             const slideContext = {
                 theme: theme,
                 colorMap: {},
-                tableStyles: tableStyles,
-                defaultTableStyleId: defaultTableStyleId,
             };
 
             const layoutRel = sortedSlideRels.find( r => r.type.endsWith( '/slideLayout' ) );
@@ -169,6 +167,8 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
                 slideNum,
                 slideSize,
                 defaultTextStyles,
+                tableStyles,
+                defaultTableStyleId,
                 imageMap,
                 slideContext,
                 finalBg,
@@ -188,11 +188,11 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
             }
 
             await pptxHandler.render( slide.getState().slideData );
-            console.log({ slideData: slide.getState( 'slideData.background.type' )  })
+            console.log({ slideData: slide.getState()  })
         }
 
         presentationStore.dispatch( { type: actions.start.presentation } );
-        console.log( { presentationState: presentationStore.getState() } );
+        console.log( { presentationState: presentationStore.getState( 'status', 'tableStyles' ) } );
 
         return { slideshowLength: slideIds.length }
 

@@ -38,6 +38,8 @@ export class PPTXHandler {
         slideNum,
         slideSize,
         defaultTextStyles,
+        tableStyles,
+        defaultTableStyleId,
         imageMap,
         slideContext,
         finalBg,
@@ -55,6 +57,8 @@ export class PPTXHandler {
         this.slideNum = slideNum;
         this.slideSize = slideSize;
         this.defaultTextStyles = defaultTextStyles;
+        this.tableStyles = tableStyles;
+        this.defaultTableStyleId = defaultTableStyleId;
         this.imageMap = imageMap;
         this.slideContext = slideContext;
         this.finalBg = finalBg;
@@ -510,8 +514,8 @@ export class PPTXHandler {
         if (!tblNode) return null;
 
         const tblPrNode = tblNode.getElementsByTagNameNS(DML_NS, 'tblPr')[0];
-        const styleId = tblPrNode?.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0]?.textContent || `{${this.slideContext.defaultTableStyleId}}`;
-        const tableStyle = this.slideContext.tableStyles[styleId];
+        const styleId = tblPrNode?.getElementsByTagNameNS(DML_NS, 'tableStyleId')[0]?.textContent || `{${this.defaultTableStyleId}}`;
+        const tableStyle = this.tableStyles[styleId];
 
         const colWidths = Array.from(tblNode.getElementsByTagNameNS(DML_NS, 'gridCol')).map(n => parseInt(n.getAttribute('w')) / EMU_PER_PIXEL);
         const rowNodes = Array.from(tblNode.getElementsByTagNameNS(DML_NS, 'tr'));
@@ -786,7 +790,7 @@ export class PPTXHandler {
             const marL = pMarL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
             const indent = pIndent ?? 0;
             const bulletOffset = (line.paragraphProps.bullet?.type && line.paragraphProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
-            const lineIndent = line.isFirstLine ? marL + indent : marL;
+            const lineIndent = marL + indent;
             const effectiveWidth = paddedPos.width - lineIndent - bulletOffset;
             let lineXOffset = 0;
             if (align === 'ctr') lineXOffset = (effectiveWidth - line.width) / 2;
