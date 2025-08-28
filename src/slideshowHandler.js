@@ -178,7 +178,8 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
                 slideRels,
                 entriesMap
             } );
-            await pptxHandler.parse(presentationStore).render();
+            const slideData = await pptxHandler.parse();
+            await pptxHandler.render(slideData);
         }
 
         return { slideshowLength: slideIds.length }
