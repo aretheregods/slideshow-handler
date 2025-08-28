@@ -179,10 +179,6 @@ export class PPTXHandler {
 
     async renderShapeTree(shapes) {
         for (const shapeData of shapes) {
-            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            this.renderer.currentGroup.appendChild(group);
-            this.renderer.currentGroup = group;
-
             switch (shapeData.type) {
                 case 'shape':
                     await this.renderShape(shapeData);
@@ -200,7 +196,6 @@ export class PPTXHandler {
                     await this.renderPicture(shapeData);
                     break;
             }
-            this.renderer.currentGroup = group.parentNode;
         }
     }
 
@@ -278,20 +273,27 @@ export class PPTXHandler {
         };
     }
 
-    async renderShape(shapeData) {
-        const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
+    getMatrix(transformString) {
         const matrix = new Matrix();
-        if (shapeData.transform) {
-            const transformString = shapeData.transform.replace('matrix(', '').replace(')', '');
-            const transformValues = transformString.split(' ').map(Number);
-            matrix.m = transformValues;
+        if (transformString) {
+            const matrixValues = transformString.replace('matrix(', '').replace(')', '').split(' ').map(Number);
+            matrix.m = matrixValues;
         }
+        return matrix;
+    }
+
+    async renderShape(shapeData) {
+        const matrix = this.getMatrix(shapeData.transform);
         this.renderer.setTransform(matrix);
+
+        const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
         shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
 
         if (shapeData.text) {
             this.renderParagraphs(shapeData.text);
         }
+
+        this.renderer.restoreTransform();
     }
 
     async parseGroupShape(groupNode, listCounters, parentMatrix, slideLevelVisibility) {
@@ -353,9 +355,13 @@ export class PPTXHandler {
     }
 
     async renderGroupShape(groupData) {
-        this.renderer.currentGroup.setAttribute('data-name', groupData.name);
-        this.renderer.currentGroup.setAttribute('transform', groupData.transform);
+        const matrix = this.getMatrix(groupData.transform);
+        const groupElement = this.renderer.setTransform(matrix);
+        groupElement.setAttribute('data-name', groupData.name);
+
         await this.renderShapeTree(groupData.shapes);
+
+        this.renderer.restoreTransform();
     }
 
     async parsePicture(picNode, parentMatrix, slideLevelVisibility) {
@@ -435,7 +441,8 @@ export class PPTXHandler {
     }
 
     async renderPicture(picData) {
-        this.renderer.currentGroup.setAttribute('transform', picData.transform);
+        const matrix = this.getMatrix(picData.transform);
+        this.renderer.setTransform(matrix);
 
         if (picData.placeholderProps?.fill?.type === 'solid' || picData.placeholderProps?.fill?.type === 'gradient') {
             const fillOptions = { fill: picData.placeholderProps.fill.type === 'gradient' ? picData.placeholderProps.fill : picData.placeholderProps.fill.color };
@@ -478,6 +485,8 @@ export class PPTXHandler {
             if (picData.pathString) this.renderer.drawPath(picData.pathString, strokeOpts);
             else this.renderer.drawRect(0, 0, picData.pos.width, picData.pos.height, strokeOpts);
         }
+
+        this.renderer.restoreTransform();
     }
 
     async parseTable(frameNode, parentMatrix) {
@@ -547,13 +556,9 @@ export class PPTXHandler {
     }
 
     async renderTable(tableData) {
-        const matrix = new Matrix();
-        if (tableData.transform) {
-            const transformString = tableData.transform.replace('matrix(', '').replace(')', '');
-            const transformValues = transformString.split(' ').map(Number);
-            matrix.m = transformValues;
-        }
+        const matrix = this.getMatrix(tableData.transform);
         this.renderer.setTransform(matrix);
+
         for (const cell of tableData.cells) {
             this.renderer.drawRect(cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent' });
 
@@ -577,13 +582,16 @@ export class PPTXHandler {
 
                 const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
                 group.setAttribute('clip-path', `url(#${clipId})`);
-                const originalGroup = this.renderer.currentGroup;
-                originalGroup.appendChild(group);
+                this.renderer.currentGroup.appendChild(group);
+
+                this.renderer.transformStack.push(this.renderer.currentGroup);
                 this.renderer.currentGroup = group;
                 this.renderParagraphs(cell.text);
-                this.renderer.currentGroup = originalGroup;
+                this.renderer.restoreTransform();
             }
         }
+
+        this.renderer.restoreTransform();
     }
 
     parseCellText(cellNode, pos, tableTextStyle) {

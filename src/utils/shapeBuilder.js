@@ -62,7 +62,7 @@ export class ShapeBuilder {
                         effect: shapeProps.effect,
                     });
 
-                    this.renderer.setTransform(matrix);
+                    this.renderer.restoreTransform();
                     break;
                 case 'arc':
                     const arcAdj = shapeProps.geometry.adjustments;
