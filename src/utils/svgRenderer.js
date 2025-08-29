@@ -94,9 +94,13 @@ export class SvgRenderer {
     /**
      * Sets the transformation for subsequent shapes.
      * @param {Matrix} matrix - The transformation matrix.
+     * @param {string} id - The ID to assign to the group element.
      */
-    setTransform(matrix) {
+    setTransform(matrix, id) {
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        if (id) {
+            g.setAttribute('id', id);
+        }
         g.setAttribute('transform', `matrix(${matrix.m.join(' ')})`);
         this.svg.appendChild(g);
         this.currentGroup = g;
@@ -395,6 +399,9 @@ export class SvgRenderer {
      */
     drawText(textContent, x, y, options = {}) {
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        if (options.id) {
+            text.setAttribute('id', options.id);
+        }
         text.setAttribute('x', x);
         text.setAttribute('y', y);
         text.textContent = textContent;
