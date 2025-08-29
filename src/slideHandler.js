@@ -80,7 +80,14 @@ export class SlideHandler {
         svg.style.height = '100%';
         document.getElementById( this.slideContainer ).appendChild(svg);
         return svg;
-    }
+	}
+
+	newSlideContainer( containerId ) {
+		this.slideContainer = containerId;
+		this.svg = this.createSvg();
+		this.renderer = new SvgRenderer( this.svg, this.slideContext );
+		return this;
+	}
 
     async parse() {
         const xmlDoc = parseXmlString(this.slideXml, `slide number ${this.slideNum}`);

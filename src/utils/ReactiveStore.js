@@ -260,8 +260,9 @@ export class ReactiveStore {
      * @description Registers a callback function to be executed on state changes.
      * Follows the Observer pattern's subscription model.
      * @param {object|function} subscription - The subscription options object or a callback function for global state changes.
-     * @param {string} [subscription.key] - The key path to subscribe to. If omitted, subscribes to all state changes.
-     * @param {function} subscription.callback - The function to call on update. It receives `(newValue, oldValue)`.
+     * @param {string|string[]} [subscription.key] - The key path (or array of key paths) to subscribe to. If omitted, subscribes to all state changes.
+     * @param {function} subscription.callback - The function to call on update. For single key, it receives `(newValue, oldValue)`.
+     * For compound keys, it receives `(newValue, oldValue)` where both are objects containing the subscribed keys and their values.
      * @param {boolean} [subscription.noBubble=false] - If true, this listener will not be notified of changes in nested properties.
      * @returns {function} An `unsubscribe` function to remove the listener.
      */
@@ -278,28 +279,78 @@ export class ReactiveStore {
             throw new Error('A callback function must be provided to subscribe.');
         }
 
-        if (key) {
-            if (typeof key !== 'string') {
-                throw new Error('The key to subscribe to must be a string.');
-            }
-            if (!this.keyListeners.has(key)) {
-                this.keyListeners.set(key, new Set());
-            }
-            const keyListeners = this.keyListeners.get(key);
-            const sub = { callback, noBubble };
-            keyListeners.add(sub);
-            // Return a function that allows the consumer to unsubscribe.
-            return () => {
-                keyListeners.delete(sub);
-                if (keyListeners.size === 0) {
-                    this.keyListeners.delete(key);
+        if (!key) {
+            // Global subscription via subscribe({ callback })
+            this.listeners.add(callback);
+            return () => this.listeners.delete(callback);
+        }
+
+        const keys = Array.isArray(key) ? key : [key];
+        if (!keys.every(k => typeof k === 'string' && k.length > 0)) {
+            throw new Error('The key to subscribe to must be a non-empty string or an array of non-empty strings.');
+        }
+
+        if (keys.length > 1) {
+            // Compound key subscription
+            const getCompoundState = () => {
+                const state = {};
+                for (const k of keys) {
+                    state[k] = this.#getNestedState(k);
                 }
+                return state;
+            };
+
+            let lastKnownState = getCompoundState();
+            let timeoutId = null;
+
+            const debouncedCallback = () => {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+                timeoutId = setTimeout(() => {
+                    const newState = getCompoundState();
+                    callback(newState, lastKnownState);
+                    timeoutId = null;
+                    lastKnownState = newState;
+                }, 0);
+            };
+
+            const sub = { callback: debouncedCallback, noBubble };
+            const unsubscribes = keys.map(k => {
+                if (!this.keyListeners.has(k)) {
+                    this.keyListeners.set(k, new Set());
+                }
+                const keyListeners = this.keyListeners.get(k);
+                keyListeners.add(sub);
+                return () => {
+                    keyListeners.delete(sub);
+                    if (keyListeners.size === 0) {
+                        this.keyListeners.delete(k);
+                    }
+                };
+            });
+
+            return () => {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+                unsubscribes.forEach(unsub => unsub());
             };
         }
 
-        // Global subscription via subscribe({ callback })
-        this.listeners.add(callback);
-        // Return a function that allows the consumer to unsubscribe.
-        return () => this.listeners.delete(callback);
+        // Single key subscription
+        const singleKey = keys[0];
+        if (!this.keyListeners.has(singleKey)) {
+            this.keyListeners.set(singleKey, new Set());
+        }
+        const keyListeners = this.keyListeners.get(singleKey);
+        const sub = { callback, noBubble };
+        keyListeners.add(sub);
+        return () => {
+            keyListeners.delete(sub);
+            if (keyListeners.size === 0) {
+                this.keyListeners.delete(singleKey);
+            }
+        };
     }
 }

@@ -310,7 +310,9 @@
 
             try {
                 const fileData = await slideshowHandler( { file, slideViewerContainer: 'slide-viewer-container', slideSelectorContainer: 'slide-selector-container' } );
-                if ( fileData ) fileInfo.textContent += ` slideshow length: ${fileData?.slideshowLength}`;
+                if ( fileData ) {
+					fileInfo.textContent += ` slideshow length: ${fileData?.slideshowLength}`;
+				}
             } catch (error) {
                 fileInfo.textContent = `Error: Could not parse presentation. ${error.message}`;
             } finally {
