@@ -190,15 +190,17 @@ export class ReactiveStore {
     #setNestedState( currentState, { key = '', value } ) {
         const keys = key.trim().split( '.' );
         let state = currentState;
-        for ( const k of keys.slice( 0, -1 ) ) {
-            const trimmedKey = k.trim();
-            if ( !trimmedKey ) continue;
+        for ( let i = 0; i < keys.length - 1; i++ ) {
+            const k = keys[i].trim();
+            if ( !k ) continue;
 
-            // If a key in the path does not exist or is not an object, create it.
-            if ( state[ trimmedKey ] === undefined || typeof state[ trimmedKey ] !== 'object' || state[ trimmedKey ] === null ) {
-                state[ trimmedKey ] = {};
+            const nextKey = keys[i + 1].trim();
+            const nextKeyIsNumber = /^\d+$/.test(nextKey);
+
+            if ( state[ k ] === undefined || typeof state[ k ] !== 'object' || state[ k ] === null ) {
+                state[ k ] = nextKeyIsNumber ? [] : {};
             }
-            state = state[ trimmedKey ];
+            state = state[ k ];
         }
         const lastKey = keys[ keys.length - 1 ].trim();
         if ( lastKey ) {
