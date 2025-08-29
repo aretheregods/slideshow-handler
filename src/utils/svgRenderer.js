@@ -120,7 +120,7 @@ export class SvgRenderer {
     drawRect(x, y, width, height, options = {}) {
         const rect = document.createElementNS( 'http://www.w3.org/2000/svg', 'rect' );
         if ( options.id ) {
-            rect.setAttribute( 'id', cellId );
+            rect.setAttribute( 'id', options.id );
         }
 
         const strokeWidth = (options.stroke && options.stroke.width > 0) ? options.stroke.width : 0;
