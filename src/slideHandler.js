@@ -28,7 +28,7 @@ import {
     PML_NS, DML_NS, CHART_NS, TABLE_NS,
 } from 'constants';
 
-export class PPTXHandler {
+export class SlideHandler {
     constructor( {
         slideXml,
         slideContainer,

@@ -19,7 +19,8 @@ export const slideshowProcessingActions = {
         presentation: {
             data: 'SET_PRESENTATION_DATA',
             status: 'SET_PRESENTATION_STATUS',
-            error: 'SET_PRESENTATION_ERROR'
+			error: 'SET_PRESENTATION_ERROR',
+			activeSlide: 'SET_PRESENTATION_ACTIVE_SLIDE'
         },
         slide: {
             data: 'SET_SLIDE_DATA'

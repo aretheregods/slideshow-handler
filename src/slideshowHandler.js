@@ -13,7 +13,7 @@ import {
     populateImageMap
 } from 'utils';
 import { PML_NS, slideshowProcessingActions as actions } from 'constants';
-import { PPTXHandler } from './pptxHandler.js';
+import { SlideHandler } from './slideHandler.js';
 import { createSlideStore, presentationStore, slideStores } from './slideshowDataStore.js';
 
 export async function slideshowHandler( { file, slideshowContainer } ) {
@@ -22,8 +22,7 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
         const entries = await zipReader.getEntries();
         const entriesMap = new Map( entries.map( entry => [ entry.filename, entry ] ) );
 
-        presentationStore.dispatch( { type: actions.start.parsing } );
-        console.log( { presentationState: presentationStore.getState( 'status' ) } );
+		presentationStore.dispatch( { type: actions.start.parsing } );
 
         const presRels = await getRelationships( entriesMap, "ppt/_rels/presentation.xml.rels" );
         const sortedPresRels = Object.values( presRels ).sort( ( a, b ) => a.id.localeCompare( b.id, undefined, { numeric: true } ) );
@@ -152,13 +151,13 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
 
             const slideContainer = document.createElement( 'div' );
             slideContainer.className = 'slide-viewer';
-            slideContainer.id = `slide-${ i + 1 }`;
+            slideContainer.id = slideId;
             slideContainer.style.aspectRatio = `${ slideSize.width } / ${ slideSize.height }`;
             slideContainer.style.width = `10em`;
             slideContainer.style.height = `${ 10 / ( slideSize.width / slideSize.height ) }em`;
             slideshowContainer.appendChild( slideContainer );
 
-            const pptxHandler = new PPTXHandler( {
+            const pptxHandler = new SlideHandler( {
                 slideXml,
                 slideContainer,
                 masterPlaceholders,
@@ -184,7 +183,6 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
 
             if ( presentationStore.getState( 'status' ) !== 'rendering' ) {
                 presentationStore.dispatch( { type: actions.start.rendering } );
-                console.log( { presentationState: presentationStore.getState( 'status' ) } );
             }
 
             await pptxHandler.render( slide.getState().slideData );
@@ -192,7 +190,6 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
         }
 
         presentationStore.dispatch( { type: actions.start.presentation } );
-        console.log( { presentationState: presentationStore.getState( 'status', 'tableStyles' ) } );
 
         return { slideshowLength: slideIds.length }
 
