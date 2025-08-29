@@ -3,7 +3,7 @@ import { slideshowProcessingActions as actions } from 'constants';
 
 const initialPresentationState = {
     status: 'idle', // idle, parsing, ready, error
-    initialSlideNum: 0,
+    activeSlide: 0,
     slideSize: null,
     theme: null,
     error: null,
@@ -16,7 +16,7 @@ function presentationReducer( state = initialPresentationState, action ) {
         case actions.start.rendering:
             return { ...initialPresentationState, status: 'rendering' };
         case actions.start.presentation:
-            return { ...initialPresentationState, status: 'presenting', activeSlide: action.payload ?? 1 };
+            return { ...initialPresentationState, status: 'presenting', activeSlide: action.payload ?? 0 };
         case actions.set.presentation.data:
             return { ...state, ...action.payload };
         case actions.set.presentation.status:

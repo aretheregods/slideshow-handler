@@ -78,7 +78,7 @@ export class SlideHandler {
         svg.setAttribute('viewBox', `0 0 ${this.slideSize.width} ${this.slideSize.height}`);
         svg.style.width = '100%';
         svg.style.height = '100%';
-        this.slideContainer.appendChild(svg);
+        document.getElementById( this.slideContainer ).appendChild(svg);
         return svg;
     }
 
@@ -117,22 +117,26 @@ export class SlideHandler {
         this.renderer.defs = defs;
 
         // Render background
-        if (slideData.background) {
+        if ( slideData.background ) {
+            const id = `${this.slideId}.background`
             if (slideData.background.type === 'color') {
                 const bgRect = document.createElementNS(SVG_NS, 'rect');
+                bgRect.setAttribute('id', id);
                 bgRect.setAttribute('width', '100%');
                 bgRect.setAttribute('height', '100%');
                 bgRect.setAttribute('fill', slideData.background.value);
                 this.svg.insertBefore(bgRect, this.svg.firstChild);
             } else if (slideData.background.type === 'gradient') {
-                const bgRect = document.createElementNS(SVG_NS, 'rect');
+                const bgRect = document.createElementNS( SVG_NS, 'rect' );
+                bgRect.setAttribute('id', id);
                 bgRect.setAttribute('width', '100%');
                 bgRect.setAttribute('height', '100%');
                 const gradientUrl = this.renderer._createGradient(slideData.background);
                 bgRect.setAttribute('fill', gradientUrl);
                 this.svg.insertBefore(bgRect, this.svg.firstChild);
             } else if (slideData.background.type === 'image' && slideData.background.relId && this.imageMap[slideData.background.relId]) {
-                const bgImage = document.createElementNS(SVG_NS, 'image');
+                const bgImage = document.createElementNS( SVG_NS, 'image' );
+                bgImage.setAttribute('id', id);
                 bgImage.setAttribute('href', this.imageMap[slideData.background.relId]);
                 bgImage.setAttribute('width', this.slideSize.width);
                 bgImage.setAttribute('height', this.slideSize.height);

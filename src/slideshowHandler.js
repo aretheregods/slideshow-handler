@@ -16,7 +16,7 @@ import { PML_NS, slideshowProcessingActions as actions } from 'constants';
 import { SlideHandler } from './slideHandler.js';
 import { createSlideStore, presentationStore, slideStores } from './slideshowDataStore.js';
 
-export async function slideshowHandler( { file, slideshowContainer } ) {
+export async function slideshowHandler( { file, slideViewerContainer, slideSelectorContainer } ) {
     const zipReader = new ZipReader( new BlobReader( file ) );
     try {
         const entries = await zipReader.getEntries();
@@ -62,6 +62,12 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
 
         if ( slideIds.length === 0 ) {
             return { slideshowLength: "No slides found in the presentation." };
+        }
+
+        const staticParsingData = {
+            tableStyles,
+            defaultTableStyleId,
+            entriesMap
         }
 
         for ( let i = 0; i < slideIds.length; i++ ) {
@@ -142,32 +148,29 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
             const layoutBg = layoutXmlDoc ? parseBackground( layoutXmlDoc, slideContext ) : null;
             const masterBg = masterXmlDoc ? parseBackground( masterXmlDoc, slideContext ) : null;
             const finalBg = slideBg || layoutBg || masterBg;
-            const { theme: _, ...slideStoreProps } = slideContext;
-
-            slideStores.set( slideId, createSlideStore( {
-                id: slideId,
-                state: { background: finalBg, slideContext: slideStoreProps, slideNum }
-            } ) );
 
             const slideContainer = document.createElement( 'div' );
-            slideContainer.className = 'slide-viewer';
+            slideContainer.className = 'slide-selector';
             slideContainer.id = slideId;
             slideContainer.style.aspectRatio = `${ slideSize.width } / ${ slideSize.height }`;
             slideContainer.style.width = `10em`;
             slideContainer.style.height = `${ 10 / ( slideSize.width / slideSize.height ) }em`;
-            slideshowContainer.appendChild( slideContainer );
+            const slideSelector = document.getElementById( slideSelectorContainer )
+            slideSelector.appendChild( slideContainer );
+            slideContainer.addEventListener( 'click', ( event ) => {
+                presentationStore.dispatch( { type: actions.set.presentation.data, payload: { activeSlide: event.currentTarget.id } } );
+            } );
+            
 
-            const pptxHandler = new SlideHandler( {
+            const parsingData = {
                 slideXml,
-                slideContainer,
+                slideContainer: slideContainer.id,
                 masterPlaceholders,
                 layoutPlaceholders,
                 slideId,
                 slideNum,
                 slideSize,
                 defaultTextStyles,
-                tableStyles,
-                defaultTableStyleId,
                 imageMap,
                 slideContext,
                 finalBg,
@@ -175,23 +178,61 @@ export async function slideshowHandler( { file, slideshowContainer } ) {
                 masterStaticShapes,
                 layoutStaticShapes,
                 slideRels,
-                entriesMap
-            } );
-            const slideData = await pptxHandler.parse();
+            }
+
+            slideStores.set( slideId, createSlideStore( {
+                id: slideId,
+                state: { parsingData }
+            } ) );
+
+            const pptxHandler = new SlideHandler( { ...parsingData, ...staticParsingData } );
+            const renderingData = await pptxHandler.parse();
+
             const slide = slideStores.get( slideId );
-            slide.dispatch( { type: actions.set.slide.data, payload: { slideData } } );
+            slide.dispatch( { type: actions.set.slide.data, payload: { renderingData } } );
+            console.log({ slide: slide.getState( 'renderingData' ) })
 
             if ( presentationStore.getState( 'status' ) !== 'rendering' ) {
                 presentationStore.dispatch( { type: actions.start.rendering } );
             }
 
-            await pptxHandler.render( slide.getState().slideData );
-            console.log({ slideData: slide.getState()  })
+            await pptxHandler.render( renderingData );
         }
 
         presentationStore.dispatch( { type: actions.start.presentation } );
+        presentationStore.subscribe( {
+            key: 'activeSlide', callback: ( newValue, oldValue ) => {
+                if ( newValue !== oldValue && slideStores.has( newValue ) ) {
+                    const slide = slideStores.get( newValue );
+                    const slideViewContainer = document.getElementById( slideViewerContainer );
+                    const availableWidth = slideViewContainer.clientWidth;
 
-        return { slideshowLength: slideIds.length }
+                    const slideSize = slide.getState( 'parsingData.slideSize' );
+                    const slideContainer = document.createElement( 'div' );
+                    slideContainer.className = 'slide-viewer';
+                    slideContainer.id = `slide-viewer-${ newValue }`;
+                    slideContainer.style.aspectRatio = `${ slideSize.width } / ${ slideSize.height }`;
+                    slideContainer.style.width = `${ availableWidth - 16 }px`;
+                    slideContainer.style.height = `${ availableWidth - 16 / ( slideSize.width / slideSize.height ) }px`;
+                    const currentSlide = slideViewContainer.firstElementChild
+                    if ( currentSlide ) {
+                        currentSlide.replaceWith( slideContainer );
+                    } else {
+                        slideViewContainer.appendChild( slideContainer );
+                    }
+
+                    slide.dispatch( { type: actions.set.slide.data, payload: { 'parsingData.slideContainer': slideContainer.id } } );
+                    const { parsingData, renderingData } = slide.getState( 'parsingData', 'renderingData' );
+                    const slideHandler = new SlideHandler( { ...parsingData, ...staticParsingData } );
+                    slideHandler.render( renderingData );
+                }
+            }
+        } );
+        presentationStore.dispatch( { type: actions.set.presentation.data, payload: { activeSlide: slideIds[ 0 ] } } );
+        
+        const activeSlide = presentationStore.getState( 'activeSlide' );
+
+        return { slideshowLength: slideIds.length, activeSlide }
 
     } catch ( error ) {
         console.error( 'Error parsing the presentation:', error );
