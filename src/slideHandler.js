@@ -190,8 +190,8 @@ export class SlideHandler {
         return shapes;
     }
 
-    async renderShapeTree(shapes) {
-        shapes.forEach(async (shapeData, index) => {
+    async renderShapeTree(shapes = []) {
+        for (const [index, shapeData] of shapes.entries()) {
             const id = `${this.slideId}.shapes.${index}`;
             switch (shapeData.type) {
                 case 'shape':
@@ -210,7 +210,7 @@ export class SlideHandler {
                     await this.renderPicture(shapeData, id);
                     break;
             }
-        });
+        };
     }
 
     async parseShape(shapeNode, listCounters, parentMatrix, slideLevelVisibility) {
@@ -460,7 +460,8 @@ export class SlideHandler {
 
         if (picData.image) {
             const imageEl = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-            imageEl.setAttribute('href', picData.image.href);
+            imageEl.setAttribute( 'href', picData.image.href );
+            imageEl.setAttribute( 'id', `${id}.image` );
 
             if (picData.image.srcRect) {
                 const img = await createImage(picData.image.href);
@@ -571,8 +572,8 @@ export class SlideHandler {
         this.renderer.setTransform(matrix, id);
 
         for (const [index, cell] of tableData.cells.entries()) {
-            const cellId = `${id}.cell.${index}`;
-            this.renderer.drawRect(cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent' });
+            const cellId = `${id}.cells.${index}`;
+            this.renderer.drawRect(cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent', id: cellId });
 
             const { x, y, width, height } = cell.pos;
             if (cell.borders.top) this.renderer.drawLine(x, y, x + width, y, { stroke: cell.borders.top });

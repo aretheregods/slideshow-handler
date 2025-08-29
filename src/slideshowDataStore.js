@@ -29,10 +29,9 @@ function presentationReducer( state = initialPresentationState, action ) {
 }
 
 const initialSlideState = {
-    slideNum: -1,
-    shapes: [],
-    background: null,
-    slideContext: null,
+    id: '',
+    parsingData: null,
+    renderingData: null
 };
 
 export const presentationStore = new ReactiveStore( {

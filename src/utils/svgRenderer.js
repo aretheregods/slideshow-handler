@@ -56,9 +56,12 @@ export class SvgRenderer {
         // In SVG, effects are applied per-element, so a global reset is not needed.
     }
 
-    _createGradient(fillData) {
+    _createGradient(fillData, id) {
         const gradientId = `grad-${this.defs.children.length}`;
-        const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+        const gradient = document.createElementNS( 'http://www.w3.org/2000/svg', 'linearGradient' );
+        if ( id ) {
+            gradient.setAttribute( 'id', options.id );
+        }
         gradient.setAttribute('id', gradientId);
         gradient.setAttribute('x1', '0%');
         gradient.setAttribute('y1', '0%');
@@ -115,7 +118,10 @@ export class SvgRenderer {
      * @param {object} [options] - The rendering options.
      */
     drawRect(x, y, width, height, options = {}) {
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        const rect = document.createElementNS( 'http://www.w3.org/2000/svg', 'rect' );
+        if ( options.id ) {
+            rect.setAttribute( 'id', cellId );
+        }
 
         const strokeWidth = (options.stroke && options.stroke.width > 0) ? options.stroke.width : 0;
 
@@ -180,7 +186,10 @@ export class SvgRenderer {
      * @param {object} [options] - The rendering options.
      */
     drawEllipse(cx, cy, rx, ry, options = {}) {
-        const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+        const ellipse = document.createElementNS( 'http://www.w3.org/2000/svg', 'ellipse' );
+        if ( options.id ) {
+            ellipse.setAttribute( 'id', options.id );
+        }
         ellipse.setAttribute('cx', cx);
         ellipse.setAttribute('cy', cy);
         ellipse.setAttribute('rx', rx);
@@ -319,7 +328,10 @@ export class SvgRenderer {
             if (options.stroke.cmpd && options.stroke.cmpd !== 'sng') {
                 this._drawCompoundLine(x1, y1, x2, y2, options);
             } else {
-                 const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                const line = document.createElementNS( 'http://www.w3.org/2000/svg', 'line' );
+                if ( options.id ) {
+                    line.setAttribute( 'id', options.id );
+                }
                 line.setAttribute('x1', x1);
                 line.setAttribute('y1', y1);
                 line.setAttribute('x2', x2);

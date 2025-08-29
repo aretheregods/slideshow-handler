@@ -182,7 +182,7 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
 
             slideStores.set( slideId, createSlideStore( {
                 id: slideId,
-                state: { parsingData }
+                state: { id: slideId, parsingData }
             } ) );
 
             const pptxHandler = new SlideHandler( { ...parsingData, ...staticParsingData } );
@@ -190,7 +190,7 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
 
             const slide = slideStores.get( slideId );
             slide.dispatch( { type: actions.set.slide.data, payload: { renderingData } } );
-            console.log({ slide: slide.getState( 'renderingData' ) })
+            console.log({ slide: slide.getState() })
 
             if ( presentationStore.getState( 'status' ) !== 'rendering' ) {
                 presentationStore.dispatch( { type: actions.start.rendering } );
