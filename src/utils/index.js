@@ -13,4 +13,3 @@ export { getSlideOrder } from './getSlideOrder.js';
 export { getSlideSize } from './getSlideSize.js';
 export * from './pptxParser.js';
 export * from './drawing.js';
-export * from './schemaTransformer.js';

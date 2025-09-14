@@ -1,35 +1,7 @@
-import { EMU_PER_PIXEL } from "../constants";
-
 /**
  * @module schemaTransformer
  * @description A module for transforming parsed data into the new JSON schema format.
  */
-
-/**
- * Transforms the parsed presentation data into the new JSON schema format.
- * @param {Object} presentationData - The data parsed by pptxParser.js.
- * @param {string} presentationData.title
- * @param {string} presentationData.author
- * @param {Object} presentationData.theme
- * @param {Object[]} slidesData
- * @returns {import('../schemas/presentation.js').Presentation} The transformed presentation data.
- */
-export function transformPresentation(currentPresentation, newData) {
-    const newPresentation = { ...currentPresentation };
-
-    if (newData.theme) {
-        newPresentation.themeSettings = {
-            backgroundColor: newData.theme.colorScheme?.bg1 || '#FFFFFF',
-            defaultFont: newData.theme.fontScheme?.minor || 'Calibri',
-        };
-    }
-
-    if (newData.slides) {
-        newPresentation.slides = newData.slides;
-    }
-
-    return newPresentation;
-}
 
 /**
  * Transforms a slide into the new JSON schema format.
@@ -40,7 +12,6 @@ export function transformSlide(slideData) {
     return {
         id: slideData.slideId,
         slideNumber: slideData.slideNum,
-        notes: '', // TODO: Extract notes if available
         shapes: slideData.shapes.map(transformShape),
     };
 }
@@ -55,10 +26,10 @@ function transformShape(shapeData) {
 
     const baseShape = {
         id: `shape-${Math.random().toString(36).slice(2, 11)}`,
-        x: pos.x / EMU_PER_PIXEL,
-        y: pos.y / EMU_PER_PIXEL,
-        width: pos.width / EMU_PER_PIXEL,
-        height: pos.height / EMU_PER_PIXEL,
+        x: pos.x,
+        y: pos.y,
+        width: pos.width,
+        height: pos.height,
         rotation: 0,
         transform: shapeData.transform,
         fillColor: shapeProps.fill?.color || '#FFFFFF00',
@@ -91,26 +62,10 @@ function transformShape(shapeData) {
         };
     }
 
-    if (type === 'table') {
-        return {
-            ...baseShape,
-            type: 'table',
-            rows: shapeData.rows,
-        };
-    }
-
-    if (type === 'chart') {
-        return {
-            ...baseShape,
-            type: 'chart',
-            chartData: shapeData.chartData,
-        };
-    }
-
     return {
         ...baseShape,
         type: 'shape',
-        shapeType: shapeProps.geometry?.preset || 'rectangle',
+        shapeType: shapeProps.geometry?.preset || 'rect',
         text: null,
     };
 }

@@ -19,13 +19,7 @@ describe('presentationStore', () => {
   });
 
   it('should have the correct initial state', () => {
-    const state = presentationStore.getState();
-    expect(state.status).toBe('idle');
-    expect(state.activeSlide).toBe(0);
-    expect(state.presentation).toBeDefined();
-    expect(state.presentation.slides).toEqual([]);
-    expect(state.theme).toBeNull();
-    expect(state.error).toBeNull();
+    expect(presentationStore.getState()).toEqual(initialPresentationState);
   });
 
   it('should handle start.parsing action', () => {

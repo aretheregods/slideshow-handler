@@ -51,7 +51,8 @@ describe('schemaTransformer', () => {
                         type: 'picture',
                         pos: { x: 50, y: 60, width: 200, height: 150 },
                         shapeProps: {},
-                        image: { href: 'image.png' },
+                        image: { href: 'image.png', srcRect: { l: 0.1, r: 0.1, t: 0.1, b: 0.1 } },
+                        altText: 'An image',
                     }
                 ],
             };
@@ -60,6 +61,8 @@ describe('schemaTransformer', () => {
             const shape = transformed.shapes[0];
             expect(shape.type).toBe('image');
             expect(shape.src).toBe('image.png');
+            expect(shape.altText).toBe('An image');
+            expect(shape.srcRect).toEqual({ l: 0.1, r: 0.1, t: 0.1, b: 0.1 });
         });
 
         it('should transform a slide with a basic shape', () => {
@@ -73,6 +76,7 @@ describe('schemaTransformer', () => {
                         shapeProps: {
                             geometry: { preset: 'oval' },
                         },
+                        transform: 'matrix(0.866 -0.5 0.5 0.866 0 0)',
                     }
                 ],
             };
@@ -81,6 +85,7 @@ describe('schemaTransformer', () => {
             const shape = transformed.shapes[0];
             expect(shape.type).toBe('shape');
             expect(shape.shapeType).toBe('oval');
+            expect(shape.transform).toBe('matrix(0.866 -0.5 0.5 0.866 0 0)');
         });
 
         it('should handle slides with no shapes', () => {
@@ -92,25 +97,6 @@ describe('schemaTransformer', () => {
 
             const transformed = transformSlide(slideData);
             expect(transformed.shapes.length).toBe(0);
-        });
-
-        it('should pass the transform property', () => {
-            const slideData = {
-                slideId: 'slide-5',
-                slideNum: 5,
-                shapes: [
-                    {
-                        type: 'shape',
-                        pos: { x: 10, y: 20, width: 300, height: 100 },
-                        shapeProps: {},
-                        transform: 'matrix(0.866 -0.5 0.5 0.866 0 0)',
-                    }
-                ],
-            };
-
-            const transformed = transformSlide(slideData);
-            const shape = transformed.shapes[0];
-            expect(shape.transform).toBe('matrix(0.866 -0.5 0.5 0.866 0 0)');
         });
     });
 });

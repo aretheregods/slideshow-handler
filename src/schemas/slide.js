@@ -1,4 +1,4 @@
-import { shapeDefinitions } from './shape.js';
+import { shapeSchema } from './shape.js';
 
 /**
  * @typedef {import('./shape.js').Shape} Shape
@@ -13,32 +13,21 @@ import { shapeDefinitions } from './shape.js';
  */
 
 export const slideSchema = {
-    $schema: 'http://json-schema.org/draft-07/schema#',
-    title: 'Slide',
-    description: 'A single slide in a presentation.',
-    type: 'object',
-    definitions: {
-        shape: shapeDefinitions,
-    },
-    properties: {
-        id: {
-            type: 'string',
-            description: 'A unique identifier for the slide.',
-        },
-        slideNumber: {
-            type: 'integer',
-            description: 'The number of the slide.',
-        },
-        notes: {
-            type: 'string',
-            description: 'Speaker notes for the slide.',
-        },
-        shapes: {
-            type: 'array',
-            items: {
-                $ref: '#/definitions/shape'
-            }
-        }
-    },
-    required: ['id', 'slideNumber', 'shapes'],
-};
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Slide",
+  "description": "A single slide in a presentation.",
+  "type": "object",
+  "definitions": {
+    "shape": shapeSchema
+  },
+  "properties": {
+    "id": { "type": "string" },
+    "slideNumber": { "type": "integer" },
+    "notes": { "type": "string" },
+    "shapes": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/shape" }
+    }
+  },
+  "required": ["id", "slideNumber", "shapes"]
+}
