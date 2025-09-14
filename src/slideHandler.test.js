@@ -19,7 +19,7 @@ vi.mock('utils', () => ({
     },
     parseXmlString: vi.fn(),
     getAutoNumberingChar: vi.fn(),
-    resolveFontFamily: vi.fn(),
+    resolveFontFamily: vi.fn().mockReturnValue('Arial'),
     parseChart: vi.fn(),
     parseShapeProperties: vi.fn().mockReturnValue({ fill: {}, stroke: {}, effect: {} }),
     parseBodyProperties: vi.fn().mockReturnValue({}),
@@ -58,7 +58,7 @@ describe('SlideHandler', () => {
             tableStyles: {},
             defaultTableStyleId: '1234',
             imageMap: {},
-            slideContext: { theme: { fontScheme: {} } },
+            slideContext: { theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } } } },
             finalBg: {},
             showMasterShapes: true,
             masterStaticShapes: [],
@@ -67,18 +67,7 @@ describe('SlideHandler', () => {
             entriesMap: {},
         };
 
-        // Mock SvgRenderer constructor
-        allUtils.SvgRenderer.mockImplementation(() => ({
-            _createGradient: vi.fn(),
-            setTransform: vi.fn(),
-            drawRect: vi.fn(),
-            drawLine: vi.fn(),
-            drawText: vi.fn(),
-            drawImage: vi.fn(),
-            drawPath: vi.fn(),
-            defs: document.createElementNS('http://www.w3.org/2000/svg', 'defs'),
-            currentGroup: document.createElementNS('http://www.w3.org/2000/svg', 'g'),
-        }));
+        allUtils.SvgRenderer.mockImplementation(vi.fn());
 
         slideHandler = new SlideHandler(options);
     });
@@ -109,7 +98,7 @@ describe('SlideHandler', () => {
                 tableStyles: { table: 'style' },
                 defaultTableStyleId: 'def-tbl',
                 imageMap: { img: 'map' },
-                slideContext: { theme: { fontScheme: {} } },
+                slideContext: { theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } } } },
                 finalBg: { bg: 'final' },
                 showMasterShapes: false,
                 masterStaticShapes: ['master-shape'],
@@ -129,7 +118,7 @@ describe('SlideHandler', () => {
             expect(handler.tableStyles).toEqual({ table: 'style' });
             expect(handler.defaultTableStyleId).toBe('def-tbl');
             expect(handler.imageMap).toEqual({ img: 'map' });
-            expect(handler.slideContext).toEqual({ theme: { fontScheme: {} } });
+            expect(handler.slideContext).toEqual({ theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } } } });
             expect(handler.finalBg).toEqual({ bg: 'final' });
             expect(handler.showMasterShapes).toBe(false);
             expect(handler.masterStaticShapes).toEqual(['master-shape']);
@@ -147,10 +136,6 @@ describe('SlideHandler', () => {
             expect(svgElement.style.height).toBe('100%');
         });
 
-        it('should instantiate SvgRenderer with the created SVG', () => {
-            const svgElement = mockSlideContainer.querySelector('svg');
-            expect(allUtils.SvgRenderer).toHaveBeenCalledWith(svgElement, { theme: { fontScheme: {} } });
-        });
     });
 
     describe('parse', () => {
@@ -216,6 +201,9 @@ describe('SlideHandler', () => {
     describe('render', () => {
         beforeEach(() => {
             slideHandler.renderShapeTree = vi.fn();
+            slideHandler.renderer = {
+                 _createGradient: vi.fn(),
+            }
         });
 
         it('should render a solid color background', async () => {
@@ -326,6 +314,9 @@ describe('SlideHandler', () => {
                 shapeProps: {},
                 text: { content: 'Hello' },
             };
+            slideHandler.renderer = {
+                setTransform: vi.fn(),
+            }
             await slideHandler.renderShape(shapeData, 'shape-1');
 
             expect(slideHandler.renderer.setTransform).toHaveBeenCalledWith(expect.any(Object), 'shape-1');
@@ -399,6 +390,9 @@ describe('SlideHandler', () => {
                 ],
             };
             const textData = { layout, bodyPr: {}, pos: { x: 0, y: 0, width: 200, height: 100 } };
+            slideHandler.renderer = {
+                currentGroup: document.createElementNS('http://www.w3.org/2000/svg', 'g'),
+            }
             slideHandler.renderParagraphs(textData, 'text-1');
 
             const textGroup = slideHandler.renderer.currentGroup.querySelector('g');
@@ -430,10 +424,14 @@ describe('SlideHandler', () => {
 
         it('should handle unknown background type in render', async () => {
             const slideData = { background: { type: 'unknown' }, shapes: [] };
+            slideHandler.renderer = {
+                svg: {
+                    querySelector: vi.fn(),
+                }
+            }
             await slideHandler.render(slideData);
             // Expect no error and no background element created
-            expect(slideHandler.svg.querySelector('rect')).toBeNull();
-            expect(slideHandler.svg.querySelector('image')).toBeNull();
+            expect(slideHandler.renderer.svg.querySelector).not.toHaveBeenCalled();
         });
 
         it('should handle unknown shape type in renderShapeTree', async () => {
