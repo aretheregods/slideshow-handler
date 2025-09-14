@@ -16,6 +16,18 @@ import { PML_NS, slideshowProcessingActions as actions } from 'constants';
 import { SlideHandler } from './slideHandler.js';
 import { createSlideStore, presentationStore, slideStores } from './slideshowDataStore.js';
 
+/**
+ * Processes a presentation file, parses its contents, and renders the slides.
+ * This function orchestrates the entire workflow from file reading to rendering,
+ * including handling presentation metadata, slide order, themes, and slide-specific content.
+ *
+ * @param {object} options - The options for handling the slideshow.
+ * @param {File} options.file - The presentation file to process (e.g., a .pptx file).
+ * @param {string} options.slideViewerContainer - The ID of the DOM element to render the active slide into.
+ * @param {string} options.slideSelectorContainer - The ID of the DOM element to render the slide thumbnails into.
+ * @returns {Promise<object>} A promise that resolves with an object containing the slideshow length, the active slide ID, and an unsubscribe function for the presentation store.
+ * @throws {Error} If the presentation file cannot be parsed.
+ */
 export async function slideshowHandler( { file, slideViewerContainer, slideSelectorContainer } ) {
 	const slideHandlers = {};
 	slideStores.clear();
