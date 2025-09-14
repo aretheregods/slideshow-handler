@@ -3,7 +3,7 @@ import { imageSchema } from './image.js';
 import { geometrySchema } from './geometry.js';
 import { tableSchema } from './table.js';
 import { connectorSchema } from './connector.js';
-import { fillSchema, borderSchema, shadowSchema } from './definitions.js';
+import { fillSchema, borderSchema, shadowSchema, effectSchema, transform2DSchema, transform3DSchema } from './definitions.js';
 
 /**
  * @typedef {import('./textbox.js').Textbox} Textbox
@@ -14,6 +14,9 @@ import { fillSchema, borderSchema, shadowSchema } from './definitions.js';
  * @typedef {import('./definitions.js').Fill} Fill
  * @typedef {import('./definitions.js').Border} Border
  * @typedef {import('./definitions.js').Shadow} Shadow
+ * @typedef {import('./definitions.js').Effect} Effect
+ * @typedef {import('./definitions.js').Transform2D} Transform2D
+ * @typedef {import('./definitions.js').Transform3D} Transform3D
  */
 
 /**
@@ -23,10 +26,12 @@ import { fillSchema, borderSchema, shadowSchema } from './definitions.js';
  * @property {number} y - The y-coordinate of the shape's top-left corner.
  * @property {number} width - The width of the shape.
  * @property {number} height - The height of the shape.
- * @property {number} [rotation] - The rotation angle in degrees.
+ * @property {Transform2D} [transform2D] - 2D transformations for the shape.
+ * @property {Transform3D} [transform3D] - 3D transformations for the shape.
  * @property {Fill} [fill] - The fill of the shape.
  * @property {Border} [border] - The border of the shape.
  * @property {Shadow} [shadow] - The shadow of the shape.
+ * @property {Effect[]} [effects] - An array of effects applied to the shape.
  */
 const baseShapeSchema = {
     type: 'object',
@@ -36,10 +41,15 @@ const baseShapeSchema = {
         y: { type: 'number' },
         width: { type: 'number' },
         height: { type: 'number' },
-        rotation: { type: 'number' },
+        transform2D: { $ref: '#/definitions/transform2D' },
+        transform3D: { $ref: '#/definitions/transform3D' },
         fill: { $ref: '#/definitions/fill' },
         border: { $ref: '#/definitions/border' },
         shadow: { $ref: '#/definitions/shadow' },
+        effects: {
+            type: 'array',
+            items: { $ref: '#/definitions/effect' },
+        },
     },
     required: ['id', 'x', 'y', 'width', 'height'],
 };
@@ -61,6 +71,9 @@ export const shapeSchema = {
         fill: fillSchema,
         border: borderSchema,
         shadow: shadowSchema,
+        effect: effectSchema,
+        transform2D: transform2DSchema,
+        transform3D: transform3DSchema,
     },
     "allOf": [
         baseShapeSchema,

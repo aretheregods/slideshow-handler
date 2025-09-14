@@ -7,6 +7,7 @@ describe('schemaTransformer', () => {
             const slideData = {
                 slideId: 'slide-1',
                 slideNum: 1,
+                background: { fill: { type: 'solid', color: { value: '#FFFFFF' } } },
                 shapes: [
                     {
                         type: 'shape',
@@ -62,6 +63,7 @@ describe('schemaTransformer', () => {
             const slideData = {
                 slideId: 'slide-2',
                 slideNum: 2,
+                background: { fill: { type: 'solid', color: { value: '#FFFFFF' } } },
                 shapes: [
                     {
                         type: 'picture',
@@ -83,6 +85,7 @@ describe('schemaTransformer', () => {
             const slideData = {
                 slideId: 'slide-3',
                 slideNum: 3,
+                background: { fill: { type: 'solid', color: { value: '#FFFFFF' } } },
                 shapes: [
                     {
                         type: 'shape',
@@ -104,6 +107,7 @@ describe('schemaTransformer', () => {
             const slideData = {
                 slideId: 'slide-4',
                 slideNum: 4,
+                background: { fill: { type: 'solid', color: { value: '#FFFFFF' } } },
                 shapes: [],
             };
 
@@ -115,6 +119,7 @@ describe('schemaTransformer', () => {
             const slideData = {
                 slideId: 'slide-5',
                 slideNum: 5,
+                background: { fill: { type: 'solid', color: { value: '#FFFFFF' } } },
                 shapes: [
                     {
                         type: 'shape',
@@ -143,7 +148,7 @@ describe('schemaTransformer', () => {
             const slideData = {
                 slideId: 'slide-6',
                 slideNum: 6,
-                background: { type: 'solid', color: { value: '#0000FF' } },
+                background: { fill: { type: 'solid', color: { value: '#0000FF' } } },
                 shapes: [
                     {
                         type: 'shape',
@@ -171,6 +176,7 @@ describe('schemaTransformer', () => {
             const slideData = {
                 slideId: 'slide-7',
                 slideNum: 7,
+                background: { fill: { type: 'solid', color: { value: '#FFFFFF' } } },
                 shapes: [
                     {
                         type: 'shape',
@@ -204,6 +210,88 @@ describe('schemaTransformer', () => {
             expect(shape.custom.paths[0].commands.length).toBe(3);
             expect(shape.custom.paths[0].commands[1].type).toBe('lnTo');
             expect(shape.custom.paths[0].commands[1].points[0].y).toBe(100);
+        });
+
+        it('should transform a shape with effects', () => {
+            const slideData = {
+                slideId: 'slide-8',
+                slideNum: 8,
+                background: { fill: { type: 'solid', color: { value: '#FFFFFF' } } },
+                shapes: [
+                    {
+                        type: 'shape',
+                        pos: { x: 10, y: 20, width: 300, height: 100 },
+                        shapeProps: {
+                            effects: [
+                                { type: 'glow', radius: 10, color: { value: '#FFFF00' } },
+                                { type: 'reflection', distance: 5, opacity: 0.5, blur: 2 },
+                            ],
+                        },
+                    }
+                ],
+            };
+
+            const transformed = transformSlide(slideData);
+            const shape = transformed.shapes[0];
+            expect(shape.effects.length).toBe(2);
+            expect(shape.effects[0].type).toBe('glow');
+            expect(shape.effects[1].type).toBe('reflection');
+        });
+
+        it('should transform a shape with 2D and 3D transforms', () => {
+            const slideData = {
+                slideId: 'slide-9',
+                slideNum: 9,
+                background: { fill: { type: 'solid', color: { value: '#FFFFFF' } } },
+                shapes: [
+                    {
+                        type: 'shape',
+                        pos: { x: 10, y: 20, width: 300, height: 100 },
+                        shapeProps: {},
+                        transform: { rot: 45, flipH: true, flipV: false, rotX: 30, rotY: 60, perspective: 1000 },
+                    }
+                ],
+            };
+
+            const transformed = transformSlide(slideData);
+            const shape = transformed.shapes[0];
+            expect(shape.transform2D.rotation).toBe(45);
+            expect(shape.transform2D.flipH).toBe(true);
+            expect(shape.transform3D.rotationX).toBe(30);
+        });
+
+        it('should transform a textbox with bullets and numbering', () => {
+            const slideData = {
+                slideId: 'slide-10',
+                slideNum: 10,
+                background: { fill: { type: 'solid', color: { value: '#FFFFFF' } } },
+                shapes: [
+                    {
+                        type: 'shape',
+                        pos: { x: 10, y: 20, width: 300, height: 100 },
+                        shapeProps: {},
+                        text: {
+                            layout: {
+                                lines: [
+                                    {
+                                        runs: [{ text: 'Item 1' }],
+                                        paragraphProps: { bullets: { type: 'auto' } },
+                                    },
+                                    {
+                                        runs: [{ text: 'Item 2' }],
+                                        paragraphProps: { numbering: { type: 'arabic', start: 2 } },
+                                    }
+                                ],
+                            },
+                        },
+                    }
+                ],
+            };
+
+            const transformed = transformSlide(slideData);
+            const shape = transformed.shapes[0];
+            expect(shape.content[0].bullets.type).toBe('auto');
+            expect(shape.content[1].numbering.type).toBe('arabic');
         });
     });
 });

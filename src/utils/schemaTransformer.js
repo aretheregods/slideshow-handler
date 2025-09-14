@@ -3,6 +3,18 @@
  * @description A module for transforming parsed data into the new JSON schema format.
  */
 
+function transformColor(colorData) {
+    if (!colorData) {
+        return undefined;
+    }
+
+    return {
+        type: colorData.type || 'srgb',
+        value: colorData.value,
+        alpha: colorData.alpha,
+    };
+}
+
 function transformFill(fillData) {
     if (!fillData) {
         return undefined;
@@ -11,10 +23,7 @@ function transformFill(fillData) {
     if (fillData.type === 'solid') {
         return {
             type: 'solid',
-            color: {
-                type: fillData.color.type || 'srgb',
-                value: fillData.color.value,
-            }
+            color: transformColor(fillData.color),
         };
     }
 
@@ -24,10 +33,7 @@ function transformFill(fillData) {
             gradientType: fillData.gradientType || 'linear',
             angle: fillData.angle || 0,
             stops: fillData.stops.map(stop => ({
-                color: {
-                    type: stop.color.type || 'srgb',
-                    value: stop.color.value,
-                },
+                color: transformColor(stop.color),
                 position: stop.position,
             })),
         };
@@ -42,6 +48,21 @@ function transformFill(fillData) {
         };
     }
 
+    if (fillData.type === 'pattern') {
+        return {
+            type: 'pattern',
+            patternType: fillData.patternType,
+            fgColor: transformColor(fillData.fgColor),
+            bgColor: transformColor(fillData.bgColor),
+        };
+    }
+
+    if (fillData.type === 'group') {
+        return {
+            type: 'group',
+        };
+    }
+
     // Default to solid fill if type is unknown or not provided, assuming fillData is a color string
     if (typeof fillData.color === 'string') {
         return {
@@ -53,9 +74,127 @@ function transformFill(fillData) {
         };
     }
 
-
     return undefined;
 }
+
+function transformBorder(borderData) {
+    if (!borderData) {
+        return undefined;
+    }
+
+    return {
+        color: transformColor(borderData.color),
+        width: borderData.width || 1,
+        style: borderData.style || 'solid',
+        cap: borderData.cap,
+        join: borderData.join,
+    };
+}
+
+function transformShadow(shadowData) {
+    if (!shadowData) {
+        return undefined;
+    }
+
+    return {
+        color: transformColor(shadowData.color),
+        blur: shadowData.blur,
+        offsetX: shadowData.offsetX,
+        offsetY: shadowData.offsetY,
+        angle: shadowData.angle,
+        distance: shadowData.distance,
+    };
+}
+
+function transformEffects(effectsData) {
+    if (!effectsData) {
+        return undefined;
+    }
+
+    return effectsData.map(effect => {
+        switch (effect.type) {
+            case 'reflection':
+                return {
+                    type: 'reflection',
+                    distance: effect.distance,
+                    opacity: effect.opacity,
+                    blur: effect.blur,
+                };
+            case 'blur':
+                return {
+                    type: 'blur',
+                    radius: effect.radius,
+                };
+            case 'glow':
+                return {
+                    type: 'glow',
+                    radius: effect.radius,
+                    color: transformColor(effect.color),
+                };
+            case 'softEdge':
+                return {
+                    type: 'softEdge',
+                    radius: effect.radius,
+                };
+            default:
+                return effect;
+        }
+    });
+}
+
+function transform2D(transformData) {
+    if (!transformData) {
+        return undefined;
+    }
+
+    return {
+        rotation: transformData.rot,
+        flipH: transformData.flipH,
+        flipV: transformData.flipV,
+    };
+}
+
+function transform3D(transformData) {
+    if (!transformData) {
+        return undefined;
+    }
+
+    return {
+        rotationX: transformData.rotX,
+        rotationY: transformData.rotY,
+        perspective: transformData.perspective,
+    };
+}
+
+function transformParagraph(paragraphData) {
+    if (!paragraphData) {
+        return undefined;
+    }
+
+    return {
+        runs: paragraphData.runs.map(run => ({
+            text: run.text,
+            fontFamily: run.font?.family,
+            fontSize: run.font?.size,
+            fontColor: run.color ? { type: 'srgb', value: run.color } : undefined,
+            bold: run.font?.weight === 'bold',
+            italic: run.font?.style === 'italic',
+            underline: run.underline || 'none',
+            strikethrough: run.strikethrough || 'none',
+            capitalization: run.font?.caps || 'none',
+            baseline: run.font?.baseline,
+            characterSpacing: run.font?.spacing,
+            highlight: run.highlight ? { type: 'srgb', value: run.highlight } : undefined,
+            hyperlink: run.hyperlink,
+        })),
+        alignment: paragraphData.paragraphProps?.align || 'left',
+        indent: paragraphData.paragraphProps?.indent,
+        lineSpacing: paragraphData.paragraphProps?.lineSpacing,
+        bullets: paragraphData.paragraphProps?.bullets,
+        numbering: paragraphData.paragraphProps?.numbering,
+    };
+}
+
 
 /**
  * Transforms a slide into the new JSON schema format.
@@ -66,10 +205,16 @@ export function transformSlide(slideData) {
     return {
         id: slideData.slideId,
         slideNumber: slideData.slideNum,
+        notes: slideData.notes,
         shapes: slideData.shapes.map(transformShape),
-        background: {
-            fill: transformFill(slideData.background)
-        }
+        background: slideData.background ? {
+            fill: transformFill(slideData.background.fill),
+            colorMap: slideData.background.colorMap,
+        } : undefined,
+        transition: slideData.transition ? {
+            type: slideData.transition.type,
+            duration: slideData.transition.duration,
+        } : undefined,
     };
 }
 
@@ -106,7 +251,7 @@ function transformCustomGeometry(geometryData) {
  * @returns {import('../schemas/shape.js').Shape} The transformed shape data.
  */
 function transformShape(shapeData) {
-    const { pos, shapeProps, text, type } = shapeData;
+    const { pos, shapeProps, text, type, transform } = shapeData;
 
     const baseShape = {
         id: `shape-${Math.random().toString(36).slice(2, 11)}`,
@@ -114,37 +259,19 @@ function transformShape(shapeData) {
         y: pos.y,
         width: pos.width,
         height: pos.height,
-        rotation: shapeData.transform ? 0 : undefined, // Simplified, would need proper transform parsing
+        transform2D: transform2D(transform),
+        transform3D: transform3D(transform),
         fill: transformFill(shapeProps.fill),
-        border: shapeProps.stroke ? {
-            color: { type: 'srgb', value: shapeProps.stroke.color },
-            width: shapeProps.stroke.width || 1,
-            style: 'solid' // Assuming solid, as dash style not in sample data
-        } : undefined,
+        border: transformBorder(shapeProps.stroke),
+        shadow: transformShadow(shapeProps.shadow),
+        effects: transformEffects(shapeProps.effects),
     };
 
     if (text) {
         return {
             ...baseShape,
             type: 'textbox',
-            content: text.layout?.lines.map(line => ({
-                runs: line.runs.map(run => ({
-                    text: run.text,
-                    fontFamily: run.font?.family,
-                    fontSize: run.font?.size,
-                    fontColor: run.color ? { type: 'srgb', value: run.color } : undefined,
-                    bold: run.font?.weight === 'bold',
-                    italic: run.font?.style === 'italic',
-                    underline: run.underline || 'none',
-                    strikethrough: run.strikethrough || 'none',
-                    capitalization: run.font?.caps || 'none',
-                    baseline: run.font?.baseline,
-                    characterSpacing: run.font?.spacing,
-                    highlight: run.highlight ? { type: 'srgb', value: run.highlight } : undefined,
-                    hyperlink: run.hyperlink,
-                })),
-                alignment: line.paragraphProps.align || 'left',
-            })) || [],
+            content: text.layout?.lines.map(transformParagraph) || [],
         };
     }
 
@@ -168,6 +295,7 @@ function transformShape(shapeData) {
             ...baseShape,
             type: 'shape',
             shapeType: shapeProps.geometry.preset,
+            adjustments: shapeProps.geometry.adjustments,
         };
     }
 
