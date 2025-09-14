@@ -1,4 +1,4 @@
-import { DML_NS } from 'constants';
+import { DML_NS } from '../constants.js';
 
 /**
  * @class ColorParser
