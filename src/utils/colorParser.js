@@ -1,6 +1,15 @@
 import { DML_NS } from 'constants';
 
+/**
+ * @class ColorParser
+ * @description A utility class for parsing and manipulating colors.
+ */
 export class ColorParser {
+    /**
+     * Converts a hex color string to an RGB object.
+     * @param {string} hex - The hex color string.
+     * @returns {{r: number, g: number, b: number}|null} The RGB object, or null if the hex is invalid.
+     */
     static hexToRgb(hex) {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
         return result ? {
@@ -10,10 +19,23 @@ export class ColorParser {
         } : null;
     }
 
+    /**
+     * Converts an RGB color to a hex string.
+     * @param {number} r - The red component.
+     * @param {number} g - The green component.
+     * @param {number} b - The blue component.
+     * @returns {string} The hex color string.
+     */
     static rgbToHex(r, g, b) {
         return "#" + ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b)).toString(16).slice(1).toUpperCase();
     }
 
+    /**
+     * Applies a tint to a hex color.
+     * @param {string} hex - The hex color string.
+     * @param {number} tint - The tint value (0-100000).
+     * @returns {string} The tinted hex color string.
+     */
     static applyTint(hex, tint) {
         const base = ColorParser.hexToRgb(hex);
         if (!base) return hex;
@@ -24,6 +46,12 @@ export class ColorParser {
         return ColorParser.rgbToHex(r, g, b);
     }
 
+    /**
+     * Applies a shade to a hex color.
+     * @param {string} hex - The hex color string.
+     * @param {number} shade - The shade value (0-100000).
+     * @returns {string} The shaded hex color string.
+     */
     static applyShade(hex, shade) {
         const base = ColorParser.hexToRgb(hex);
         if (!base) return hex;
@@ -34,6 +62,13 @@ export class ColorParser {
         return ColorParser.rgbToHex(r, g, b);
     }
 
+    /**
+     * Converts an RGB color to HSL.
+     * @param {number} r - The red component.
+     * @param {number} g - The green component.
+     * @param {number} b - The blue component.
+     * @returns {{h: number, s: number, l: number}} The HSL object.
+     */
     static rgbToHsl(r, g, b) {
         r /= 255, g /= 255, b /= 255;
         const max = Math.max(r, g, b), min = Math.min(r, g, b);
@@ -54,6 +89,13 @@ export class ColorParser {
         return { h, s, l };
     }
 
+    /**
+     * Converts an HSL color to RGB.
+     * @param {number} h - The hue component.
+     * @param {number} s - The saturation component.
+     * @param {number} l - The lightness component.
+     * @returns {{r: number, g: number, b: number}} The RGB object.
+     */
     static hslToRgb(h, s, l) {
         let r, g, b;
         if (s === 0) {
@@ -76,6 +118,13 @@ export class ColorParser {
         return { r: r * 255, g: g * 255, b: b * 255 };
     }
 
+    /**
+     * Applies luminance modifications to a hex color.
+     * @param {string} hex - The hex color string.
+     * @param {number} lumMod - The luminance modification factor.
+     * @param {number} lumOff - The luminance offset factor.
+     * @returns {string} The modified hex color string.
+     */
     static applyLuminance(hex, lumMod, lumOff) {
         const rgb = ColorParser.hexToRgb(hex);
         if (!rgb) return hex;
@@ -97,6 +146,11 @@ export class ColorParser {
         return ColorParser.rgbToHex(newRgb.r, newRgb.g, newRgb.b);
     }
 
+    /**
+     * Parses a color from a color node.
+     * @param {Element} colorNode - The XML node containing the color data.
+     * @returns {Object|null} The parsed color object, or null if invalid.
+     */
     static parseColor(colorNode) {
         if (!colorNode) return null;
 
@@ -132,6 +186,13 @@ export class ColorParser {
         return null;
     }
 
+    /**
+     * Resolves a color object to a final color value (hex or rgba).
+     * @param {Object} colorObj - The color object to resolve.
+     * @param {Object} slideContext - The context of the slide.
+     * @param {boolean} [returnObject=false] - Whether to return a color object instead of a string.
+     * @returns {string|Object|null} The resolved color string or object, or null if the color cannot be resolved.
+     */
     static resolveColor(colorObj, slideContext, returnObject = false) {
         if (!colorObj || !slideContext.theme) {
             return null;

@@ -1,5 +1,11 @@
 import { getNormalizedXmlString } from "utils";
 
+/**
+ * Parses relationship data from a .rels file.
+ * @param {Map<string, Object>} entriesMap - A map of zip file entries.
+ * @param {string} path - The path to the .rels file.
+ * @returns {Promise<Object>} A promise that resolves to an object containing the relationships.
+ */
 export async function getRelationships(entriesMap, path) {
     let xmlString = await getNormalizedXmlString(entriesMap, path);
     if (!xmlString) return {};

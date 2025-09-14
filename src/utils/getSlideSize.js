@@ -1,5 +1,10 @@
 import { EMU_PER_PIXEL } from "constants";
 
+/**
+ * Extracts the slide dimensions from the presentation.xml file.
+ * @param {string} xmlString - The XML content of the presentation.xml file.
+ * @returns {{width: number, height: number}} An object containing the width and height of the slides.
+ */
 export function getSlideSize(xmlString) {
     // Two-step regex for robustness: first find the tag, then find the attributes within it.
     const sldSzTagMatch = xmlString.match(/<[^>:]*:sldSz\s+([^>]+)\/?>/);

@@ -1,10 +1,9 @@
 /**
- * Function to find a placeholder from within an object of placeholders identified by their idx or key or element type
- * 
- * @param {string} phKey - The identifier key of the placeholder to be found 
- * @param {string} phType - The element attribute type of the placeholder
- * @param {Object<string, HTMLElement>} placeholders - A object containing string key identifiers to placeholder elements from an XML document 
- * @returns {string|null} The placeholder found or null if no placeholder was found
+ * Finds a placeholder from a collection of placeholders.
+ * @param {string} phKey - The key of the placeholder (e.g., 'idx_1', 'title').
+ * @param {string} phType - The type of the placeholder (e.g., 'body', 'title').
+ * @param {Object} placeholders - A map of placeholder keys to placeholder data.
+ * @returns {Object|null} The found placeholder data, or null if not found.
  */
 export function findPlaceholder( phKey, phType, placeholders ) {
     if ( !placeholders ) {

@@ -1,9 +1,8 @@
 /**
- * @description Convert integer values to uppercase Roman numerals
- * 
- * @param {integer} num - the integer to be converted to a Roman numeral
- * @returns string - The integer's Roman number string representation in upper case letters
-*/
+ * Converts an integer to a Roman numeral.
+ * @param {number} num - The integer to convert.
+ * @returns {string} The Roman numeral representation of the integer.
+ */
 export function integerToRoman( num ) {
 	const romanValues = {
 		M: 1000,

@@ -1,7 +1,21 @@
 import { DML_NS, PML_NS } from 'constants';
 import { findPlaceholder, Matrix } from 'utils';
 
+/**
+ * @class ShapeBuilder
+ * @description A class for building and rendering shapes.
+ */
 export class ShapeBuilder {
+    /**
+     * Creates an instance of ShapeBuilder.
+     * @param {SvgRenderer} renderer - The SVG renderer.
+     * @param {Object} slideContext - The context of the slide.
+     * @param {Object} imageMap - A map of image relationship IDs to image data.
+     * @param {Object} masterPlaceholders - Placeholders from the slide master.
+     * @param {Object} layoutPlaceholders - Placeholders from the slide layout.
+     * @param {number} emuPerPixel - The conversion factor from EMUs to pixels.
+     * @param {Object} slideSize - The dimensions of the slide.
+     */
     constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, emuPerPixel, slideSize) {
         this.renderer = renderer;
         this.slideContext = slideContext;
@@ -12,6 +26,12 @@ export class ShapeBuilder {
         this.slideSize = slideSize;
     }
 
+    /**
+     * Gets the properties of a shape, including its position and transformation matrix.
+     * @param {Element} shapeNode - The shape's XML node.
+     * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
+     * @returns {{pos: Object, transform: string, flipH: boolean, flipV: boolean}} The shape's properties.
+     */
     getShapeProperties(shapeNode, parentMatrix) {
         const { phKey, phType } = this.#shapeAttr(shapeNode);
         const { pos, localMatrix, flipH, flipV } = this.#localMatrix(phKey, phType, shapeNode);
@@ -23,6 +43,14 @@ export class ShapeBuilder {
         return { pos, transform, flipH, flipV };
     }
 
+    /**
+     * Renders a shape based on its properties.
+     * @param {Object} pos - The position and dimensions of the shape.
+     * @param {Object} shapeProps - The properties of the shape, including geometry, fill, and stroke.
+     * @param {Matrix} matrix - The transformation matrix of the shape.
+     * @param {boolean} flipH - A flag indicating if the shape is flipped horizontally.
+     * @param {boolean} flipV - A flag indicating if the shape is flipped vertically.
+     */
     renderShape(pos, shapeProps, matrix, flipH, flipV) {
         const txBody = shapeProps.txBody; // Assuming txBody is passed in shapeProps if needed
 
@@ -266,6 +294,12 @@ export class ShapeBuilder {
     }
 
 
+    /**
+     * Extracts attributes from a shape node.
+     * @param {Element} shapeNode - The shape's XML node.
+     * @returns {{phKey: string, phType: string, shapeName: string}} The extracted attributes.
+     * @private
+     */
     #shapeAttr( shapeNode ) {
         const nvSpPrNode = shapeNode.getElementsByTagNameNS( PML_NS, 'nvSpPr' )[ 0 ];
         let phKey = null, phType = null, shapeName = 'Unknown';
@@ -292,6 +326,14 @@ export class ShapeBuilder {
         return { phKey, phType, shapeName };
     }
 
+    /**
+     * Calculates the local transformation matrix for a shape.
+     * @param {string} phKey - The placeholder key.
+     * @param {string} phType - The placeholder type.
+     * @param {Element} shapeNode - The shape's XML node.
+     * @returns {{pos: Object, localMatrix: Matrix, flipH: boolean, flipV: boolean}} The local matrix and related properties.
+     * @private
+     */
     #localMatrix( phKey, phType, shapeNode ) {
         let localMatrix = new Matrix();
         let pos;
@@ -346,6 +388,15 @@ export class ShapeBuilder {
         return { pos, localMatrix, flipH, flipV };
     }
 
+    /**
+     * Converts polar coordinates to Cartesian coordinates.
+     * @param {number} centerX - The x-coordinate of the center.
+     * @param {number} centerY - The y-coordinate of the center.
+     * @param {number} radiusX - The horizontal radius.
+     * @param {number} radiusY - The vertical radius.
+     * @param {number} angleInDegrees - The angle in degrees.
+     * @returns {{x: number, y: number}} The Cartesian coordinates.
+     */
     polarToCartesian(centerX, centerY, radiusX, radiusY, angleInDegrees) {
         const angleInRadians = (angleInDegrees - 180) * Math.PI / 180.0;
         return {
@@ -354,6 +405,15 @@ export class ShapeBuilder {
         };
     }
 
+    /**
+     * Converts polar coordinates to Cartesian coordinates, specifically for arcs.
+     * @param {number} centerX - The x-coordinate of the center.
+     * @param {number} centerY - The y-coordinate of the center.
+     * @param {number} radiusX - The horizontal radius.
+     * @param {number} radiusY - The vertical radius.
+     * @param {number} angleInDegrees - The angle in degrees.
+     * @returns {{x: number, y: number}} The Cartesian coordinates.
+     */
     polarToCartesianForArc(centerX, centerY, radiusX, radiusY, angleInDegrees) {
         const angleInRadians = angleInDegrees * Math.PI / 180.0;
         return {
