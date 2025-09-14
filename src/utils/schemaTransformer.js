@@ -63,6 +63,23 @@ function transformFill(fillData) {
         };
     }
 
+    if (fillData.type === 'none') {
+        return {
+            type: 'none',
+        };
+    }
+
+    if (fillData.type === 'blip') {
+        return {
+            type: 'blip',
+            src: fillData.src,
+            dpi: fillData.dpi,
+            rotateWithShape: fillData.rotateWithShape,
+            crop: fillData.crop,
+            effects: transformEffects(fillData.effects),
+        };
+    }
+
     // Default to solid fill if type is unknown or not provided, assuming fillData is a color string
     if (typeof fillData.color === 'string') {
         return {
@@ -162,7 +179,14 @@ function transform3D(transformData) {
     return {
         rotationX: transformData.rotX,
         rotationY: transformData.rotY,
+        rotationZ: transformData.rotZ,
         perspective: transformData.perspective,
+        bevelTop: transformData.bevelTop,
+        bevelBottom: transformData.bevelBottom,
+        extrusionHeight: transformData.extrusionHeight,
+        extrusionColor: transformColor(transformData.extrusionColor),
+        contourColor: transformColor(transformData.contourColor),
+        contourWidth: transformData.contourWidth,
     };
 }
 

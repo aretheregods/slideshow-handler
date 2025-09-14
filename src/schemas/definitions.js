@@ -77,6 +77,55 @@ export const pictureFillSchema = {
 };
 
 /**
+ * @typedef {Object} BlipFill
+ * @property {'blip'} type - The type of fill.
+ * @property {string} src - The source URL of the image.
+ * @property {number} [dpi] - The DPI of the image.
+ * @property {boolean} [rotateWithShape] - Whether the image rotates with the shape.
+ * @property {Object} [crop] - The cropping information for the image.
+ * @property {number} [crop.left] - The left crop percentage.
+ * @property {number} [crop.right] - The right crop percentage.
+ * @property {number} [crop.top] - The top crop percentage.
+ * @property {number} [crop.bottom] - The bottom crop percentage.
+ * @property {Effect[]} [effects] - An array of effects applied to the image.
+ */
+export const blipFillSchema = {
+    type: 'object',
+    properties: {
+        type: { const: 'blip' },
+        src: { type: 'string', format: 'uri' },
+        dpi: { type: 'number' },
+        rotateWithShape: { type: 'boolean' },
+        crop: {
+            type: 'object',
+            properties: {
+                left: { type: 'number' },
+                right: { type: 'number' },
+                top: { type: 'number' },
+                bottom: { type: 'number' },
+            },
+        },
+        effects: {
+            type: 'array',
+            items: { $ref: '#/definitions/effect' },
+        },
+    },
+    required: ['type', 'src'],
+};
+
+/**
+ * @typedef {Object} NoFill
+ * @property {'none'} type - The type of fill.
+ */
+export const noFillSchema = {
+    type: 'object',
+    properties: {
+        type: { const: 'none' },
+    },
+    required: ['type'],
+};
+
+/**
  * @typedef {Object} PatternFill
  * @property {'pattern'} type - The type of fill.
  * @property {string} patternType - The type of pattern (e.g., 'dash', 'dot', 'cross').
@@ -117,6 +166,8 @@ export const fillSchema = {
         { $ref: '#/definitions/pictureFill' },
         { $ref: '#/definitions/patternFill' },
         { $ref: '#/definitions/groupFill' },
+        { $ref: '#/definitions/blipFill' },
+        { $ref: '#/definitions/noFill' },
     ],
     definitions: {
         color: colorSchema,
@@ -125,6 +176,8 @@ export const fillSchema = {
         pictureFill: pictureFillSchema,
         patternFill: patternFillSchema,
         groupFill: groupFillSchema,
+        blipFill: blipFillSchema,
+        noFill: noFillSchema,
     }
 };
 
@@ -207,17 +260,50 @@ export const transform2DSchema = {
 };
 
 /**
+ * @typedef {Object} Bevel
+ * @property {number} [width] - The width of the bevel.
+ * @property {number} [height] - The height of the bevel.
+ * @property {'angle' | 'circle' | 'coolSlant' | 'cross' | 'divot' | 'hardEdge' | 'relaxedInset' | 'riblet' | 'slope' | 'softRound'} [preset] - The preset for the bevel.
+ */
+export const bevelSchema = {
+    type: 'object',
+    properties: {
+        width: { type: 'number' },
+        height: { type: 'number' },
+        preset: { type: 'string', enum: ['angle', 'circle', 'coolSlant', 'cross', 'divot', 'hardEdge', 'relaxedInset', 'riblet', 'slope', 'softRound'] },
+    },
+};
+
+/**
  * @typedef {Object} Transform3D
  * @property {number} [rotationX] - The rotation around the X-axis.
  * @property {number} [rotationY] - The rotation around the Y-axis.
+ * @property {number} [rotationZ] - The rotation around the Z-axis.
  * @property {number} [perspective] - The perspective value.
+ * @property {Bevel} [bevelTop] - The top bevel of the shape.
+ * @property {Bevel} [bevelBottom] - The bottom bevel of the shape.
+ * @property {number} [extrusionHeight] - The height of the extrusion.
+ * @property {Color} [extrusionColor] - The color of the extrusion.
+ * @property {Color} [contourColor] - The color of the contour.
+ * @property {number} [contourWidth] - The width of the contour.
  */
 export const transform3DSchema = {
     type: 'object',
+    definitions: {
+        bevel: bevelSchema,
+        color: colorSchema,
+    },
     properties: {
         rotationX: { type: 'number' },
         rotationY: { type: 'number' },
+        rotationZ: { type: 'number' },
         perspective: { type: 'number' },
+        bevelTop: { $ref: '#/definitions/bevel' },
+        bevelBottom: { $ref: '#/definitions/bevel' },
+        extrusionHeight: { type: 'number' },
+        extrusionColor: { $ref: '#/definitions/color' },
+        contourColor: { $ref: '#/definitions/color' },
+        contourWidth: { type: 'number' },
     },
 };
 
