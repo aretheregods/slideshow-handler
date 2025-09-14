@@ -28,6 +28,36 @@ import {
     PML_NS, DML_NS, CHART_NS, TABLE_NS,
 } from 'constants';
 
+/**
+ * @typedef {Object} Pos
+ * @property {number} x
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ */
+
+/**
+ * @typedef {Object} Geometry
+ * @property {string} type
+ * @property {string} preset
+ * @property {Object} adjustments
+ * @property {number} [adjustments.name]
+ */
+
+
+/**
+ * @typedef {Object} ShapeProps
+ * @property {Geometry} geometry
+ */
+
+/**
+ * @typedef {Object} Shape
+ * @property {string} type
+ * @property {string|null} transform
+ * @property {Pos} pos
+ * @property {ShapeProps} shapeProps
+ */
+
 export class SlideHandler {
     constructor( {
         slideXml,
@@ -72,6 +102,10 @@ export class SlideHandler {
         this.renderer = new SvgRenderer( this.svg, this.slideContext );
     }
 
+	/**
+	 * @description Creates the initial SVG container for slide rendering
+	 * @returns {SVGElement} The SVG container into which to render the slide's shapes
+	 */
     createSvg() {
         const SVG_NS = "http://www.w3.org/2000/svg";
         const svg = document.createElementNS(SVG_NS, 'svg');
@@ -82,6 +116,11 @@ export class SlideHandler {
         return svg;
 	}
 
+	/**
+	 * @description For rendering a new slide in the main slide container, replacing the previous slide
+	 * @param {string} containerId - The DOM id of the element in which to place the new slide # The slide container must have an id
+	 * @returns {SlideHandler} The current instance of the SlideHandler class
+	 */
 	newSlideContainer( containerId ) {
 		this.slideContainer = containerId;
 		this.svg = this.createSvg();
@@ -89,8 +128,13 @@ export class SlideHandler {
 		return this;
 	}
 
-    async parse() {
-        const xmlDoc = parseXmlString(this.slideXml, `slide number ${this.slideNum}`);
+	/**
+	 * @description Receives an OOXML document containing PowerPoint slide definitions and parses its data into JavaScript data objects
+	 * @param {string} slideXml - The alternative OOXML slide if parsing is repeated done after the initial parsing step 
+	 * @returns {Promise<{ background: Object; shapes: Object[]; }>} The JavaScript object data of the parsed OOXML shapes and text
+	 */
+    async parse( slideXml ) {
+        const xmlDoc = parseXmlString( slideXml || this.slideXml, `slide number ${this.slideNum}`);
         const hfNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'hf')[0];
         const slideLevelVisibility = {
             ftr: !hfNode || hfNode.getAttribute('ftr') !== '0',
@@ -117,6 +161,13 @@ export class SlideHandler {
         };
     }
 
+	/**
+	 * @description Receives the slide data from the parsing step and renders it to the created SVG container.
+	 * @param {Object} slideData - The JavaScript object containing the OOXML shapes to be rendered to the SVG container
+	 * @param {Object} [slideData.background] - The slides background color definition -- can be a solid fill color, a gradient or none
+	 * @param {Object[]} [slideData.shapes] - An array of shapes to be rendered in hierarchical order from master, layout and the slide itself
+	 * @returns {Promise<void>}
+	 */
     async render(slideData) {
         const SVG_NS = "http://www.w3.org/2000/svg";
         const defs = document.createElementNS(SVG_NS, 'defs');
@@ -155,6 +206,13 @@ export class SlideHandler {
         await this.renderShapeTree(slideData.shapes);
     }
 
+	/**
+	 * @description Parses the data from the top level tree of shapes to be rendered
+	 * @param {Element[]} elements - The full list of elements to be parsed from the slide's shape tree
+	 * @param {Matrix} parentMatrix - The matrix positioning data for the shape tree's SVG rendering logic
+	 * @param {Boolean} slideLevelVisibility - Whether or not a particular shape is visible on this slide
+	 * @returns {Object[]} The list of shapes parsed from this tree
+	 */
     async parseShapeTree(elements, parentMatrix, slideLevelVisibility) {
         const shapes = [];
         const listCounters = {}; // Reset for each shape tree (master, layout, slide)
@@ -197,6 +255,11 @@ export class SlideHandler {
         return shapes;
     }
 
+	/**
+	 * @description Renders to the SVG container the list of shapes parsed in the shape tree parsing step
+	 * @param {Object[]} [shapes=[]] - A list of shape objects and their positioning matrix data parsed from the shape tree
+	 * @returns {Promise<void>}
+	 */
     async renderShapeTree(shapes = []) {
         for (const [index, shapeData] of shapes.entries()) {
             const id = `${this.slideId}.shapes.${index}`;
@@ -220,6 +283,13 @@ export class SlideHandler {
         };
     }
 
+	/**
+	 * @description Parses the data for a particular shape in the shape tree
+	 * @param {Element} shapeNode - The shape's node from the OOXML document
+	 * @param {Object} listCounters - The counters for determining the position of an element within a list of elements
+	 * @param {Matrix} parentMatrix - Matrix data for the positioning of the shape's parent in the shape tree
+	 * @param {Boolean} slideLevelVisibility - Whether a shape is visible on this particular slide # as distinct from its declaration in the layout or master
+	 */
     async parseShape(shapeNode, listCounters, parentMatrix, slideLevelVisibility) {
         const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
         let phKey = null, phType = null;
@@ -294,6 +364,10 @@ export class SlideHandler {
         };
     }
 
+	/**
+	 * @description Renders to the SVG container the shape data parsed in the parse shape data step
+	 * @param {}
+	 */
     async renderShape(shapeData, id) {
         const matrix = new Matrix();
         if (shapeData.transform) {
