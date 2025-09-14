@@ -1,4 +1,4 @@
-import { EMU_PER_PIXEL } from "constants";
+import { EMU_PER_PIXEL } from "../constants.js";
 
 /**
  * Extracts the slide dimensions from the presentation.xml file.
@@ -7,7 +7,7 @@ import { EMU_PER_PIXEL } from "constants";
  */
 export function getSlideSize(xmlString) {
     // Two-step regex for robustness: first find the tag, then find the attributes within it.
-    const sldSzTagMatch = xmlString.match(/<[^>:]*:sldSz\s+([^>]+)\/?>/);
+    const sldSzTagMatch = xmlString.match(/<(?:[^>:]+:)?sldSz\s+([^>]+)\/?>/);
     if (sldSzTagMatch) {
         const attrs = sldSzTagMatch[1];
         const cxMatch = attrs.match(/cx="([^"]+)"/);
@@ -15,6 +15,11 @@ export function getSlideSize(xmlString) {
         if (cxMatch && cyMatch) {
             const cx = parseInt(cxMatch[1]);
             const cy = parseInt(cyMatch[1]);
+
+            if (isNaN(cx) || isNaN(cy)) {
+                return { width: 960, height: 720 };
+            }
+
             return { width: cx / EMU_PER_PIXEL, height: cy / EMU_PER_PIXEL };
         }
     }
