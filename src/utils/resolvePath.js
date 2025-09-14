@@ -6,6 +6,7 @@
  */
 export function resolvePath( baseDir, target ) {
     // Normalize backslashes to forward slashes for cross-platform compatibility.
+    const normalizedBase = baseDir.replace( /\\/g, '/' );
     const normalizedTarget = target.replace( /\\/g, '/' );
 
     // If target is an absolute path (starts with '/'), it's relative to the zip root.
@@ -14,7 +15,7 @@ export function resolvePath( baseDir, target ) {
         return normalizedTarget.substring( 1 );
     }
     // Otherwise, resolve it relative to the baseDir.
-    const path = baseDir + '/' + normalizedTarget;
+    const path = normalizedBase + '/' + normalizedTarget;
     const parts = path.split( '/' );
     const resolved = [];
     for ( const part of parts ) {
