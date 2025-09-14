@@ -9,8 +9,10 @@ export function parseXmlString(xmlString, identifier) {
     const xmlDoc = parser.parseFromString(xmlString, "application/xml");
     const errorNode = xmlDoc.querySelector("parsererror");
     if (errorNode) {
-        console.error(`XML Parsing Error in ${identifier}:`, errorNode.innerHTML);
-        console.log(`Problematic XML for ${identifier}:`, xmlString);
+        const error = new Error(`XML Parsing Error in ${identifier}: ${errorNode.textContent}`);
+        error.xmlString = xmlString;
+        error.identifier = identifier;
+        throw error;
     }
     return xmlDoc;
 }

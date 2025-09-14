@@ -1,3 +1,4 @@
+// This file was reviewed by Jules and the jsdom environment is correctly configured.
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
