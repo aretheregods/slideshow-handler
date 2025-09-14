@@ -82,4 +82,80 @@ describe('ColorParser', () => {
         expect(ColorParser.resolveColor(colorObj, mockSlideContext)).toBe('rgba(255, 0, 0, 0.5)');
     });
   });
+
+  describe('parseColor', () => {
+    const createMockElement = (config = {}) => {
+        const { name = '', attributes = {}, children = {} } = config;
+        const element = {
+            localName: name,
+            getAttribute: (attr) => attributes[attr],
+            getElementsByTagNameNS: (ns, tagName) => {
+                return children[tagName] ? children[tagName].map(createMockElement) : [];
+            },
+        };
+        return element;
+    };
+
+    it('should parse an srgbClr node', () => {
+        const colorNode = createMockElement({
+            name: 'solidFill',
+            children: {
+                'srgbClr': [{ name: 'srgbClr', attributes: { val: 'FF0000' } }]
+            }
+        });
+        const expected = { srgb: '#FF0000' };
+        expect(ColorParser.parseColor(colorNode)).toEqual(expected);
+    });
+
+    it('should parse an srgbClr node with alpha', () => {
+        const colorNode = createMockElement({
+            name: 'solidFill',
+            children: {
+                'srgbClr': [{
+                    name: 'srgbClr',
+                    attributes: { val: '00FF00' },
+                    children: { 'alpha': [{ name: 'alpha', attributes: { val: '50000' } }] }
+                }]
+            }
+        });
+        const expected = { srgb: '#00FF00', alpha: 50000 };
+        expect(ColorParser.parseColor(colorNode)).toEqual(expected);
+    });
+
+    it('should parse a schemeClr node', () => {
+        const colorNode = createMockElement({
+            name: 'solidFill',
+            children: {
+                'schemeClr': [{ name: 'schemeClr', attributes: { val: 'accent2' } }]
+            }
+        });
+        const expected = { scheme: 'accent2' };
+        expect(ColorParser.parseColor(colorNode)).toEqual(expected);
+    });
+
+    it('should parse a schemeClr node with tint and shade', () => {
+        const colorNode = createMockElement({
+            name: 'solidFill',
+            children: {
+                'schemeClr': [{
+                    name: 'schemeClr',
+                    attributes: { val: 'tx1' },
+                    children: {
+                        'tint': [{ name: 'tint', attributes: { val: '80000' } }],
+                        'shade': [{ name: 'shade', attributes: { val: '20000' } }]
+                    }
+                }]
+            }
+        });
+        const expected = { scheme: 'tx1', tint: 80000, shade: 20000 };
+        expect(ColorParser.parseColor(colorNode)).toEqual(expected);
+    });
+
+    it('should return null for invalid nodes', () => {
+        expect(ColorParser.parseColor(null)).toBeNull();
+        expect(ColorParser.parseColor(undefined)).toBeNull();
+        const emptyNode = createMockElement({ name: 'solidFill' });
+        expect(ColorParser.parseColor(emptyNode)).toBeNull();
+    });
+  });
 });
