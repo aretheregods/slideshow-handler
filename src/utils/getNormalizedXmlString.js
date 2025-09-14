@@ -19,5 +19,5 @@ export async function getNormalizedXmlString( entriesMap, path ) {
     }
 
     // Normalize line endings to prevent cross-platform parsing issues.
-    return xmlString.replace( /\\r\\n/g, '\n' ).replace( /\\r/g, '\n' );
+    return xmlString.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
