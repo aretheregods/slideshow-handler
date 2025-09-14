@@ -1,5 +1,5 @@
 import { parseXmlString, ColorParser } from 'utils';
-import { EMU_PER_PIXEL, PT_TO_PX, PML_NS, DML_NS, CHART_NS } from 'constants';
+import { EMU_PER_PIXEL, PT_TO_PX, PML_NS, DML_NS, CHART_NS } from '../constants.js';
 
 /**
  * Parses the theme XML file.
@@ -457,6 +457,7 @@ export function parseBackground(xmlDoc, slideContext) {
  * @returns {Object|null} The parsed custom geometry object, or null if invalid.
  */
 export function parseCustomGeometry(custGeomNode) {
+    if (!custGeomNode) return null;
     const pathLstNode = custGeomNode.getElementsByTagNameNS(DML_NS, 'pathLst')[0];
     if (!pathLstNode) return null;
 
@@ -549,6 +550,7 @@ export function parseLineProperties(lnNode, slideContext) {
         cap: capMap[lnNode.getAttribute('cap')] || 'butt',
         join: null, // miter, round, bevel
         cmpd: lnNode.getAttribute('cmpd'),
+        dash: [],
     };
 
     const roundNode = lnNode.getElementsByTagNameNS(DML_NS, 'round')[0];
@@ -565,14 +567,11 @@ export function parseLineProperties(lnNode, slideContext) {
         const dashType = prstDashNode.getAttribute('val') || 'solid';
         const w = props.width;
         switch (dashType) {
-            case 'solid':
-                props.dash = [];
-                break;
             case 'dot':
                 props.dash = [w, 3 * w];
                 break;
             case 'dash':
-                props.dash = [3 * w, 4 * w];
+                props.dash = [3 * w, w];
                 break;
             case 'lgDash':
                 props.dash = [8 * w, 3 * w];
@@ -597,9 +596,6 @@ export function parseLineProperties(lnNode, slideContext) {
                 break;
             case 'sysDashDotDot':
                 props.dash = [3 * w, w, w, w, w, w];
-                break;
-            default:
-                props.dash = [];
                 break;
         }
     }
