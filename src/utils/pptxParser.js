@@ -571,7 +571,7 @@ export function parseLineProperties(lnNode, slideContext) {
                 props.dash = [w, 3 * w];
                 break;
             case 'dash':
-                props.dash = [3 * w, w];
+                props.dash = [3 * w, 4 * w];
                 break;
             case 'lgDash':
                 props.dash = [8 * w, 3 * w];

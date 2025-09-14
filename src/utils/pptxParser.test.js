@@ -262,7 +262,7 @@ describe('PptxParser', () => {
             const node = xmlDoc.documentElement;
             const result = PptxParser.parseLineProperties(node, slideContext);
             expect(result.dash[0]).toBeCloseTo(2.25);
-            expect(result.dash[1]).toBeCloseTo(0.75);
+            expect(result.dash[1]).toBeCloseTo(3);
         });
 
         it('should parse join properties', () => {
