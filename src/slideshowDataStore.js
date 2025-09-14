@@ -1,4 +1,4 @@
-import { ReactiveStore } from 'utils';
+import { ReactiveStore, transformPresentation } from 'utils';
 
 const initialPresentationState = {
     status: 'idle', // idle, parsing, ready, error
@@ -6,6 +6,15 @@ const initialPresentationState = {
     slideSize: null,
     theme: null,
     error: null,
+    presentation: {
+        title: 'Untitled Presentation',
+        author: 'Unknown',
+        themeSettings: {
+            backgroundColor: '#FFFFFF',
+            defaultFont: 'Calibri',
+        },
+        slides: [],
+    },
 };
 
 function presentationReducer(state = initialPresentationState, action) {
@@ -18,6 +27,8 @@ function presentationReducer(state = initialPresentationState, action) {
             return { ...initialPresentationState, status: 'presenting', activeSlide: action.payload ?? 0 };
         case 'SET_PRESENTATION_DATA':
             return { ...state, ...action.payload };
+        case 'SET_TRANSFORMED_PRESENTATION':
+            return { ...state, presentation: action.payload };
         case 'SET_PRESENTATION_STATUS':
             return { ...state, status: action.payload };
         case 'SET_PRESENTATION_ERROR':

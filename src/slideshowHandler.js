@@ -41,6 +41,13 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
         const presRels = await getRelationships( entriesMap, "ppt/_rels/presentation.xml.rels" );
         const sortedPresRels = Object.values( presRels ).sort( ( a, b ) => a.id.localeCompare( b.id, undefined, { numeric: true } ) );
 
+        const transformedPresentation = {
+            title: 'Untitled Presentation',
+            author: 'Unknown',
+            themeSettings: {},
+            slides: [],
+        };
+
         let theme = null;
         const themeRel = sortedPresRels.find( rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme' );
         if ( themeRel ) {
@@ -49,6 +56,10 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
             if ( themeXml ) {
                 theme = parseTheme( themeXml );
                 presentationStore.dispatch( { type: actions.set.presentation.data, payload: { theme } } );
+                transformedPresentation.themeSettings = {
+                    backgroundColor: theme.colorScheme?.bg1 || '#FFFFFF',
+                    defaultFont: theme.fontScheme?.minor || 'Calibri',
+                };
             };
         }
 
@@ -205,6 +216,8 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
             const slide = slideStores.get( slideId );
             slide.dispatch( { type: actions.set.slide.data, payload: { renderingData } } );
 
+            transformedPresentation.slides.push(renderingData);
+
             if ( presentationStore.getState( 'status' ) !== 'rendering' ) {
                 presentationStore.dispatch( { type: actions.start.rendering } );
             }
@@ -245,6 +258,7 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
 				}
 			}
 		} );
+        presentationStore.dispatch({ type: 'SET_TRANSFORMED_PRESENTATION', payload: transformedPresentation });
         presentationStore.dispatch( { type: actions.set.presentation.data, payload: { activeSlide: slideIds[ 0 ], status: 'presenting' } } );
 
         const activeSlide = presentationStore.getState( 'activeSlide' );

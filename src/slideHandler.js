@@ -17,8 +17,10 @@ import {
     parseSourceRectangle,
     createImage,
     resolvePath,
-    getNormalizedXmlString
+    getNormalizedXmlString,
+    transformSlide,
 } from 'utils';
+import { presentationStore } from './slideshowDataStore.js';
 import {
     EMU_PER_PIXEL,
     PT_TO_PX,
@@ -126,6 +128,7 @@ export class SlideHandler {
 
         this.svg = this.createSvg();
         this.renderer = new SvgRenderer( this.svg, this.slideContext );
+        this.shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize);
     }
 
 	/**
@@ -181,10 +184,14 @@ export class SlideHandler {
             ? await this.parseShapeTree(spTreeNode.children, initialMatrix.clone(), slideLevelVisibility)
             : [];
 
-        return {
+        const slideData = {
             background: this.finalBg,
             shapes: [...masterShapes, ...layoutShapes, ...slideShapes],
+            slideId: this.slideId,
+            slideNum: this.slideNum,
         };
+
+        return transformSlide(slideData);
     }
 
 	/**
@@ -200,33 +207,14 @@ export class SlideHandler {
         this.svg.appendChild(defs);
         this.renderer.defs = defs;
 
-        // Render background
-        if ( slideData.background ) {
-            const id = `${this.slideId}.background`
-            if (slideData.background.type === 'color') {
-                const bgRect = document.createElementNS(SVG_NS, 'rect');
-                bgRect.setAttribute('id', id);
-                bgRect.setAttribute('width', '100%');
-                bgRect.setAttribute('height', '100%');
-                bgRect.setAttribute('fill', slideData.background.value);
-                this.svg.insertBefore(bgRect, this.svg.firstChild);
-            } else if (slideData.background.type === 'gradient') {
-                const bgRect = document.createElementNS( SVG_NS, 'rect' );
-                bgRect.setAttribute('id', id);
-                bgRect.setAttribute('width', '100%');
-                bgRect.setAttribute('height', '100%');
-                const gradientUrl = this.renderer._createGradient(slideData.background);
-                bgRect.setAttribute('fill', gradientUrl);
-                this.svg.insertBefore(bgRect, this.svg.firstChild);
-            } else if (slideData.background.type === 'image' && slideData.background.relId && this.imageMap[slideData.background.relId]) {
-                const bgImage = document.createElementNS( SVG_NS, 'image' );
-                bgImage.setAttribute('id', id);
-                bgImage.setAttribute('href', this.imageMap[slideData.background.relId]);
-                bgImage.setAttribute('width', this.slideSize.width);
-                bgImage.setAttribute('height', this.slideSize.height);
-                bgImage.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-                this.svg.insertBefore(bgImage, this.svg.firstChild);
-            }
+        const presentationState = presentationStore.getState();
+        if (presentationState.theme && presentationState.theme.colorScheme) {
+            const bgRect = document.createElementNS(SVG_NS, 'rect');
+            bgRect.setAttribute('id', `${this.slideId}.background`);
+            bgRect.setAttribute('width', '100%');
+            bgRect.setAttribute('height', '100%');
+            bgRect.setAttribute('fill', presentationState.theme.colorScheme.bg1 || '#FFFFFF');
+            this.svg.insertBefore(bgRect, this.svg.firstChild);
         }
 
         await this.renderShapeTree(slideData.shapes);
@@ -287,23 +275,20 @@ export class SlideHandler {
 	 * @returns {Promise<void>}
 	 */
     async renderShapeTree(shapes = []) {
-        for (const [index, shapeData] of shapes.entries()) {
-            const id = `${this.slideId}.shapes.${index}`;
+        for (const shapeData of shapes) {
             switch (shapeData.type) {
+                case 'textbox':
                 case 'shape':
-                    await this.renderShape(shapeData, id);
+                    await this.renderShape(shapeData);
                     break;
-                case 'group':
-                     // Groups are not rendered directly in a flat model
+                case 'image':
+                    await this.renderPicture(shapeData);
                     break;
                 case 'table':
-                    await this.renderTable(shapeData, id);
+                    await this.renderTable(shapeData);
                     break;
                 case 'chart':
-                    await this.renderChart(shapeData, id);
-                    break;
-                case 'picture':
-                    await this.renderPicture(shapeData, id);
+                    await this.renderChart(shapeData);
                     break;
             }
         };
@@ -397,20 +382,30 @@ export class SlideHandler {
 	 * @param {string} id - The unique ID for the shape element.
 	 * @returns {Promise<void>}
 	 */
-    async renderShape(shapeData, id) {
+    async renderShape(shapeData) {
+        const { id, x, y, width, height, rotation, fillColor, borderColor, type, shapeType, transform } = shapeData;
+
         const matrix = new Matrix();
-        if (shapeData.transform) {
-            const transformString = shapeData.transform.replace('matrix(', '').replace(')', '');
-            const transformValues = transformString.split(' ').map(Number);
+        if (transform) {
+            const transformValues = transform.replace('matrix(', '').replace(')', '').split(' ').map(Number);
             matrix.m = transformValues;
+        } else {
+            matrix.translate(x, y);
+            matrix.rotate(rotation * Math.PI / 180);
         }
         this.renderer.setTransform(matrix, id);
 
-        const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
-        shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
+        const shapeProps = {
+            geometry: { type: 'preset', preset: shapeType || 'rect' },
+            fill: { type: 'solid', color: fillColor },
+            stroke: { color: borderColor, width: 1 },
+        };
+        const pos = { width, height };
 
-        if (shapeData.text) {
-            await this.renderParagraphs(shapeData.text, `${id}.text`);
+        this.shapeBuilder.renderShape(pos, shapeProps, matrix, false, false);
+
+        if (type === 'textbox') {
+            await this.renderParagraphs(shapeData);
         }
     }
 
@@ -579,58 +574,180 @@ export class SlideHandler {
      * @param {string} id - The unique ID for the picture element.
      * @returns {Promise<void>}
      */
-    async renderPicture(picData, id) {
+    async renderPicture(shapeData) {
+        const { id, x, y, width, height, rotation, src, srcRect } = shapeData;
+
         const matrix = new Matrix();
-        if (picData.transform) {
-            const transformString = picData.transform.replace('matrix(', '').replace(')', '');
-            const transformValues = transformString.split(' ').map(Number);
-            matrix.m = transformValues;
-        }
+        matrix.translate(x, y);
+        matrix.rotate(rotation * Math.PI / 180);
         this.renderer.setTransform(matrix, id);
 
-        if (picData.placeholderProps?.fill?.type === 'solid' || picData.placeholderProps?.fill?.type === 'gradient') {
-            const fillOptions = { fill: picData.placeholderProps.fill.type === 'gradient' ? picData.placeholderProps.fill : picData.placeholderProps.fill.color };
-            if (picData.pathString) this.renderer.drawPath(picData.pathString, fillOptions);
-            else this.renderer.drawRect(0, 0, picData.pos.width, picData.pos.height, fillOptions);
+        const imageEl = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+        imageEl.setAttribute('href', src);
+        imageEl.setAttribute('id', `${id}.image`);
+
+        if (srcRect) {
+            const img = await createImage(src);
+            const crop = srcRect;
+            const viewBox = `${img.width * crop.l} ${img.height * crop.t} ${img.width * (1 - crop.l - crop.r)} ${img.height * (1 - crop.t - crop.b)}`;
+            imageEl.setAttribute('viewBox', viewBox);
+            imageEl.setAttribute('preserveAspectRatio', 'none');
         }
 
-        if (picData.image) {
-            const imageEl = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-            imageEl.setAttribute( 'href', picData.image.href );
-            imageEl.setAttribute( 'id', `${id}.image` );
+        imageEl.setAttribute('x', 0);
+        imageEl.setAttribute('y', 0);
+        imageEl.setAttribute('width', width);
+        imageEl.setAttribute('height', height);
 
-            if (picData.image.srcRect) {
-                const img = await createImage(picData.image.href);
-                const crop = picData.image.srcRect;
-                const viewBox = `${img.width * crop.l} ${img.height * crop.t} ${img.width * (1 - crop.l - crop.r)} ${img.height * (1 - crop.t - crop.b)}`;
-                imageEl.setAttribute('viewBox', viewBox);
-                imageEl.setAttribute('preserveAspectRatio', 'none');
+        this.renderer.currentGroup.appendChild(imageEl);
+    }
+
+    async renderTable(tableData) {
+        const { id, x, y, width, height, rotation, rows } = tableData;
+
+        const matrix = new Matrix();
+        matrix.translate(x, y);
+        matrix.rotate(rotation * Math.PI / 180);
+        this.renderer.setTransform(matrix, id);
+
+        for (const [rowIndex, row] of rows.entries()) {
+            for (const [cellIndex, cell] of row.entries()) {
+                const cellId = `${id}.cells.${rowIndex}-${cellIndex}`;
+                this.renderer.drawRect(cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent', id: cellId });
+
+                const { x, y, width, height } = cell.pos;
+                if (cell.borders.top) this.renderer.drawLine(x, y, x + width, y, { stroke: cell.borders.top });
+                if (cell.borders.right) this.renderer.drawLine(x + width, y, x + width, y + height, { stroke: cell.borders.right });
+                if (cell.borders.bottom) this.renderer.drawLine(x + width, y + height, x, y + height, { stroke: cell.borders.bottom });
+                if (cell.borders.left) this.renderer.drawLine(x, y + height, x, y, { stroke: cell.borders.left });
+
+                if (cell.text) {
+                    await this.renderParagraphs(cell.text);
+                }
             }
-
-            imageEl.setAttribute('x', 0);
-            imageEl.setAttribute('y', 0);
-            imageEl.setAttribute('width', picData.pos.width);
-            imageEl.setAttribute('height', picData.pos.height);
-
-            if (picData.pathString) {
-                const clipId = `clip-${Math.random().toString(36).slice(2, 11)}`;
-                const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
-                clipPath.id = clipId;
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('d', picData.pathString);
-                clipPath.appendChild(path);
-                this.renderer.defs.appendChild(clipPath);
-                imageEl.setAttribute('clip-path', `url(#${clipId})`);
-            }
-            this.renderer.currentGroup.appendChild(imageEl);
-        }
-
-        if (picData.placeholderProps?.stroke) {
-            const strokeOpts = { stroke: picData.placeholderProps.stroke };
-            if (picData.pathString) this.renderer.drawPath(picData.pathString, strokeOpts);
-            else this.renderer.drawRect(0, 0, picData.pos.width, picData.pos.height, strokeOpts);
         }
     }
+
+    async renderChart(chartData) {
+        const { id, x, y, width, height, rotation, chartData: data } = chartData;
+
+        const matrix = new Matrix();
+        matrix.translate(x, y);
+        matrix.rotate(rotation * Math.PI / 180);
+        this.renderer.setTransform(matrix, id);
+
+        const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+        foreignObject.setAttribute('x', 0);
+        foreignObject.setAttribute('y', 0);
+        foreignObject.setAttribute('width', width);
+        foreignObject.setAttribute('height', height);
+
+        const chartContainer = document.createElement('div');
+        chartContainer.style.width = `${width}px`;
+        chartContainer.style.height = `${height}px`;
+        const canvas = document.createElement('canvas');
+        chartContainer.appendChild(canvas);
+        foreignObject.appendChild(chartContainer);
+        this.renderer.currentGroup.appendChild(foreignObject);
+
+        new Chart(canvas.getContext('2d'), {
+            type: data.type,
+            plugins: [ChartDataLabels],
+            data: { labels: data.labels, datasets: data.datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: { display: !!data.title, text: data.title },
+                    datalabels: { anchor: 'center', align: 'center', formatter: Math.round, font: { weight: 'bold', size: 14 }, color: '#fff' }
+                }
+            }
+        });
+    }
+
+    renderParagraphs(shapeData) {
+        const layout = this.layoutParagraphs(shapeData);
+        const { x, y, width, height, alignment } = shapeData;
+
+        let startY = y;
+        if (alignment === 'ctr') {
+            startY += (height - layout.totalHeight) / 2;
+        } else if (alignment === 'b') {
+            startY += height - layout.totalHeight;
+        }
+
+        const textGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        if (shapeData.id) {
+            textGroup.setAttribute('id', `${shapeData.id}.text`);
+        }
+
+        for (const line of layout.lines) {
+            const textElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            let xPos = x;
+            if (alignment === 'ctr') {
+                xPos += (width - line.width) / 2;
+                textElement.setAttribute('text-anchor', 'middle');
+            } else if (alignment === 'r') {
+                xPos += width - line.width;
+                textElement.setAttribute('text-anchor', 'end');
+            } else {
+                textElement.setAttribute('text-anchor', 'start');
+            }
+            textElement.setAttribute('x', xPos);
+            textElement.setAttribute('y', startY + line.startY + (line.runs[0]?.font.size || 0));
+
+            for (const run of line.runs) {
+                const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+                tspan.setAttribute('font-family', run.font.family);
+                tspan.setAttribute('font-size', `${run.font.size}px`);
+                tspan.setAttribute('font-style', run.font.style);
+                tspan.setAttribute('font-weight', run.font.weight);
+                tspan.setAttribute('fill', run.color);
+                tspan.textContent = run.text;
+                textElement.appendChild(tspan);
+            }
+            textGroup.appendChild(textElement);
+        }
+        this.renderer.currentGroup.appendChild(textGroup);
+    }
+
+    layoutParagraphs(shapeData) {
+        const { content, width, alignment, fontSize, fontFamily, bold, italic, fontColor } = shapeData;
+        const lines = [];
+        const words = content.split(' ');
+        let currentLine = { runs: [], width: 0, height: 0, paragraphProps: { align: alignment }, isFirstLine: true, startY: 0 };
+
+        const tempCtx = document.createElement('canvas').getContext('2d');
+        tempCtx.font = `${italic ? 'italic' : 'normal'} ${bold ? 'bold' : 'normal'} ${fontSize}px ${fontFamily}`;
+
+        for (const word of words) {
+            const wordWidth = tempCtx.measureText(`${word} `).width;
+            if (currentLine.width + wordWidth > width && currentLine.runs.length > 0) {
+                lines.push(currentLine);
+                currentLine = { runs: [], width: 0, height: 0, paragraphProps: { align: alignment }, isFirstLine: false, startY: lines.length * (fontSize * 1.25) };
+            }
+            currentLine.runs.push({
+                text: `${word} `,
+                font: { family: fontFamily, size: fontSize, style: italic ? 'italic' : 'normal', weight: bold ? 'bold' : 'normal' },
+                color: fontColor,
+            });
+            currentLine.width += wordWidth;
+            currentLine.height = Math.max(currentLine.height, fontSize * 1.25);
+        }
+        lines.push(currentLine);
+
+        let totalHeight = 0;
+        for (let i = 0; i < lines.length; i++) {
+            lines[i].startY = totalHeight;
+            totalHeight += lines[i].height;
+        }
+
+        return {
+            lines,
+            totalHeight,
+        };
+    }
+
 
     /**
      * @description Parses a table element.
