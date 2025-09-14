@@ -62,15 +62,35 @@ export const gradientFillSchema = {
  * @typedef {Object} Fill
  * @description A polymorphic schema for different types of fills.
  */
+/**
+ * @typedef {Object} PictureFill
+ * @property {'picture'} type - The type of fill.
+ * @property {string} src - The source URL of the image.
+ * @property {'stretch' | 'tile'} fit - How the picture should fit the shape.
+ * @property {number} [opacity] - The opacity of the picture.
+ */
+export const pictureFillSchema = {
+    type: 'object',
+    properties: {
+        type: { const: 'picture' },
+        src: { type: 'string', format: 'uri' },
+        fit: { type: 'string', enum: ['stretch', 'tile'] },
+        opacity: { type: 'number', minimum: 0, maximum: 1 },
+    },
+    required: ['type', 'src', 'fit'],
+};
+
 export const fillSchema = {
     oneOf: [
         { $ref: '#/definitions/solidFill' },
         { $ref: '#/definitions/gradientFill' },
+        { $ref: '#/definitions/pictureFill' },
     ],
     definitions: {
         color: colorSchema,
         solidFill: solidFillSchema,
         gradientFill: gradientFillSchema,
+        pictureFill: pictureFillSchema,
     }
 };
 
@@ -116,9 +136,14 @@ export const shadowSchema = {
  * @property {Color} [fontColor] - The color of the font.
  * @property {boolean} [bold] - Whether the text is bold.
  * @property {boolean} [italic] - Whether the text is italic.
- * @property {boolean} [underline] - Whether the text is underlined.
- * @property {boolean} [strikethrough] - Whether the text has a strikethrough.
- * @property {'baseline' | 'superscript' | 'subscript'} [baseline] - The baseline of the text.
+ * @property {string} [underline] - The style of the underline.
+ * @property {Color} [highlight] - The highlight color of the text.
+ * @property {Border} [textBorder] - The border/outline of the text.
+ * @property {'none' | 'single' | 'double'} [strikethrough] - The strikethrough style.
+ * @property {number} [baseline] - The baseline shift in percentage (positive for superscript, negative for subscript).
+ * @property {'none' | 'all' | 'small'} [capitalization] - The capitalization style.
+ * @property {number} [characterSpacing] - The spacing between characters in points.
+ * @property {string} [hyperlink] - The URL for the hyperlink.
  */
 export const textRunSchema = {
     type: 'object',
@@ -129,9 +154,21 @@ export const textRunSchema = {
         fontColor: { $ref: '#/definitions/color' },
         bold: { type: 'boolean' },
         italic: { type: 'boolean' },
-        underline: { type: 'boolean' },
-        strikethrough: { type: 'boolean' },
-        baseline: { type: 'string', enum: ['baseline', 'superscript', 'subscript'] },
+        underline: {
+            type: 'string',
+            enum: [
+                'none', 'dash', 'dashHeavy', 'dashLong', 'dashLongHeavy', 'dbl', 'dotDash',
+                'dotDashHeavy', 'dotDotDash', 'dotDotDashHeavy', 'dotted', 'dottedHeavy',
+                'heavy', 'sng', 'wavy', 'wavyDbl', 'wavyHeavy', 'words'
+            ]
+        },
+        highlight: { $ref: '#/definitions/color' },
+        textBorder: { $ref: '#/definitions/border' },
+        strikethrough: { type: 'string', enum: ['none', 'single', 'double'] },
+        baseline: { type: 'number' },
+        capitalization: { type: 'string', enum: ['none', 'all', 'small'] },
+        characterSpacing: { type: 'number' },
+        hyperlink: { type: 'string', format: 'uri' },
     },
     required: ['text'],
 };

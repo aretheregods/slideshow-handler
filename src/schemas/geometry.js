@@ -32,11 +32,47 @@ export const geometrySchema = {
         },
         custom: {
             type: 'object',
-            // In a real implementation, this would be a more detailed schema for custom geometries
-            // For now, we'll keep it simple.
             properties: {
-                path: { type: 'string' }
-            }
+                paths: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            width: { type: 'number' },
+                            height: { type: 'number' },
+                            fill: { type: 'string', enum: ['darken', 'darkenLess', 'lighten', 'lightenLess', 'none', 'normal'] },
+                            stroke: { type: 'boolean' },
+                            commands: {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        type: { type: 'string', enum: ['moveTo', 'lnTo', 'arcTo', 'cubicBezTo', 'quadBezTo', 'close'] },
+                                        points: {
+                                            type: 'array',
+                                            items: {
+                                                type: 'object',
+                                                properties: {
+                                                    x: { type: 'number' },
+                                                    y: { type: 'number' },
+                                                },
+                                                required: ['x', 'y'],
+                                            }
+                                        },
+                                        heightRadius: { type: 'number' },
+                                        widthRadius: { type: 'number' },
+                                        startAngle: { type: 'number' },
+                                        swingAngle: { type: 'number' },
+                                    },
+                                    required: ['type'],
+                                }
+                            }
+                        },
+                        required: ['width', 'height', 'commands'],
+                    }
+                }
+            },
+            required: ['paths'],
         }
     },
     required: ['type', 'shapeType'],
