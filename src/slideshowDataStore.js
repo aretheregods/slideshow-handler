@@ -1,5 +1,4 @@
 import { ReactiveStore } from 'utils';
-import { slideshowProcessingActions as actions } from 'constants';
 
 const initialPresentationState = {
     status: 'idle', // idle, parsing, ready, error
