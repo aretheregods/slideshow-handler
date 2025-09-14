@@ -218,13 +218,22 @@ export class ReactiveStore {
      * @returns {object} The current state.
      */
     getState( ...keys ) {
-        let response = {};
+        if (keys.length === 0) {
+            return this.state;
+        }
+
+        const response = {};
         for ( const key of keys ) {
             response[key] = this.#getNestedState( key );
         }
-        return Object.keys( response ).length > 1
-            ? response
-            : response[ Object.keys( response )[ 0 ] ] || this.state;
+
+        if (keys.length > 1) {
+            return response;
+        } else {
+            // For a single key, return the value directly.
+            // This will be `undefined` if the key doesn't exist, which is the correct behavior.
+            return response[keys[0]];
+        }
     }
 
     /**
@@ -243,8 +252,17 @@ export class ReactiveStore {
         // This preserves the root proxy reference and allows its `set` traps
         // to detect all the granular changes.
         Object.keys( nextState ).forEach( key => {
-            if ( !Object.is( this.#getNestedState( key ), nextState[ key ] ) ) {
-                this.#setNestedState( this.state, { key, value: nextState[ key ] } );
+            const oldValue = this.#getNestedState(key);
+            const newValue = nextState[key];
+
+            // Use a simple deep comparison for objects to avoid unnecessary notifications
+            // for properties that are replaced with a new object of the same value.
+            const areEqual = (typeof oldValue === 'object' && oldValue !== null && typeof newValue === 'object' && newValue !== null)
+                ? JSON.stringify(oldValue) === JSON.stringify(newValue)
+                : Object.is(oldValue, newValue);
+
+            if ( !areEqual ) {
+                this.#setNestedState( this.state, { key, value: newValue } );
             }
         } );
 
