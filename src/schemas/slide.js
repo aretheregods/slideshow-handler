@@ -10,8 +10,9 @@ import { shapeSchema } from './shape.js';
  * @property {number} slideNumber
  * @property {string} notes
  * @property {Shape[]} shapes
+ * @property {Object} [background] - The background of the slide.
+ * @property {string} [background.color] - The background color.
  */
-
 export const slideSchema = {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Slide",
@@ -27,6 +28,12 @@ export const slideSchema = {
     "shapes": {
       "type": "array",
       "items": { "$ref": "#/definitions/shape" }
+    },
+    "background": {
+        "type": "object",
+        "properties": {
+            "color": { "type": "string" }
+        }
     }
   },
   "required": ["id", "slideNumber", "shapes"]

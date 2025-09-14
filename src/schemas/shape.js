@@ -1,104 +1,77 @@
+import { textboxSchema } from './textbox.js';
+import { imageSchema } from './image.js';
+import { geometrySchema } from './geometry.js';
+import { tableSchema } from './table.js';
+import { connectorSchema } from './connector.js';
+import { fillSchema, borderSchema, shadowSchema } from './definitions.js';
+
 /**
- * @typedef {Object} Shape
- * @property {string} id
- * @property {'textbox' | 'image' | 'shape'} type
- * @property {number} x
- * @property {number} y
- * @property {number} width
- * @property {number} height
- * @property {number} rotation
- * @property {string} transform
- * @property {string} fillColor
- * @property {string} borderColor
- * @property {string} [content]
- * @property {string} [fontFamily]
- * @property {number} [fontSize]
- * @property {string} [fontColor]
- * @property {boolean} [bold]
- * @property {boolean} [italic]
- * @property {boolean} [underline]
- * @property {string} [alignment]
- * @property {string} [src]
- * @property {string} [altText]
- * @property {Object} [srcRect]
- * @property {string} [shapeType]
- * @property {string | null} [text]
+ * @typedef {import('./textbox.js').Textbox} Textbox
+ * @typedef {import('./image.js').Image} Image
+ * @typedef {import('./geometry.js').Geometry} Geometry
+ * @typedef {import('./table.js').Table} Table
+ * @typedef {import('./connector.js').Connector} Connector
+ * @typedef {import('./definitions.js').Fill} Fill
+ * @typedef {import('./definitions.js').Border} Border
+ * @typedef {import('./definitions.js').Shadow} Shadow
  */
 
+/**
+ * @typedef {Object} BaseShape
+ * @property {string} id - A unique identifier for the shape.
+ * @property {number} x - The x-coordinate of the shape's top-left corner.
+ * @property {number} y - The y-coordinate of the shape's top-left corner.
+ * @property {number} width - The width of the shape.
+ * @property {number} height - The height of the shape.
+ * @property {number} [rotation] - The rotation angle in degrees.
+ * @property {Fill} [fill] - The fill of the shape.
+ * @property {Border} [border] - The border of the shape.
+ * @property {Shadow} [shadow] - The shadow of the shape.
+ */
+const baseShapeSchema = {
+    type: 'object',
+    properties: {
+        id: { type: 'string' },
+        x: { type: 'number' },
+        y: { type: 'number' },
+        width: { type: 'number' },
+        height: { type: 'number' },
+        rotation: { type: 'number' },
+        fill: { $ref: '#/definitions/fill' },
+        border: { $ref: '#/definitions/border' },
+        shadow: { $ref: '#/definitions/shadow' },
+    },
+    required: ['id', 'x', 'y', 'width', 'height'],
+};
+
+/**
+ * @typedef {BaseShape & (Textbox | Image | Geometry | Table | Connector)} Shape
+ * @description A polymorphic schema for any shape on a slide.
+ */
 export const shapeSchema = {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Shape",
-  "description": "A shape on a slide.",
-  "oneOf": [
-    { "$ref": "#/definitions/textbox" },
-    { "$ref": "#/definitions/image" },
-    { "$ref": "#/definitions/shape" }
-  ],
-  "definitions": {
-    "baseShape": {
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "type": { "type": "string" },
-        "x": { "type": "number" },
-        "y": { "type": "number" },
-        "width": { "type": "number" },
-        "height": { "type": "number" },
-        "rotation": { "type": "number" },
-        "transform": { "type": "string" },
-        "fillColor": { "type": "string" },
-        "borderColor": { "type": "string" }
-      },
-      "required": ["id", "type", "x", "y", "width", "height"]
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Shape",
+    "description": "A shape on a slide.",
+    "definitions": {
+        textbox: textboxSchema,
+        image: imageSchema,
+        geometry: geometrySchema,
+        table: tableSchema,
+        connector: connectorSchema,
+        fill: fillSchema,
+        border: borderSchema,
+        shadow: shadowSchema,
     },
-    "textbox": {
-      "allOf": [
-        { "$ref": "#/definitions/baseShape" },
+    "allOf": [
+        baseShapeSchema,
         {
-          "type": "object",
-          "properties": {
-            "type": { "const": "textbox" },
-            "content": { "type": "string" },
-            "fontFamily": { "type": "string" },
-            "fontSize": { "type": "number" },
-            "fontColor": { "type": "string" },
-            "bold": { "type": "boolean" },
-            "italic": { "type": "boolean" },
-            "underline": { "type": "boolean" },
-            "alignment": { "type": "string", "enum": ["left", "center", "right", "justify"] }
-          },
-          "required": ["content"]
+            "oneOf": [
+                { "$ref": "#/definitions/textbox" },
+                { "$ref": "#/definitions/image" },
+                { "$ref": "#/definitions/geometry" },
+                { "$ref": "#/definitions/table" },
+                { "$ref": "#/definitions/connector" }
+            ]
         }
-      ]
-    },
-    "image": {
-      "allOf": [
-        { "$ref": "#/definitions/baseShape" },
-        {
-          "type": "object",
-          "properties": {
-            "type": { "const": "image" },
-            "src": { "type": "string" },
-            "altText": { "type": "string" },
-            "srcRect": { "type": "object" }
-          },
-          "required": ["src"]
-        }
-      ]
-    },
-    "shape": {
-      "allOf": [
-        { "$ref": "#/definitions/baseShape" },
-        {
-          "type": "object",
-          "properties": {
-            "type": { "const": "shape" },
-            "shapeType": { "type": "string" },
-            "text": { "type": ["string", "null"] }
-          },
-          "required": ["shapeType"]
-        }
-      ]
-    }
-  }
-}
+    ]
+};
