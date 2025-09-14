@@ -2,6 +2,13 @@ import { BlobWriter } from "zipjs";
 import { ColorParser, resolvePath, integerToRoman, parseGradientFill } from 'utils';
 import { DML_NS, EMU_PER_PIXEL } from "constants";
 
+/**
+ * Resolves the font family for a text run.
+ * @param {Object} finalRunProps - The final run properties.
+ * @param {string} phType - The placeholder type.
+ * @param {Object} slideContext - The context of the slide.
+ * @returns {string} The resolved font family.
+ */
 export function resolveFontFamily(finalRunProps, phType, slideContext) {
     const fontAlias = finalRunProps.font;
     const theme = slideContext.theme;
@@ -24,6 +31,12 @@ export function resolveFontFamily(finalRunProps, phType, slideContext) {
     return theme?.fontScheme?.minor || 'Arial';
 }
 
+/**
+ * Gets the character for an automatic numbering scheme.
+ * @param {string} scheme - The numbering scheme.
+ * @param {number} number - The number to convert.
+ * @returns {string} The auto-numbering character.
+ */
 export function getAutoNumberingChar(scheme, number) {
     switch (scheme) {
         case 'alphaLcParenBoth': return `(${String.fromCharCode(96 + number)})`;
@@ -46,6 +59,11 @@ export function getAutoNumberingChar(scheme, number) {
     }
 }
 
+/**
+ * Creates an image element from a URL.
+ * @param {string} url - The URL of the image.
+ * @returns {Promise<HTMLImageElement>} A promise that resolves to the loaded image element.
+ */
 export function createImage(url) {
     return new Promise((resolve, reject) => {
         const image = new Image();
@@ -55,6 +73,14 @@ export function createImage(url) {
     });
 }
 
+/**
+ * Populates the image map by loading image data from zip entries.
+ * @param {Object} imageMap - The map to populate with image data.
+ * @param {Object} rels - The relationships object.
+ * @param {string} baseDir - The base directory for resolving image paths.
+ * @param {Map<string, Object>} entriesMap - A map of zip file entries.
+ * @returns {Promise<void>}
+ */
 export async function populateImageMap(imageMap, rels, baseDir, entriesMap) {
     const imageRels = Object.values(rels).filter(rel => rel.type.endsWith('/image'));
     for (const rel of imageRels) {
@@ -85,11 +111,36 @@ export async function populateImageMap(imageMap, rels, baseDir, entriesMap) {
     }
 }
 
+/**
+ * Calculates the size of a text block.
+ * @param {Element[]} paragraphs - The paragraph elements.
+ * @param {Object} pos - The position and dimensions of the text box.
+ * @param {Object} defaultTextStyles - The default text styles.
+ * @param {string} phKey - The placeholder key.
+ * @param {string} phType - The placeholder type.
+ * @param {Object} masterPlaceholders - The placeholders from the slide master.
+ * @param {Object} layoutPlaceholders - The placeholders from the slide layout.
+ * @param {Object} slideContext - The context of the slide.
+ * @param {Object} bodyPr - The body properties.
+ * @returns {{height: number}} An object containing the calculated height of the text block.
+ */
 export function calculateTextBlockSize(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr) {
     const layout = layoutParagraphs(paragraphs, pos, defaultTextStyles, phKey, phType, masterPlaceholders, layoutPlaceholders, slideContext, bodyPr);
     return { height: layout.totalHeight };
 }
 
+/**
+ * Gets the borders of a table cell.
+ * @param {Element} cellNode - The table cell's XML node.
+ * @param {Element} tblPrNode - The table properties XML node.
+ * @param {number} r - The row index of the cell.
+ * @param {number} c - The column index of the cell.
+ * @param {number} numRows - The total number of rows in the table.
+ * @param {number} numCols - The total number of columns in the table.
+ * @param {Object} tableStyle - The table style object.
+ * @param {Object} slideContext - The context of the slide.
+ * @returns {Object} The parsed cell borders.
+ */
 export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
     const borders = {};
     const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
@@ -195,6 +246,18 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
     return finalBorders;
 }
 
+/**
+ * Gets the fill color of a table cell.
+ * @param {Element} cellNode - The table cell's XML node.
+ * @param {Element} tblPrNode - The table properties XML node.
+ * @param {number} r - The row index of the cell.
+ * @param {number} c - The column index of the cell.
+ * @param {number} numRows - The total number of rows in the table.
+ * @param {number} numCols - The total number of columns in the table.
+ * @param {Object} tableStyle - The table style object.
+ * @param {Object} slideContext - The context of the slide.
+ * @returns {Object|string|null} The parsed cell fill color, or null if no fill is defined.
+ */
 export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
     // Level 1: Direct Formatting (highest precedence)
     const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
@@ -309,6 +372,16 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
     return null;
 }
 
+/**
+ * Gets the text style of a table cell.
+ * @param {Element} tblPrNode - The table properties XML node.
+ * @param {number} r - The row index of the cell.
+ * @param {number} c - The column index of the cell.
+ * @param {number} numRows - The total number of rows in the table.
+ * @param {number} numCols - The total number of columns in the table.
+ * @param {Object} tableStyle - The table style object.
+ * @returns {Object} The parsed cell text style.
+ */
 export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) {
     if (!tableStyle) return {};
 
@@ -372,6 +445,12 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) 
     return finalStyle;
 }
 
+/**
+ * Builds an SVG path string from a custom geometry.
+ * @param {Object} geometry - The geometry object.
+ * @param {Object} pos - The position and dimensions of the shape.
+ * @returns {string|null} The SVG path string, or null if the geometry is invalid.
+ */
 export function buildPathStringFromGeom(geometry, pos) {
     if (!geometry || !pos) return null;
 

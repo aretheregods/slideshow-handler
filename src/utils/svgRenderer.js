@@ -15,6 +15,10 @@ export class SvgRenderer {
         this.filterIdCounter = 0;
     }
 
+    /**
+     * Creates or retrieves the `<defs>` element in the SVG.
+     * @returns {SVGDefsElement} The `<defs>` element.
+     */
     createDefs() {
         let defs = this.svg.querySelector('defs');
         if (!defs) {
@@ -24,6 +28,11 @@ export class SvgRenderer {
         return defs;
     }
 
+    /**
+     * Applies effects, like shadows, to an element.
+     * @param {object} options - The rendering options, containing effect data.
+     * @returns {string|null} The URL of the filter if an effect was applied, otherwise null.
+     */
     applyEffects(options) {
         if (options && options.effect) {
             if (options.effect.type === 'outerShdw') {
@@ -52,10 +61,20 @@ export class SvgRenderer {
         return null;
     }
 
+    /**
+     * Resets any applied effects. In SVG, this is a no-op as effects are per-element.
+     */
     resetEffects() {
         // In SVG, effects are applied per-element, so a global reset is not needed.
     }
 
+    /**
+     * Creates a gradient definition in the SVG's `<defs>`.
+     * @param {Object} fillData - The fill data containing gradient information.
+     * @param {string} [id] - An optional ID for the gradient.
+     * @returns {string} The URL of the created gradient.
+     * @private
+     */
     _createGradient(fillData, id) {
         const gradientId = `grad-${this.defs.children.length}`;
         const gradient = document.createElementNS( 'http://www.w3.org/2000/svg', 'linearGradient' );
@@ -231,6 +250,15 @@ export class SvgRenderer {
         this.currentGroup.appendChild(ellipse);
     }
 
+    /**
+     * Draws a compound line (e.g., double, thick-thin).
+     * @param {number} x1 - The x-coordinate of the starting point.
+     * @param {number} y1 - The y-coordinate of the starting point.
+     * @param {number} x2 - The x-coordinate of the ending point.
+     * @param {number} y2 - The y-coordinate of the ending point.
+     * @param {object} options - The rendering options.
+     * @private
+     */
     _drawCompoundLine(x1, y1, x2, y2, options) {
         const stroke = options.stroke;
         const totalWidth = stroke.width;

@@ -1,6 +1,11 @@
 import { parseXmlString, ColorParser } from 'utils';
 import { EMU_PER_PIXEL, PT_TO_PX, PML_NS, DML_NS, CHART_NS } from 'constants';
 
+/**
+ * Parses the theme XML file.
+ * @param {string} themeXml - The XML content of the theme file.
+ * @returns {Object} The parsed theme object.
+ */
 export function parseTheme(themeXml) {
     const xmlDoc = parseXmlString(themeXml, "theme");
     const theme = {
@@ -227,6 +232,11 @@ export function parseTheme(themeXml) {
     return theme;
 }
 
+/**
+ * Parses a color map from a node's attributes.
+ * @param {Element} node - The XML node containing the color map attributes.
+ * @returns {Object} The parsed color map.
+ */
 export function parseColorMap(node) {
     const colorMap = {};
     if (node) {
@@ -237,6 +247,11 @@ export function parseColorMap(node) {
     return colorMap;
 }
 
+/**
+ * Parses table styles from an XML string.
+ * @param {string} xmlString - The XML content of the table styles.
+ * @returns {{styles: Object, defaultStyleId: string}} An object containing the parsed styles and the default style ID.
+ */
 export function parseTableStyles(xmlString) {
     const xmlDoc = parseXmlString(xmlString, "tableStyles");
     const styles = {};
@@ -264,6 +279,11 @@ export function parseTableStyles(xmlString) {
     return { styles, defaultStyleId };
 }
 
+/**
+ * Parses a part of a table style.
+ * @param {Element} partNode - The XML node of the style part.
+ * @returns {Object} The parsed style part definition.
+ */
 export function parseStylePart(partNode) {
     const partDef = {
         tcStyle: {},
@@ -366,6 +386,12 @@ export function parseStylePart(partNode) {
     return partDef;
 }
 
+/**
+ * Parses the background of a slide.
+ * @param {XMLDocument} xmlDoc - The XML document of the slide.
+ * @param {Object} slideContext - The context of the slide.
+ * @returns {Object|null} The parsed background object, or null if no background is defined.
+ */
 export function parseBackground(xmlDoc, slideContext) {
     const bgNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'bg')[0];
     if (!bgNode) {
@@ -425,6 +451,11 @@ export function parseBackground(xmlDoc, slideContext) {
     return bg;
 }
 
+/**
+ * Parses a custom geometry from a `custGeom` node.
+ * @param {Element} custGeomNode - The `custGeom` XML node.
+ * @returns {Object|null} The parsed custom geometry object, or null if invalid.
+ */
 export function parseCustomGeometry(custGeomNode) {
     const pathLstNode = custGeomNode.getElementsByTagNameNS(DML_NS, 'pathLst')[0];
     if (!pathLstNode) return null;
@@ -461,6 +492,12 @@ export function parseCustomGeometry(custGeomNode) {
     };
 }
 
+/**
+ * Parses a gradient fill from a fill node.
+ * @param {Element} fillNode - The XML node containing the gradient fill data.
+ * @param {Object} slideContext - The context of the slide.
+ * @returns {Object} The parsed gradient fill object.
+ */
 export function parseGradientFill(fillNode, slideContext) {
     const gsLstNode = fillNode.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
     const stops = [];
@@ -489,6 +526,12 @@ export function parseGradientFill(fillNode, slideContext) {
     return { type: 'gradient', gradient: { type, stops, angle } };
 }
 
+/**
+ * Parses line properties from an `ln` node.
+ * @param {Element} lnNode - The `ln` XML node.
+ * @param {Object} slideContext - The context of the slide.
+ * @returns {Object|null} The parsed line properties object, or null if no line is defined.
+ */
 export function parseLineProperties(lnNode, slideContext) {
     if (!lnNode) return null;
 
@@ -569,6 +612,13 @@ export function parseLineProperties(lnNode, slideContext) {
     return props;
 }
 
+/**
+ * Parses the properties of a shape.
+ * @param {Element} shapeNode - The shape's XML node.
+ * @param {Object} slideContext - The context of the slide.
+ * @param {number|string} slideNum - The slide number, used for context in error messages.
+ * @returns {Object} The parsed shape properties.
+ */
 export function parseShapeProperties(shapeNode, slideContext, slideNum) {
     const spPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
     if (!spPrNode) return { fill: null, stroke: null, geometry: null, rawFillNode: null, rawStrokeNode: null, effect: null };
@@ -721,6 +771,12 @@ export function parseShapeProperties(shapeNode, slideContext, slideNum) {
     return properties;
 }
 
+/**
+ * Parses text styles from a style node.
+ * @param {Element} styleNode - The XML node containing the text styles.
+ * @param {Object} slideContext - The context of the slide.
+ * @returns {Object|null} The parsed text styles, or null if the style node is not provided.
+ */
 export function parseTextStyle(styleNode, slideContext) {
     if (!styleNode) return null;
     const styles = {};
@@ -733,6 +789,11 @@ export function parseTextStyle(styleNode, slideContext) {
     return styles;
 }
 
+/**
+ * Parses the body properties of a text body.
+ * @param {Element} txBodyNode - The `txBody` XML node.
+ * @returns {Object} The parsed body properties.
+ */
 export function parseBodyProperties(txBodyNode) {
     const bodyPrNode = txBodyNode ? txBodyNode.getElementsByTagNameNS(DML_NS, 'bodyPr')[0] : null;
 
@@ -769,6 +830,12 @@ export function parseBodyProperties(txBodyNode) {
     return props;
 }
 
+/**
+ * Parses the properties of a paragraph.
+ * @param {Element} pPrNode - The `pPr` XML node.
+ * @param {Object} slideContext - The context of the slide.
+ * @returns {Object} The parsed paragraph properties.
+ */
 export function parseParagraphProperties(pPrNode, slideContext) {
     if (!pPrNode) return {};
 
@@ -868,6 +935,14 @@ export function parseParagraphProperties(pPrNode, slideContext) {
     return properties;
 }
 
+/**
+ * Parses a slide master or layout XML.
+ * @param {string} xml - The XML content of the master or layout.
+ * @param {Object} theme - The presentation theme.
+ * @param {Object|null} masterColorMap - The color map from the master slide.
+ * @param {boolean} isLayout - A flag indicating whether the XML is for a slide layout.
+ * @returns {Object} An object containing placeholders, static shapes, default text styles, and color maps.
+ */
 export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout = false) {
     const xmlDoc = parseXmlString(xml, isLayout ? "slideLayout" : "slideMaster");
 
@@ -966,6 +1041,11 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
     return { placeholders, staticShapes, defaultTextStyles, colorMap, colorMapOverride };
 }
 
+/**
+ * Parses the source rectangle of a blip fill.
+ * @param {Element} blipFillNode - The `blipFill` XML node.
+ * @returns {Object|null} The parsed source rectangle, or null if not defined.
+ */
 export function parseSourceRectangle(blipFillNode) {
     if (!blipFillNode) return null;
     const srcRectNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'srcRect')[0];
@@ -979,6 +1059,11 @@ export function parseSourceRectangle(blipFillNode) {
     };
 }
 
+/**
+ * Parses chart data from a chart XML file.
+ * @param {string} chartXml - The XML content of the chart.
+ * @returns {Object|null} The parsed chart data, or null if the chart is invalid.
+ */
 export function parseChart(chartXml) {
     const xmlDoc = parseXmlString(chartXml, "chart");
 

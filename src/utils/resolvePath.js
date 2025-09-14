@@ -1,3 +1,9 @@
+/**
+ * Resolves a path relative to a base directory, handling '..' and '.'.
+ * @param {string} baseDir - The base directory.
+ * @param {string} target - The target path.
+ * @returns {string} The resolved path.
+ */
 export function resolvePath( baseDir, target ) {
     // Normalize backslashes to forward slashes for cross-platform compatibility.
     const normalizedTarget = target.replace( /\\/g, '/' );

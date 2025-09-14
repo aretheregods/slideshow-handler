@@ -1,5 +1,11 @@
 import { TextWriter } from "zipjs";
 
+/**
+ * Retrieves and normalizes an XML string from a zip entry.
+ * @param {Map<string, Object>} entriesMap - A map of zip file entries.
+ * @param {string} path - The path to the XML file within the zip.
+ * @returns {Promise<string|null>} A promise that resolves to the normalized XML string, or null if the entry is not found.
+ */
 export async function getNormalizedXmlString( entriesMap, path ) {
     const entry = entriesMap.get( path );
     if ( !entry ) return null;
