@@ -9,35 +9,35 @@ const initialPresentationState = {
     error: null,
 };
 
-function presentationReducer( state = initialPresentationState, action ) {
-    switch ( action.type ) {
-        case actions.start.parsing:
+function presentationReducer(state = initialPresentationState, action) {
+    switch (action.type) {
+        case 'START_PARSING':
             return { ...initialPresentationState, status: 'parsing' };
-        case actions.start.rendering:
+        case 'START_RENDERING':
             return { ...initialPresentationState, status: 'rendering' };
-        case actions.start.presentation:
+        case 'START_PRESENTATION':
             return { ...initialPresentationState, status: 'presenting', activeSlide: action.payload ?? 0 };
-        case actions.set.presentation.data:
+        case 'SET_PRESENTATION_DATA':
             return { ...state, ...action.payload };
-        case actions.set.presentation.status:
+        case 'SET_PRESENTATION_STATUS':
             return { ...state, status: action.payload };
-        case actions.set.presentation.error:
+        case 'SET_PRESENTATION_ERROR':
             return { ...state, status: 'error', error: action.payload };
         default:
             return state;
     }
 }
 
+export const presentationStore = new ReactiveStore({
+    initialState: initialPresentationState,
+    reducer: presentationReducer,
+});
+
 const initialSlideState = {
     id: '',
     parsingData: null,
     renderingData: null
 };
-
-export const presentationStore = new ReactiveStore( {
-    initialState: initialPresentationState,
-    reducer: presentationReducer,
-} );
 
 export function createSlideStore( { id, state = {} } ) {
     return new ReactiveStore( {
@@ -50,7 +50,7 @@ export function createSlideStore( { id, state = {} } ) {
         },
         reducer ( state = initialSlideState, action ) {
             switch ( action.type ) {
-                case actions.set.slide.data:
+                case 'SET_SLIDE_DATA':
                     return { ...state, ...action.payload };
                 default:
                     return state;
