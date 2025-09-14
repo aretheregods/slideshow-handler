@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       'zipjs': '@zip.js/zip.js',
       'utils': '/src/utils/index.js',
+      'constants': '/src/constants.js',
     }
   }
 });
