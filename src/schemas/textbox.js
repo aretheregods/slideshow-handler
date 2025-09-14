@@ -16,6 +16,8 @@ import { paragraphSchema, colorSchema } from './definitions.js';
  * @property {number} [padding.top] - The top padding.
  * @property {number} [padding.bottom] - The bottom padding.
  * @property {'none' | 'fit' | 'shrink'} [textFit] - The text fitting behavior.
+ * @property {number} [columns] - The number of columns for the text.
+ * @property {number} [columnSpacing] - The spacing between columns.
  */
 export const textboxSchema = {
     type: 'object',
@@ -40,6 +42,8 @@ export const textboxSchema = {
             },
         },
         textFit: { type: 'string', enum: ['none', 'fit', 'shrink'] },
+        columns: { type: 'number' },
+        columnSpacing: { type: 'number' },
     },
     required: ['type', 'content'],
 };

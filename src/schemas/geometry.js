@@ -3,6 +3,7 @@
  * @property {'shape'} type - The type of the shape.
  * @property {string} shapeType - The preset shape type.
  * @property {Object} [custom] - The custom geometry definition.
+ * @property {Object[]} [adjustments] - Adjustments for preset shapes.
  */
 export const geometrySchema = {
     type: 'object',
@@ -28,6 +29,7 @@ export const geometrySchema = {
                 'flowchartCollate', 'flowchartSort', 'flowchartExtract', 'flowchartMerge',
                 'flowchartStoredData', 'flowdataDelay', 'flowchartSequentialAccessStorage',
                 'flowchartMagneticDisk', 'flowchartDirectAccessStorage', 'flowchartDisplay',
+                'flowchartAlternateProcess', 'flowchartInput', 'flowchartOutput',
             ]
         },
         custom: {
@@ -73,6 +75,17 @@ export const geometrySchema = {
                 }
             },
             required: ['paths'],
+        },
+        adjustments: {
+            type: 'array',
+            items: {
+                type: 'object',
+                properties: {
+                    name: { type: 'string' },
+                    value: { type: 'number' },
+                },
+                required: ['name', 'value'],
+            }
         }
     },
     required: ['type', 'shapeType'],

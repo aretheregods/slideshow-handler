@@ -1,3 +1,9 @@
+import { borderSchema } from './definitions.js';
+
+/**
+ * @typedef {import('./definitions.js').Border} Border
+ */
+
 /**
  * @typedef {Object} Connection
  * @property {string} shapeId - The ID of the shape to connect to.
@@ -18,10 +24,7 @@ export const connectionSchema = {
  * @property {Connection} start - The start connection.
  * @property {Connection} end - The end connection.
  * @property {'straight' | 'elbow' | 'curved'} shape - The shape of the connector.
- * @property {Object} [lineStyle] - The style of the connector line.
- * @property {string} [lineStyle.color] - The color of the line.
- * @property {number} [lineStyle.width] - The width of the line.
- * @property {'solid' | 'dashed' | 'dotted'} [lineStyle.style] - The style of the line.
+ * @property {Border} [lineStyle] - The style of the connector line.
  * @property {Object} [startArrow] - The style of the start arrow.
  * @property {'none' | 'triangle' | 'stealth' | 'diamond' | 'oval'} [startArrow.type] - The type of the arrow head.
  * @property {'small' | 'medium' | 'large'} [startArrow.size] - The size of the arrow head.
@@ -33,20 +36,14 @@ export const connectorSchema = {
     type: 'object',
     definitions: {
         connection: connectionSchema,
+        border: borderSchema,
     },
     properties: {
         type: { const: 'connector' },
         start: { $ref: '#/definitions/connection' },
         end: { $ref: '#/definitions/connection' },
         shape: { type: 'string', enum: ['straight', 'elbow', 'curved'] },
-        lineStyle: {
-            type: 'object',
-            properties: {
-                color: { type: 'string' },
-                width: { type: 'number' },
-                style: { type: 'string', enum: ['solid', 'dashed', 'dotted'] },
-            },
-        },
+        lineStyle: { $ref: '#/definitions/border' },
         startArrow: {
             type: 'object',
             properties: {

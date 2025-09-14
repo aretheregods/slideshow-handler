@@ -14,6 +14,7 @@ import { borderSchema, fillSchema, paragraphSchema, colorSchema } from './defini
  * @property {Fill} [fill] - The fill of the cell.
  * @property {number} [rowSpan] - The number of rows the cell spans.
  * @property {number} [colSpan] - The number of columns the cell spans.
+ * @property {'top' | 'middle' | 'bottom'} [verticalAlign] - The vertical alignment of the cell content.
  */
 export const tableCellSchema = {
     type: 'object',
@@ -32,6 +33,7 @@ export const tableCellSchema = {
         fill: { $ref: '#/definitions/fill' },
         rowSpan: { type: 'integer', minimum: 1 },
         colSpan: { type: 'integer', minimum: 1 },
+        verticalAlign: { type: 'string', enum: ['top', 'middle', 'bottom'] },
     },
     required: ['content'],
 };
@@ -63,6 +65,8 @@ export const tableRowSchema = {
  * @property {number[]} columnWidths - The widths of the columns.
  * @property {boolean} [firstRowHeader] - Whether the first row is a header.
  * @property {boolean} [lastRowFooter] - Whether the last row is a footer.
+ * @property {boolean} [bandedRows] - Whether the rows are banded.
+ * @property {boolean} [bandedColumns] - Whether the columns are banded.
  */
 export const tableSchema = {
     type: 'object',
@@ -81,6 +85,8 @@ export const tableSchema = {
         },
         firstRowHeader: { type: 'boolean' },
         lastRowFooter: { type: 'boolean' },
+        bandedRows: { type: 'boolean' },
+        bandedColumns: { type: 'boolean' },
     },
     required: ['type', 'rows', 'columnWidths'],
 };

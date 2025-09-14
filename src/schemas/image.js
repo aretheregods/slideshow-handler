@@ -1,8 +1,9 @@
-import { shadowSchema, colorSchema } from './definitions.js';
+import { shadowSchema, colorSchema, effectSchema } from './definitions.js';
 
 /**
  * @typedef {import('./definitions.js').Shadow} Shadow
  * @typedef {import('./definitions.js').Color} Color
+ * @typedef {import('./definitions.js').Effect} Effect
  */
 
 /**
@@ -15,17 +16,16 @@ import { shadowSchema, colorSchema } from './definitions.js';
  * @property {number} [crop.right] - The right crop percentage.
  * @property {number} [crop.top] - The top crop percentage.
  * @property {number} [crop.bottom] - The bottom crop percentage.
- * @property {Shadow} [shadow] - The shadow effect for the image.
- * @property {Object} [reflection] - The reflection effect for the image.
- * @property {number} [reflection.distance] - The distance of the reflection.
- * @property {number} [reflection.blur] - The blur of the reflection.
- * @property {number} [reflection.opacity] - The opacity of the reflection.
+ * @property {number} [brightness] - The brightness of the image.
+ * @property {number} [contrast] - The contrast of the image.
+ * @property {Effect[]} [effects] - An array of effects applied to the image.
  */
 export const imageSchema = {
     type: 'object',
     definitions: {
         shadow: shadowSchema,
         color: colorSchema,
+        effect: effectSchema,
     },
     properties: {
         type: { const: 'image' },
@@ -40,14 +40,11 @@ export const imageSchema = {
                 bottom: { type: 'number', minimum: 0, maximum: 1 },
             },
         },
-        shadow: { $ref: '#/definitions/shadow' },
-        reflection: {
-            type: 'object',
-            properties: {
-                distance: { type: 'number' },
-                blur: { type: 'number' },
-                opacity: { type: 'number', minimum: 0, maximum: 1 },
-            },
+        brightness: { type: 'number', minimum: -1, maximum: 1 },
+        contrast: { type: 'number', minimum: -1, maximum: 1 },
+        effects: {
+            type: 'array',
+            items: { $ref: '#/definitions/effect' },
         },
     },
     required: ['type', 'src'],
