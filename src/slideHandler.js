@@ -10,7 +10,7 @@ import {
     parseShapeProperties,
     parseBodyProperties,
     parseParagraphProperties,
-    parseShapePropertiesV2,
+    transformShapeToSchema,
     getCellFillColor,
     getCellTextStyle,
     getCellBorders,
@@ -319,13 +319,6 @@ export class SlideHandler {
 	 * @returns {Promise<Object|null>} A promise that resolves to the parsed shape data, or null if the shape is not visible.
 	 */
     async parseShape(shapeNode, listCounters, parentMatrix, slideLevelVisibility) {
-        const cNvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
-        const id = cNvPr?.getAttribute('id');
-        if (!id) {
-            console.warn('Shape found without a unique ID, skipping.', shapeNode);
-            return null;
-        }
-
         const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
         let phKey = null, phType = null;
         if (nvPr) {
@@ -340,92 +333,67 @@ export class SlideHandler {
 
         if (slideLevelVisibility?.[phType] === false) return null;
 
-        const shapeBuilder = new ShapeBuilder(null, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize);
-        const { pos, transform, flipH, flipV, rotation, matrix } = shapeBuilder.getShapeProperties(shapeNode, parentMatrix);
-        if (!pos) return null;
-
         const masterPh = this.masterPlaceholders?.[phKey] || Object.values(this.masterPlaceholders || {}).find(p => p.type === phType);
         const layoutPh = this.layoutPlaceholders?.[phKey];
 
-        const slideShapeProps = parseShapePropertiesV2(shapeNode, this.slideContext);
-
-        const getMasterXmlNode = (ph) => ph?.txBodyNode?.parentNode;
-        const layoutShapeProps = layoutPh ? parseShapePropertiesV2(getMasterXmlNode(layoutPh), this.slideContext) : {};
-        const masterShapeProps = masterPh ? parseShapePropertiesV2(getMasterXmlNode(masterPh), this.slideContext) : {};
-
-        let fill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
-        const border = slideShapeProps.border ?? layoutShapeProps.border ?? masterShapeProps.border;
-        const shadow = slideShapeProps.shadow ?? layoutShapeProps.shadow ?? masterShapeProps.shadow;
-        const effects = slideShapeProps.effects?.length ? slideShapeProps.effects : (layoutShapeProps.effects?.length ? layoutShapeProps.effects : masterShapeProps.effects);
-        const geometry = slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry;
+        const masterShapeProps = masterPh?.shapeProps || {};
+        const layoutShapeProps = layoutPh?.shapeProps || {};
+        const slideShapeProps = parseShapeProperties(shapeNode, this.slideContext, this.slideNum);
+        let finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
+        const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
+        const finalEffect = slideShapeProps.effect ?? layoutShapeProps.effect ?? masterShapeProps.effect;
 
         if (shapeNode.getAttribute('useBgFill') === '1') {
             if (this.finalBg?.type === 'color') {
-                fill = { type: 'solid', color: { type: 'srgb', value: this.finalBg.value } };
+                finalFill = { type: 'solid', color: this.finalBg.value };
             } else {
-                fill = { type: 'none' };
+                finalFill = 'none';
             }
         }
 
-        const baseShape = {
-            id,
-            x: matrix.m[4],
-            y: matrix.m[5],
-            width: pos.width,
-            height: pos.height,
-            transform2D: {
-                rotation: rotation || 0,
-                flipH: flipH || false,
-                flipV: flipV || false,
-            },
-            fill,
-            border,
-            shadow,
-            effects: effects || [],
+        const shapeProps = {
+            geometry: slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry,
+            fill: finalFill,
+            stroke: finalStroke,
+            effect: finalEffect,
         };
 
-        let specificShapeData = {};
+        const shapeBuilder = new ShapeBuilder(null, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize);
+        const { pos, transform, flipH, flipV, rotation } = shapeBuilder.getShapeProperties(shapeNode, parentMatrix);
 
-        const slideTxBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-        let txBodyToParse = slideTxBody;
-        const slideTextContent = slideTxBody?.textContent.trim() ?? '';
-        if (slideTextContent === '') {
-            if (layoutPh?.txBodyNode) txBodyToParse = layoutPh.txBodyNode;
-            else if (masterPh?.txBodyNode) txBodyToParse = masterPh.txBodyNode;
+        let textData = null;
+        if (pos) {
+            const slideTxBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+            let txBodyToParse = slideTxBody;
+
+            const slideTextContent = slideTxBody?.textContent.trim() ?? '';
+            if (slideTextContent === '') {
+                if (layoutPh?.txBodyNode) txBodyToParse = layoutPh.txBodyNode;
+                else if (masterPh?.txBodyNode) txBodyToParse = masterPh.txBodyNode;
+            }
+
+            if (txBodyToParse) {
+                const slideBodyPr = parseBodyProperties(slideTxBody);
+                const masterBodyPr = masterPh?.bodyPr || {};
+                const layoutBodyPr = layoutPh?.bodyPr || {};
+                const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
+                textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {});
+            }
         }
 
-        if (txBodyToParse) {
-            const slideBodyPr = parseBodyProperties(slideTxBody);
-            const masterBodyPr = masterPh?.bodyPr || {};
-            const layoutBodyPr = layoutPh?.bodyPr || {};
-            const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-
-            const textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {});
-
-            specificShapeData.textbox = {
-                paragraphs: textData.paragraphs,
-                bodyPr: textData.bodyPr,
-                // We also need the layout information for rendering, so let's pass it along.
-                // This isn't part of the pure data schema, but is needed for the rendering step.
-                layout: textData.layout,
-            };
-        } else if (geometry) {
-            specificShapeData.geometry = geometry;
-        } else {
-            specificShapeData.geometry = { type: 'preset', preset: 'rect' };
-        }
-
-        // This is a temporary measure to distinguish between shape types for the old renderer
-        specificShapeData.type = 'shape';
-        // Also pass the old transform and pos for the old renderer
-        specificShapeData.transform = transform;
-        specificShapeData.pos = pos;
-
-
-        return {
-            ...baseShape,
-            ...specificShapeData,
+        const oldShapeData = {
+            type: 'shape',
+            transform,
+            pos,
+            shapeProps,
+            text: textData,
+            flipH,
+            flipV,
+            rotation,
         };
+
+        const cNvPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'nvSpPr')[0]?.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+        return transformShapeToSchema(oldShapeData, cNvPrNode);
     }
 
 	/**
@@ -436,9 +404,8 @@ export class SlideHandler {
 	 */
     async renderShape(shapeData, id) {
         const matrix = new Matrix();
-        // Use the compatibility transform property for now
-        if (shapeData.transform) {
-            const transformString = shapeData.transform.replace('matrix(', '').replace(')', '');
+        if (shapeData.transform2D?.matrix) {
+            const transformString = shapeData.transform2D.matrix.replace('matrix(', '').replace(')', '');
             const transformValues = transformString.split(' ').map(Number);
             matrix.m = transformValues;
         }
@@ -464,10 +431,10 @@ export class SlideHandler {
 
         // Update text rendering logic to use the new `textbox` property
         if (shapeData.textbox) {
+            // Reconstruct the old textData object for the legacy renderParagraphs function
             const textDataForRenderer = {
                 layout: shapeData.textbox.layout,
                 bodyPr: shapeData.textbox.bodyPr,
-                // renderParagraphs needs the absolute position of the text box
                 pos: { x: shapeData.x, y: shapeData.y, width: shapeData.width, height: shapeData.height },
             };
             await this.renderParagraphs(textDataForRenderer, `${id}.text`);
@@ -848,77 +815,6 @@ export class SlideHandler {
         return this.parseParagraphs(txBodyNode, pos, null, 'body', listCounters, finalBodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
     }
 
-    _parseParagraphsToSchema(pNodes, phKey, phType, listCounters, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
-        const dts = defaultTextStyles || this.defaultTextStyles;
-        const mph = masterPlaceholders || this.masterPlaceholders;
-        const lph = layoutPlaceholders || this.layoutPlaceholders;
-
-        return pNodes.map(pNode => {
-            const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
-            const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
-            const defaultStyle = (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') ? dts.title : (phType === 'body' ? dts.body : dts.other);
-            const defaultLevelProps = defaultStyle?.[level] || {};
-            const masterPh = mph?.[phKey] || Object.values(mph || {}).find(p => p.type === phType);
-            const masterListStyle = masterPh?.listStyle?.[level] || {};
-            const layoutPh = lph?.[phKey];
-            const layoutListStyle = layoutPh?.listStyle?.[level] || {};
-            const slideLevelProps = parseParagraphProperties(pPrNode, this.slideContext) || { bullet: {}, defRPr: {} };
-
-            const finalProps = {
-                level, ...defaultLevelProps, ...masterListStyle, ...layoutListStyle, ...slideLevelProps,
-                bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
-                defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
-            };
-
-            const runs = [];
-            for (const childNode of Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName))) {
-                if (childNode.localName === 'br') {
-                    runs.push({ text: '\n' });
-                    continue;
-                }
-                const text = childNode.getElementsByTagNameNS(DML_NS, 't')[0]?.textContent || '';
-                if (!text && childNode.localName !== 'r') continue;
-
-                const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                const runProps = { ...finalProps.defRPr };
-                if (rPr) {
-                    if (rPr.getAttribute('sz')) runProps.size = (parseInt(rPr.getAttribute('sz')) / 100);
-                    if (rPr.getAttribute('b') === '1') runProps.bold = true; else if (rPr.getAttribute('b') === '0') runProps.bold = false;
-                    if (rPr.getAttribute('i') === '1') runProps.italic = true; else if (rPr.getAttribute('i') === '0') runProps.italic = false;
-                    const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                    if (solidFill) runProps.color = ColorParser.parseColor(solidFill);
-                    const latinFont = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
-                    if (latinFont?.getAttribute('typeface')) runProps.font = latinFont.getAttribute('typeface');
-                }
-
-                runs.push({
-                    text: text,
-                    fontFamily: resolveFontFamily(runProps, phType, this.slideContext),
-                    fontSize: runProps.size || 18,
-                    fontColor: runProps.color ? ColorParser.resolveColor(runProps.color, this.slideContext) : undefined,
-                    bold: runProps.bold,
-                    italic: runProps.italic,
-                });
-            }
-
-            if (finalProps.bullet?.type === 'auto') {
-                if (listCounters[level] === undefined) listCounters[level] = finalProps.bullet.startAt || 1; else listCounters[level]++;
-                finalProps.bullet.character = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]);
-            }
-
-            return {
-                runs,
-                alignment: finalProps.align,
-                indent: finalProps.indent,
-                lineSpacing: finalProps.lnSpc,
-                bullets: finalProps.bullet,
-                level,
-                defRPr: finalProps.defRPr,
-                marL: finalProps.marL,
-            };
-        });
-    }
-
     /**
      * @description Parses the paragraphs within a text body.
      * @param {Element} txBody - The text body element.
@@ -934,13 +830,15 @@ export class SlideHandler {
      * @returns {Object|null} The parsed paragraph data, or null if there are no paragraphs.
      */
     parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
-        const pNodes = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
-        if (pNodes.length === 0) return null;
+        const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
+        if (paragraphs.length === 0) return null;
 
-        const schemaParagraphs = this._parseParagraphsToSchema(pNodes, phKey, phType, listCounters, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
+        const dts = defaultTextStyles || this.defaultTextStyles;
+        const mph = masterPlaceholders || this.masterPlaceholders;
+        const lph = layoutPlaceholders || this.layoutPlaceholders;
 
-        const layout = this.layoutParagraphs(schemaParagraphs, pos, bodyPr, listCounters);
-        return { layout, bodyPr, pos, paragraphs: schemaParagraphs };
+        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, dts, mph, lph, listCounters);
+        return { layout, bodyPr, pos, paragraphs };
     }
 
     /**
@@ -985,8 +883,18 @@ export class SlideHandler {
             }
 
             const textElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            textElement.setAttribute('x', line.anchorX);
-            textElement.setAttribute('text-anchor', line.anchor);
+            const align = finalProps.align || 'l';
+            let xPos = line.x;
+            if (align === 'ctr') {
+                textElement.setAttribute('x', xPos + line.width / 2);
+                textElement.setAttribute('text-anchor', 'middle');
+            } else if (align === 'r') {
+                textElement.setAttribute('x', xPos + line.width);
+                textElement.setAttribute('text-anchor', 'end');
+            } else {
+                textElement.setAttribute('x', xPos);
+                textElement.setAttribute('text-anchor', 'start');
+            }
             textElement.setAttribute('y', startY + line.startY + (line.runs[0]?.font.size || 0));
 
             for (const run of line.runs) {
@@ -1018,7 +926,7 @@ export class SlideHandler {
      * @param {Object} listCounters - The counters for list elements.
      * @returns {{totalHeight: number, lines: Array<Object>}} An object containing the total height and the laid-out lines.
      */
-    layoutParagraphs(schemaParagraphs, pos, bodyPr, listCounters) {
+    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters) {
         const paddedPos = {
             x: pos.x + (bodyPr.lIns || 0), y: pos.y + (bodyPr.tIns || 0),
             width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
@@ -1028,46 +936,73 @@ export class SlideHandler {
         const lines = [];
         let currentY = 0;
 
-        for (const p of schemaParagraphs) {
-            const marL = p.marL ?? (p.level > 0 ? (p.level * INDENTATION_AMOUNT) : 0);
-            const indent = p.indent ?? 0;
-            const bulletOffset = (p.bullets?.type && p.bullets.type !== 'none') ? BULLET_OFFSET : 0;
+        for (const pNode of paragraphs) {
+            const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
+            const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
+            const defaultStyle = (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') ? defaultTextStyles.title : (phType === 'body' ? defaultTextStyles.body : defaultTextStyles.other);
+            const defaultLevelProps = defaultStyle?.[level] || {};
+            const masterPh = masterPlaceholders?.[phKey] || Object.values(masterPlaceholders || {}).find(p => p.type === phType);
+            const masterListStyle = masterPh?.listStyle?.[level] || {};
+            const layoutPh = layoutPlaceholders?.[phKey];
+            const layoutListStyle = layoutPh?.listStyle?.[level] || {};
+            const slideLevelProps = parseParagraphProperties(pPrNode, this.slideContext) || { bullet: {}, defRPr: {} };
 
-            let currentLine = { runs: [], width: 0, height: 0, paragraphProps: p, startY: currentY, isFirstLine: true };
+            const finalProps = {
+                level, ...defaultLevelProps, ...masterListStyle, ...layoutListStyle, ...slideLevelProps,
+                bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
+                defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
+            };
+
+            const marL = finalProps.marL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
+            const indent = finalProps.indent ?? 0;
+            const bulletOffset = (finalProps.bullet?.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
+
+            let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: true };
             const pushLine = () => {
                 if (currentLine.runs.length > 0) {
                     lines.push(currentLine);
                     currentY += currentLine.height || LINE_HEIGHT;
                 }
-                currentLine = { runs: [], width: 0, height: 0, paragraphProps: p, startY: currentY, isFirstLine: false };
+                currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: false };
             };
 
-            if (p.bullets?.type === 'auto') {
-                currentLine.bulletChar = p.bullets.character;
+            if (finalProps.bullet?.type === 'auto') {
+                if (listCounters[level] === undefined) listCounters[level] = finalProps.bullet.startAt || 1; else listCounters[level]++;
+                currentLine.bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]);
             }
 
-            for (const run of p.runs) {
-                if (run.text === '\n') {
-                    pushLine();
-                    continue;
+            for (const childNode of Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName))) {
+                if (childNode.localName === 'br') { pushLine(); continue; }
+                const text = childNode.textContent;
+                if (!text) continue;
+
+                const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                const runProps = { ...finalProps.defRPr };
+                if (rPr) {
+                    if (rPr.getAttribute('sz')) runProps.size = (parseInt(rPr.getAttribute('sz')) / 100) * PT_TO_PX;
+                    if (rPr.getAttribute('b') === '1') runProps.bold = true; else if (rPr.getAttribute('b') === '0') runProps.bold = false;
+                    if (rPr.getAttribute('i') === '1') runProps.italic = true; else if (rPr.getAttribute('i') === '0') runProps.italic = false;
+                    const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                    if (solidFill) runProps.color = ColorParser.parseColor(solidFill);
+                    const latinFont = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                    if (latinFont?.getAttribute('typeface')) runProps.font = latinFont.getAttribute('typeface');
                 }
 
-                let fontSize = (run.fontSize || 18) * PT_TO_PX;
+                let fontSize = runProps.size || (18 * PT_TO_PX);
                 if (bodyPr.fontScale) fontSize *= bodyPr.fontScale;
-                const fontFamily = run.fontFamily;
+                const fontFamily = resolveFontFamily(runProps, phType, this.slideContext);
                 const tempCtx = document.createElement('canvas').getContext('2d');
-                tempCtx.font = `${run.italic ? 'italic' : 'normal'} ${run.bold ? 'bold' : 'normal'} ${fontSize}px ${fontFamily}`;
+                tempCtx.font = `${runProps.italic ? 'italic' : 'normal'} ${runProps.bold ? 'bold' : 'normal'} ${fontSize}px ${fontFamily}`;
 
-                for (const word of run.text.split(/(\s+)/)) {
+                for (const word of text.split(/(\s+)/)) {
                     if (!word) continue;
                     const wordWidth = tempCtx.measureText(word).width;
                     const effectiveWidth = paddedPos.width - (currentLine.isFirstLine ? marL + indent : marL) - bulletOffset;
                     if (currentLine.width + wordWidth > effectiveWidth && currentLine.runs.length > 0) pushLine();
-
                     currentLine.runs.push({
                         text: word,
-                        font: { style: run.italic ? 'italic' : 'normal', weight: run.bold ? 'bold' : 'normal', size: fontSize, family: fontFamily },
-                        color: run.fontColor || '#000000'
+                        font: { style: runProps.italic ? 'italic' : 'normal', weight: runProps.bold ? 'bold' : 'normal', size: fontSize, family: fontFamily },
+                        color: ColorParser.resolveColor(runProps.color, this.slideContext) || '#000000'
                     });
                     currentLine.width += wordWidth;
                     currentLine.height = Math.max(currentLine.height, fontSize * (bodyPr.lnSpcReduction ? 1 - bodyPr.lnSpcReduction : 1.25));
@@ -1077,27 +1012,16 @@ export class SlideHandler {
         }
 
         for (const line of lines) {
-            const { alignment, level, marL: pMarL, indent: pIndent } = line.paragraphProps;
-            const align = alignment || 'l';
+            const { align, level, marL: pMarL, indent: pIndent } = line.paragraphProps;
             const marL = pMarL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
             const indent = pIndent ?? 0;
             const bulletOffset = (line.paragraphProps.bullet?.type && line.paragraphProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
             const lineIndent = marL + indent;
             const effectiveWidth = paddedPos.width - lineIndent - bulletOffset;
-            const lineStartX = paddedPos.x + lineIndent + bulletOffset;
-
-            line.x = lineStartX;
-
-            if (align === 'ctr') {
-                line.anchor = 'middle';
-                line.anchorX = lineStartX + effectiveWidth / 2;
-            } else if (align === 'r') {
-                line.anchor = 'end';
-                line.anchorX = lineStartX + effectiveWidth;
-            } else { // 'l' or 'just'
-                line.anchor = 'start';
-                line.anchorX = lineStartX;
-            }
+            let lineXOffset = 0;
+            if (align === 'ctr') lineXOffset = (effectiveWidth - line.width) / 2;
+            else if (align === 'r') lineXOffset = effectiveWidth - line.width;
+            line.x = paddedPos.x + lineIndent + bulletOffset + lineXOffset;
         }
 
         return { totalHeight: currentY, lines };

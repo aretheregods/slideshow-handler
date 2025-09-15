@@ -21,8 +21,8 @@ vi.mock('utils', () => ({
     getAutoNumberingChar: vi.fn(),
     resolveFontFamily: vi.fn().mockReturnValue('Arial'),
     parseChart: vi.fn(),
-    parseShapeProperties: vi.fn().mockReturnValue({ fill: {}, stroke: {}, effect: {} }),
-    parseShapePropertiesV2: vi.fn().mockReturnValue({ fill: { type: 'solid', color: 'red' }, border: { width: 1 }, geometry: { type: 'rect' } }),
+    transformShapeToSchema: vi.fn(shape => ({ ...shape, transformed: true })),
+    parseShapeProperties: vi.fn().mockReturnValue({ fill: { type: 'solid', color: 'red' }, stroke: { width: 1, color: 'blue' }, effect: {}, geometry: { type: 'rect' } }),
     parseBodyProperties: vi.fn().mockReturnValue({}),
     parseParagraphProperties: vi.fn().mockReturnValue({ bullet: {}, defRPr: {} }),
     getCellFillColor: vi.fn(),
@@ -295,7 +295,6 @@ describe('SlideHandler', () => {
                     rotation: 0,
                     flipH: false,
                     flipV: false,
-                    matrix: { m: [1, 0, 0, 1, 100, 200] },
                 }),
                 renderShape: mockRenderShape,
             }));
@@ -309,31 +308,33 @@ describe('SlideHandler', () => {
             slideHandler.renderParagraphs = vi.fn();
         });
 
-        it('should parse a shape and return a schema-compliant object', async () => {
+        it('should call the transformer and return its result', async () => {
             const shapeData = await slideHandler.parseShape(mockShapeNode, {}, new allUtils.Matrix(), {});
 
-            // BaseShape properties
-            expect(shapeData.id).toBe('2');
-            expect(shapeData.x).toBe(100);
-            expect(shapeData.y).toBe(200);
-            expect(shapeData.width).toBe(300);
-            expect(shapeData.height).toBe(400);
-            expect(shapeData.transform2D).toEqual({ rotation: 0, flipH: false, flipV: false });
-            expect(shapeData.fill).toEqual({ type: 'solid', color: 'red' });
-            expect(shapeData.border).toEqual({ width: 1 });
+            // Check that the transformer was called with the raw parsed data
+            expect(allUtils.transformShapeToSchema).toHaveBeenCalled();
+            const oldShapeData = allUtils.transformShapeToSchema.mock.calls[0][0];
+            expect(oldShapeData.type).toBe('shape');
+            expect(oldShapeData.pos).toBeDefined();
+            expect(oldShapeData.rotation).toBe(0);
+            expect(oldShapeData.shapeProps.fill).toEqual({ type: 'solid', color: 'red' });
 
-            // Polymorphic part (textbox)
-            expect(shapeData.textbox).toBeDefined();
-            expect(shapeData.textbox.paragraphs).toEqual([{ runs: [{ text: 'parsed' }] }]);
+            // Check that the final result is the (mocked) output of the transformer
+            expect(shapeData.transformed).toBe(true);
         });
 
         it('should render a shape by adapting the new schema to the old renderer', async () => {
             const shapeData = {
                 id: '2',
                 x: 100, y: 200, width: 300, height: 400,
-                transform2D: { rotation: 0, flipH: false, flipV: false },
+                transform2D: {
+                    rotation: 0,
+                    flipH: false,
+                    flipV: false,
+                    matrix: 'matrix(1 0 0 1 100 200)',
+                },
                 fill: { type: 'solid', color: 'blue' },
-                border: { width: 2, style: 'dashed' },
+                border: { width: 2, style: 'dashed', color: 'black' },
                 shadow: { type: 'outer', blur: 5 },
                 effects: [],
                 textbox: {
@@ -341,9 +342,6 @@ describe('SlideHandler', () => {
                     bodyPr: { anchor: 'ctr' },
                     layout: { lines: [], totalHeight: 50 },
                 },
-                // Compatibility props
-                transform: 'matrix(1 0 0 1 100 200)',
-                pos: { width: 300, height: 400 },
             };
 
             slideHandler.renderer = { setTransform: vi.fn() };
@@ -414,29 +412,13 @@ describe('SlideHandler', () => {
             })(global.document.createElement);
         });
 
-        it('should parse paragraphs and produce schema-compliant objects and layout', () => {
+        it('should parse paragraphs and return layout data', () => {
             const pos = { x: 0, y: 0, width: 200, height: 100 };
-
-            const originalParse = slideHandler._parseParagraphsToSchema;
-            let parsedParagraphs;
-            slideHandler._parseParagraphsToSchema = (...args) => {
-                parsedParagraphs = originalParse.apply(slideHandler, args);
-                return parsedParagraphs;
-            };
-
             const textData = slideHandler.parseParagraphs(mockTxBody, pos, 'body', 'body', {}, {}, {}, slideHandler.defaultTextStyles, slideHandler.masterPlaceholders, slideHandler.layoutPlaceholders);
-
-            expect(parsedParagraphs).not.toBeNull();
-            expect(parsedParagraphs.length).toBe(1);
-            expect(parsedParagraphs[0].runs.length).toBe(2);
-            expect(parsedParagraphs[0].runs[0].text).toBe('Hello, ');
-            expect(parsedParagraphs[0].runs[0].bold).toBe(true);
 
             expect(textData).not.toBeNull();
             expect(textData.layout.lines.length).toBeGreaterThan(0);
             expect(textData.layout.lines[0].runs.length).toBeGreaterThan(0);
-
-            slideHandler._parseParagraphsToSchema = originalParse;
         });
 
         it('should render paragraphs to the SVG', () => {

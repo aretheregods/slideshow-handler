@@ -338,3 +338,76 @@ function transformShape(shapeData) {
         shapeType: 'rect', // Default to rect if no geometry is specified
     };
 }
+
+/**
+ * Transforms a shape object from the old parser format to the new schema-compliant format.
+ * @param {Object} oldShape - The shape data object from the original parser.
+ * @param {Element} cNvPrNode - The cNvPr node containing the shape's ID.
+ * @returns {Object} The new schema-compliant shape object.
+ */
+export function transformShapeToSchema(oldShape, cNvPrNode) {
+    // The oldShape object has: { type, transform, pos, shapeProps, text, flipH, flipV, rotation }
+    const { pos, shapeProps, text, transform, flipH, flipV, rotation } = oldShape;
+
+    // Decompose the matrix string to get x and y
+    const matrixValues = transform ? transform.replace(/matrix\(|\)/g, '').split(/[ ,]+/).map(Number) : [1, 0, 0, 1, 0, 0];
+    const x = matrixValues[4];
+    const y = matrixValues[5];
+
+    // The old shape properties are nested in shapeProps
+    const { stroke, effect, fill, geometry } = shapeProps;
+
+    const border = stroke ? {
+        color: { type: 'srgb', value: stroke.color },
+        width: stroke.width,
+        style: stroke.dash && stroke.dash.length > 0 ? 'dashed' : 'solid', // Simplified
+        cap: stroke.cap,
+        join: stroke.join,
+    } : undefined;
+
+    const shadow = effect && effect.type === 'outerShdw' ? {
+        color: { type: 'srgb', value: effect.color },
+        blur: effect.blurRad,
+        offsetX: effect.dist * Math.cos(effect.dir * (Math.PI / 180)),
+        offsetY: effect.dist * Math.sin(effect.dir * (Math.PI / 180)),
+        angle: effect.dir,
+        distance: effect.dist,
+    } : undefined;
+
+    const baseShape = {
+        id: cNvPrNode.getAttribute('id'),
+        x,
+        y,
+        width: pos.width,
+        height: pos.height,
+        transform2D: {
+            rotation: rotation,
+            flipH: flipH,
+            flipV: flipV,
+            matrix: transform, // Pass the original matrix string
+        },
+        fill: transformFill(fill),
+        border,
+        shadow,
+        effects: [], // Other effects not handled yet
+    };
+
+    let specificShapeData = {};
+    if (text) {
+        specificShapeData.textbox = {
+            paragraphs: text.paragraphs,
+            bodyPr: text.bodyPr,
+            layout: text.layout, // For renderer - will be removed later
+        };
+    } else if (geometry) {
+        specificShapeData.geometry = geometry;
+    } else {
+        specificShapeData.geometry = { type: 'preset', preset: 'rect' };
+    }
+
+    // Return ONLY the new schema-compliant object
+    return {
+        ...baseShape,
+        ...specificShapeData,
+    };
+}
