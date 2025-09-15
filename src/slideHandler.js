@@ -10,9 +10,7 @@ import {
     parseShapeProperties,
     parseBodyProperties,
     parseParagraphProperties,
-    getCellFillColor,
     getCellTextStyle,
-    getCellBorders,
     buildPathStringFromGeom,
     parseSourceRectangle,
     createImage,
@@ -694,15 +692,66 @@ export class SlideHandler {
                     if (r + i < numRows && c + j < numCols) renderedGrid[r + i][c + j] = true;
                 }
 
+                const { fill, borders } = this.parseCellProperties(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle);
                 cells.push({
                     pos: { x: cellX, y: cellY, width: cellWidth, height: cellHeight },
-                    fill: getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext),
-                    borders: getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext),
+                    fill: fill,
+                    borders: borders,
                     text: this.parseCellText(cellNode, { x: cellX, y: cellY, width: cellWidth, height: cellHeight }, getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle)),
                 });
             }
         }
-        return transformShape({ type: 'table', transform, pos, cells }, this.slideContext);
+        return transformShape({ type: 'table', transform, pos, cells, tableStyle }, this.slideContext);
+    }
+
+    /**
+     * @description Parses the properties of a table cell.
+     * @param {Element} cellNode - The table cell's XML node.
+     * @param {Element} tblPrNode - The table properties XML node.
+     * @param {number} r - The row index of the cell.
+     * @param {number} c - The column index of the cell.
+     * @param {number} numRows - The total number of rows in the table.
+     * @param {number} numCols - The total number of columns in the table.
+     * @param {Object} tableStyle - The table style object.
+     * @returns {{fill: Object, borders: Object}} The parsed cell properties.
+     */
+    parseCellProperties(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle) {
+        // This function will now just parse the raw properties without resolving colors.
+        // The actual color resolution is deferred to the transformShape function.
+        // NOTE: This is a simplified implementation. A full implementation would
+        // need to merge properties from the table style parts correctly.
+        const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
+        let fill = null;
+        let borders = {};
+
+        if (tcPrNode) {
+            const solidFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+            if (solidFillNode) {
+                fill = ColorParser.parseColor(solidFillNode);
+            }
+
+            const borderMap = { 'lnL': 'left', 'lnR': 'right', 'lnT': 'top', 'lnB': 'bottom' };
+            for (const child of tcPrNode.children) {
+                const side = borderMap[child.localName];
+                if (side) {
+                    const lnNode = child;
+                    const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+                    if (noFillNode) {
+                        borders[side] = 'none';
+                    } else {
+                        const solidFill = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                        if (solidFill) {
+                            borders[side] = {
+                                color: ColorParser.parseColor(solidFill),
+                                width: parseInt(lnNode.getAttribute('w') || '0') / EMU_PER_PIXEL,
+                            };
+                        }
+                    }
+                }
+            }
+        }
+
+        return { fill, borders };
     }
 
     /**
@@ -842,7 +891,7 @@ export class SlideHandler {
         for (const [lineIndex, line] of layout.lines.entries()) {
             const { paragraphProps: finalProps } = line;
             if (line.isFirstLine && finalProps.bullet?.type && finalProps.bullet.type !== 'none') {
-                const bulletColor = ColorParser.resolveColor(finalProps.bullet.color, this.slideContext) || ColorParser.resolveColor(finalProps.defRPr.color, this.slideContext) || '#000';
+                const bulletColor = finalProps.bullet.color;
                 const firstRunSize = line.runs[0]?.font.size || (finalProps.defRPr.size || 18 * PT_TO_PX);
                 const bulletBaselineY = startY + line.startY + firstRunSize;
                 const bulletX = line.x - BULLET_OFFSET;
@@ -997,7 +1046,7 @@ export class SlideHandler {
                     currentLine.runs.push({
                         text: word,
                         font: { style: runProps.italic ? 'italic' : 'normal', weight: runProps.bold ? 'bold' : 'normal', size: fontSize, family: fontFamily },
-                        color: ColorParser.resolveColor(runProps.color, this.slideContext) || '#000000',
+                        color: runProps.color,
                         highlight: runProps.highlight,
                         underline: runProps.underline,
                         strikethrough: runProps.strikethrough,

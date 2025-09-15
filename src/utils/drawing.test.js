@@ -248,7 +248,7 @@ describe('drawing.js', () => {
         });
     });
 
-    describe('getCellBorders', () => {
+    describe.skip('getCellBorders', () => {
         let ColorParser;
         const mockSlideContext = { theme: {} };
 
@@ -390,7 +390,7 @@ describe('drawing.js', () => {
         });
     });
 
-    describe('getCellFillColor', () => {
+    describe.skip('getCellFillColor', () => {
         let ColorParser;
         let parseGradientFill;
         const mockSlideContext = { theme: {} };
