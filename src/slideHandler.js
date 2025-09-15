@@ -346,8 +346,12 @@ export class SlideHandler {
             if (this.finalBg?.type === 'color') {
                 finalFill = { type: 'solid', color: this.finalBg.value };
             } else {
-                finalFill = 'none';
+                finalFill = { type: 'none' };
             }
+        }
+
+        if (finalFill?.type === 'image' && finalFill.relId && this.imageMap[finalFill.relId]) {
+            finalFill.href = this.imageMap[finalFill.relId];
         }
 
         const shapeProps = {
