@@ -10,6 +10,7 @@ import {
     parseShapeProperties,
     parseBodyProperties,
     parseParagraphProperties,
+    parseShapePropertiesV2,
     getCellFillColor,
     getCellTextStyle,
     getCellBorders,
@@ -318,6 +319,13 @@ export class SlideHandler {
 	 * @returns {Promise<Object|null>} A promise that resolves to the parsed shape data, or null if the shape is not visible.
 	 */
     async parseShape(shapeNode, listCounters, parentMatrix, slideLevelVisibility) {
+        const cNvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+        const id = cNvPr?.getAttribute('id');
+        if (!id) {
+            console.warn('Shape found without a unique ID, skipping.', shapeNode);
+            return null;
+        }
+
         const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
         let phKey = null, phType = null;
         if (nvPr) {
@@ -332,62 +340,91 @@ export class SlideHandler {
 
         if (slideLevelVisibility?.[phType] === false) return null;
 
+        const shapeBuilder = new ShapeBuilder(null, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize);
+        const { pos, transform, flipH, flipV, rotation, matrix } = shapeBuilder.getShapeProperties(shapeNode, parentMatrix);
+        if (!pos) return null;
+
         const masterPh = this.masterPlaceholders?.[phKey] || Object.values(this.masterPlaceholders || {}).find(p => p.type === phType);
         const layoutPh = this.layoutPlaceholders?.[phKey];
 
-        const masterShapeProps = masterPh?.shapeProps || {};
-        const layoutShapeProps = layoutPh?.shapeProps || {};
-        const slideShapeProps = parseShapeProperties(shapeNode, this.slideContext, this.slideNum);
-        let finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
-        const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
-        const finalEffect = slideShapeProps.effect ?? layoutShapeProps.effect ?? masterShapeProps.effect;
+        const slideShapeProps = parseShapePropertiesV2(shapeNode, this.slideContext);
+
+        const getMasterXmlNode = (ph) => ph?.txBodyNode?.parentNode;
+        const layoutShapeProps = layoutPh ? parseShapePropertiesV2(getMasterXmlNode(layoutPh), this.slideContext) : {};
+        const masterShapeProps = masterPh ? parseShapePropertiesV2(getMasterXmlNode(masterPh), this.slideContext) : {};
+
+        let fill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
+        const border = slideShapeProps.border ?? layoutShapeProps.border ?? masterShapeProps.border;
+        const shadow = slideShapeProps.shadow ?? layoutShapeProps.shadow ?? masterShapeProps.shadow;
+        const effects = slideShapeProps.effects?.length ? slideShapeProps.effects : (layoutShapeProps.effects?.length ? layoutShapeProps.effects : masterShapeProps.effects);
+        const geometry = slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry;
 
         if (shapeNode.getAttribute('useBgFill') === '1') {
             if (this.finalBg?.type === 'color') {
-                finalFill = { type: 'solid', color: this.finalBg.value };
+                fill = { type: 'solid', color: { type: 'srgb', value: this.finalBg.value } };
             } else {
-                finalFill = 'none';
+                fill = { type: 'none' };
             }
         }
 
-        const shapeProps = {
-            geometry: slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry,
-            fill: finalFill,
-            stroke: finalStroke,
-            effect: finalEffect,
+        const baseShape = {
+            id,
+            x: matrix.m[4],
+            y: matrix.m[5],
+            width: pos.width,
+            height: pos.height,
+            transform2D: {
+                rotation: rotation || 0,
+                flipH: flipH || false,
+                flipV: flipV || false,
+            },
+            fill,
+            border,
+            shadow,
+            effects: effects || [],
         };
 
-        const shapeBuilder = new ShapeBuilder(null, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize);
-        const { pos, transform, flipH, flipV } = shapeBuilder.getShapeProperties(shapeNode, parentMatrix);
+        let specificShapeData = {};
 
-        let textData = null;
-        if (pos) {
-            const slideTxBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-            let txBodyToParse = slideTxBody;
-
-            const slideTextContent = slideTxBody?.textContent.trim() ?? '';
-            if (slideTextContent === '') {
-                if (layoutPh?.txBodyNode) txBodyToParse = layoutPh.txBodyNode;
-                else if (masterPh?.txBodyNode) txBodyToParse = masterPh.txBodyNode;
-            }
-
-            if (txBodyToParse) {
-                const slideBodyPr = parseBodyProperties(slideTxBody);
-                const masterBodyPr = masterPh?.bodyPr || {};
-                const layoutBodyPr = layoutPh?.bodyPr || {};
-                const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-                textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {});
-            }
+        const slideTxBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
+        let txBodyToParse = slideTxBody;
+        const slideTextContent = slideTxBody?.textContent.trim() ?? '';
+        if (slideTextContent === '') {
+            if (layoutPh?.txBodyNode) txBodyToParse = layoutPh.txBodyNode;
+            else if (masterPh?.txBodyNode) txBodyToParse = masterPh.txBodyNode;
         }
 
+        if (txBodyToParse) {
+            const slideBodyPr = parseBodyProperties(slideTxBody);
+            const masterBodyPr = masterPh?.bodyPr || {};
+            const layoutBodyPr = layoutPh?.bodyPr || {};
+            const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
+
+            const textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {});
+
+            specificShapeData.textbox = {
+                paragraphs: textData.paragraphs,
+                bodyPr: textData.bodyPr,
+                // We also need the layout information for rendering, so let's pass it along.
+                // This isn't part of the pure data schema, but is needed for the rendering step.
+                layout: textData.layout,
+            };
+        } else if (geometry) {
+            specificShapeData.geometry = geometry;
+        } else {
+            specificShapeData.geometry = { type: 'preset', preset: 'rect' };
+        }
+
+        // This is a temporary measure to distinguish between shape types for the old renderer
+        specificShapeData.type = 'shape';
+        // Also pass the old transform and pos for the old renderer
+        specificShapeData.transform = transform;
+        specificShapeData.pos = pos;
+
+
         return {
-            type: 'shape',
-            transform,
-            pos,
-            shapeProps,
-            text: textData,
-            flipH,
-            flipV,
+            ...baseShape,
+            ...specificShapeData,
         };
     }
 
@@ -399,6 +436,7 @@ export class SlideHandler {
 	 */
     async renderShape(shapeData, id) {
         const matrix = new Matrix();
+        // Use the compatibility transform property for now
         if (shapeData.transform) {
             const transformString = shapeData.transform.replace('matrix(', '').replace(')', '');
             const transformValues = transformString.split(' ').map(Number);
@@ -407,10 +445,32 @@ export class SlideHandler {
         this.renderer.setTransform(matrix, id);
 
         const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
-        shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
 
-        if (shapeData.text) {
-            await this.renderParagraphs(shapeData.text, `${id}.text`);
+        // Adapt the new shapeData to the old shapeProps structure for shapeBuilder
+        const shapePropsForBuilder = {
+            geometry: shapeData.geometry,
+            fill: shapeData.fill,
+            stroke: shapeData.border, // Map border to stroke
+            effect: shapeData.shadow || (shapeData.effects && shapeData.effects[0]), // Simplified effect mapping
+        };
+
+        // shapeBuilder expects pos to just have width and height, as it draws within the transformed group
+        const posForBuilder = {
+            width: shapeData.width,
+            height: shapeData.height,
+        };
+
+        shapeBuilder.renderShape(posForBuilder, shapePropsForBuilder, matrix, shapeData.transform2D.flipH, shapeData.transform2D.flipV);
+
+        // Update text rendering logic to use the new `textbox` property
+        if (shapeData.textbox) {
+            const textDataForRenderer = {
+                layout: shapeData.textbox.layout,
+                bodyPr: shapeData.textbox.bodyPr,
+                // renderParagraphs needs the absolute position of the text box
+                pos: { x: shapeData.x, y: shapeData.y, width: shapeData.width, height: shapeData.height },
+            };
+            await this.renderParagraphs(textDataForRenderer, `${id}.text`);
         }
     }
 
@@ -880,7 +940,7 @@ export class SlideHandler {
         const schemaParagraphs = this._parseParagraphsToSchema(pNodes, phKey, phType, listCounters, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
 
         const layout = this.layoutParagraphs(schemaParagraphs, pos, bodyPr, listCounters);
-        return { layout, bodyPr, pos };
+        return { layout, bodyPr, pos, paragraphs: schemaParagraphs };
     }
 
     /**

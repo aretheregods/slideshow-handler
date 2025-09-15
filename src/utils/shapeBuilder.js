@@ -34,13 +34,13 @@ export class ShapeBuilder {
      */
     getShapeProperties(shapeNode, parentMatrix) {
         const { phKey, phType } = this.#shapeAttr(shapeNode);
-        const { pos, localMatrix, flipH, flipV } = this.#localMatrix(phKey, phType, shapeNode);
-        if (!pos) return { pos: null, transform: null };
+        const { pos, localMatrix, flipH, flipV, rot } = this.#localMatrix(phKey, phType, shapeNode);
+        if (!pos) return { pos: null, transform: null, flipH: false, flipV: false, rotation: 0 };
 
         const finalMatrix = parentMatrix.clone().multiply(localMatrix);
         const transform = `matrix(${finalMatrix.m.join(' ')})`;
 
-        return { pos, transform, flipH, flipV };
+        return { pos, transform, flipH, flipV, rotation: rot, matrix: finalMatrix };
     }
 
     /**
@@ -385,7 +385,7 @@ export class ShapeBuilder {
             }
         }
 
-        return { pos, localMatrix, flipH, flipV };
+        return { pos, localMatrix, flipH, flipV, rot };
     }
 
     /**

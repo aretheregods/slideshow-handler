@@ -22,6 +22,7 @@ vi.mock('utils', () => ({
     resolveFontFamily: vi.fn().mockReturnValue('Arial'),
     parseChart: vi.fn(),
     parseShapeProperties: vi.fn().mockReturnValue({ fill: {}, stroke: {}, effect: {} }),
+    parseShapePropertiesV2: vi.fn().mockReturnValue({ fill: { type: 'solid', color: 'red' }, border: { width: 1 }, geometry: { type: 'rect' } }),
     parseBodyProperties: vi.fn().mockReturnValue({}),
     parseParagraphProperties: vi.fn().mockReturnValue({ bullet: {}, defRPr: {} }),
     getCellFillColor: vi.fn(),
@@ -261,8 +262,10 @@ describe('SlideHandler', () => {
 
     describe('parseShape and renderShape', () => {
         let mockShapeNode;
+        const mockRenderShape = vi.fn();
 
         beforeEach(() => {
+            mockRenderShape.mockClear();
             const parser = new DOMParser();
             const xmlString = `
                 <p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
@@ -287,40 +290,89 @@ describe('SlideHandler', () => {
 
             allUtils.ShapeBuilder.mockImplementation(() => ({
                 getShapeProperties: vi.fn().mockReturnValue({
-                    pos: { x: 1, y: 2, width: 3, height: 4 },
-                    transform: 'matrix(1 0 0 1 10 20)',
+                    pos: { x: 0, y: 0, width: 300, height: 400 },
+                    transform: 'matrix(1 0 0 1 100 200)',
+                    rotation: 0,
+                    flipH: false,
+                    flipV: false,
+                    matrix: { m: [1, 0, 0, 1, 100, 200] },
                 }),
-                renderShape: vi.fn(),
+                renderShape: mockRenderShape,
             }));
 
-            slideHandler.parseParagraphs = vi.fn().mockReturnValue({ text: 'parsed' });
+            slideHandler.parseParagraphs = vi.fn().mockReturnValue({
+                paragraphs: [{ runs: [{ text: 'parsed' }] }],
+                layout: { lines: [] },
+                bodyPr: {},
+                pos: { x: 100, y: 200, width: 300, height: 400 },
+            });
             slideHandler.renderParagraphs = vi.fn();
         });
 
-        it('should parse a shape and return its data', async () => {
+        it('should parse a shape and return a schema-compliant object', async () => {
             const shapeData = await slideHandler.parseShape(mockShapeNode, {}, new allUtils.Matrix(), {});
 
-            expect(shapeData.type).toBe('shape');
-            expect(shapeData.pos).toBeDefined();
-            expect(shapeData.transform).toBeDefined();
-            expect(shapeData.text).toEqual({ text: 'parsed' });
+            // BaseShape properties
+            expect(shapeData.id).toBe('2');
+            expect(shapeData.x).toBe(100);
+            expect(shapeData.y).toBe(200);
+            expect(shapeData.width).toBe(300);
+            expect(shapeData.height).toBe(400);
+            expect(shapeData.transform2D).toEqual({ rotation: 0, flipH: false, flipV: false });
+            expect(shapeData.fill).toEqual({ type: 'solid', color: 'red' });
+            expect(shapeData.border).toEqual({ width: 1 });
+
+            // Polymorphic part (textbox)
+            expect(shapeData.textbox).toBeDefined();
+            expect(shapeData.textbox.paragraphs).toEqual([{ runs: [{ text: 'parsed' }] }]);
         });
 
-        it('should render a shape and its text', async () => {
+        it('should render a shape by adapting the new schema to the old renderer', async () => {
             const shapeData = {
-                type: 'shape',
-                transform: 'matrix(1 0 0 1 10 20)',
-                pos: { x: 1, y: 2, width: 3, height: 4 },
-                shapeProps: {},
-                text: { content: 'Hello' },
+                id: '2',
+                x: 100, y: 200, width: 300, height: 400,
+                transform2D: { rotation: 0, flipH: false, flipV: false },
+                fill: { type: 'solid', color: 'blue' },
+                border: { width: 2, style: 'dashed' },
+                shadow: { type: 'outer', blur: 5 },
+                effects: [],
+                textbox: {
+                    paragraphs: [],
+                    bodyPr: { anchor: 'ctr' },
+                    layout: { lines: [], totalHeight: 50 },
+                },
+                // Compatibility props
+                transform: 'matrix(1 0 0 1 100 200)',
+                pos: { width: 300, height: 400 },
             };
-            slideHandler.renderer = {
-                setTransform: vi.fn(),
-            }
+
+            slideHandler.renderer = { setTransform: vi.fn() };
+
             await slideHandler.renderShape(shapeData, 'shape-1');
 
-            expect(slideHandler.renderer.setTransform).toHaveBeenCalledWith(expect.any(Object), 'shape-1');
-            expect(slideHandler.renderParagraphs).toHaveBeenCalledWith(shapeData.text, 'shape-1.text');
+            expect(slideHandler.renderer.setTransform).toHaveBeenCalled();
+
+            const expectedPosForBuilder = { width: 300, height: 400 };
+            const expectedPropsForBuilder = {
+                geometry: undefined,
+                fill: shapeData.fill,
+                stroke: shapeData.border,
+                effect: shapeData.shadow,
+            };
+            expect(mockRenderShape).toHaveBeenCalledWith(
+                expectedPosForBuilder,
+                expectedPropsForBuilder,
+                expect.any(Object), // matrix
+                false,
+                false
+            );
+
+            const expectedTextData = {
+                layout: shapeData.textbox.layout,
+                bodyPr: shapeData.textbox.bodyPr,
+                pos: { x: 100, y: 200, width: 300, height: 400 },
+            };
+            expect(slideHandler.renderParagraphs).toHaveBeenCalledWith(expectedTextData, 'shape-1.text');
         });
     });
 
