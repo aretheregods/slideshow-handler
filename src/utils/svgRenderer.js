@@ -103,6 +103,86 @@ export class SvgRenderer {
     }
 
     /**
+     * Creates a pattern definition in the SVG's `<defs>`.
+     * @param {Object} fillData - The fill data containing pattern information.
+     * @returns {string} The URL of the created pattern.
+     * @private
+     */
+    _createPattern(fillData) {
+        const patternId = `patt-${this.defs.children.length}`;
+        const pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
+        pattern.setAttribute('id', patternId);
+        pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+
+        // A basic size for the pattern tile. This might need adjustment.
+        const patternSize = 10;
+        pattern.setAttribute('width', patternSize);
+        pattern.setAttribute('height', patternSize);
+
+        const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bgRect.setAttribute('width', patternSize);
+        bgRect.setAttribute('height', patternSize);
+        bgRect.setAttribute('fill', fillData.bgColor);
+        pattern.appendChild(bgRect);
+
+        const fg = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        fg.setAttribute('stroke', fillData.fgColor);
+        fg.setAttribute('stroke-width', 1);
+
+        // Based on OOXML pattern names
+        switch (fillData.pattern) {
+            case 'dot':
+                fg.setAttribute('d', `M ${patternSize/2},${patternSize/2} a 1,1 0 1,1 0,-0.01`); // small circle
+                fg.setAttribute('fill', fillData.fgColor);
+                break;
+            case 'dash':
+                fg.setAttribute('d', `M 0,${patternSize/2} h ${patternSize}`);
+                break;
+            case 'diagCross':
+                fg.setAttribute('d', `M 0,0 L ${patternSize},${patternSize} M ${patternSize},0 L 0,${patternSize}`);
+                break;
+            case 'cross':
+                fg.setAttribute('d', `M ${patternSize/2},0 v ${patternSize} M 0,${patternSize/2} h ${patternSize}`);
+                break;
+            default:
+                // default to a simple diagonal line
+                fg.setAttribute('d', `M 0,0 L ${patternSize},${patternSize}`);
+                break;
+        }
+        pattern.appendChild(fg);
+
+        this.defs.appendChild(pattern);
+        return `url(#${patternId})`;
+    }
+
+    /**
+     * Creates an image pattern definition in the SVG's `<defs>`.
+     * @param {Object} fillData - The fill data containing image information.
+     * @returns {string} The URL of the created pattern.
+     * @private
+     */
+    _createImagePattern(fillData) {
+        const patternId = `img-patt-${this.defs.children.length}`;
+        const pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
+        pattern.setAttribute('id', patternId);
+        pattern.setAttribute('patternContentUnits', 'objectBoundingBox');
+        pattern.setAttribute('width', '1');
+        pattern.setAttribute('height', '1');
+
+        const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+        image.setAttribute('href', fillData.href);
+        image.setAttribute('x', 0);
+        image.setAttribute('y', 0);
+        image.setAttribute('width', 1);
+        image.setAttribute('height', 1);
+        image.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+        pattern.appendChild(image);
+
+        this.defs.appendChild(pattern);
+        return `url(#${patternId})`;
+    }
+
+    /**
      * Clears the SVG.
      */
     clear() {
@@ -171,7 +251,13 @@ export class SvgRenderer {
                     rect.setAttribute('fill', this._createGradient(options.fill));
                 } else if (options.fill.type === 'solid') {
                     rect.setAttribute('fill', options.fill.color);
-                }
+                } else if (options.fill.type === 'pattern') {
+                    rect.setAttribute('fill', this._createPattern(options.fill));
+                } else if (options.fill.type === 'image') {
+                    rect.setAttribute('fill', this._createImagePattern(options.fill));
+				} else if (options.fill.type === 'none') {
+					rect.setAttribute('fill', 'none');
+				}
             } else {
                 rect.setAttribute('fill', options.fill);
             }
@@ -225,7 +311,13 @@ export class SvgRenderer {
                     ellipse.setAttribute('fill', this._createGradient(options.fill));
                 } else if (options.fill.type === 'solid') {
                     ellipse.setAttribute('fill', options.fill.color);
-                }
+                } else if (options.fill.type === 'pattern') {
+                    ellipse.setAttribute('fill', this._createPattern(options.fill));
+                } else if (options.fill.type === 'image') {
+                    ellipse.setAttribute('fill', this._createImagePattern(options.fill));
+                } else if (options.fill.type === 'none') {
+					ellipse.setAttribute('fill', 'none');
+				}
             } else {
                 ellipse.setAttribute('fill', options.fill);
             }
@@ -405,7 +497,13 @@ export class SvgRenderer {
                     path.setAttribute('fill', this._createGradient(options.fill));
                 } else if (options.fill.type === 'solid') {
                     path.setAttribute('fill', options.fill.color);
-                }
+                } else if (options.fill.type === 'pattern') {
+                    path.setAttribute('fill', this._createPattern(options.fill));
+                } else if (options.fill.type === 'image') {
+                    path.setAttribute('fill', this._createImagePattern(options.fill));
+                } else if (options.fill.type === 'none') {
+					path.setAttribute('fill', 'none');
+				}
             } else {
                 path.setAttribute('fill', options.fill);
             }

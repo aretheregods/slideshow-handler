@@ -660,12 +660,28 @@ export function parseShapeProperties(shapeNode, slideContext, slideNum) {
     if (fillNode) {
         properties.rawFillNode = fillNode.outerHTML;
         if (fillNode.localName === 'noFill') {
-            properties.fill = 'none';
+            properties.fill = { type: 'none' };
         } else if (fillNode.localName === 'solidFill') {
             const colorObj = ColorParser.parseColor(fillNode);
             if (colorObj) properties.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
         } else if (fillNode.localName === 'gradFill') {
             properties.fill = parseGradientFill(fillNode, slideContext);
+        } else if (fillNode.localName === 'blipFill') {
+            const blipNode = fillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
+            if (blipNode) {
+                properties.fill = { type: 'image', relId: blipNode.getAttribute('r:embed') };
+            }
+        } else if (fillNode.localName === 'pattFill') {
+            const fgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'fgClr')[0];
+            const bgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'bgClr')[0];
+            properties.fill = {
+                type: 'pattern',
+                pattern: fillNode.getAttribute('prst'),
+                fgColor: fgClrNode ? ColorParser.resolveColor(ColorParser.parseColor(fgClrNode), slideContext) : '#000000',
+                bgColor: bgClrNode ? ColorParser.resolveColor(ColorParser.parseColor(bgClrNode), slideContext) : 'transparent',
+            };
+        } else if (fillNode.localName === 'grpFill') {
+            properties.fill = { type: 'group' };
         }
     } else {
         const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
