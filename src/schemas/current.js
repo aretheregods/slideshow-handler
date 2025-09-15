@@ -15,13 +15,7 @@ export const currentSchema = {
             "required": ["x", "y", "width", "height"]
         },
         "color": {
-            "type": "object",
-            "properties": {
-                "type": { "type": "string", "enum": ["srgb", "scheme"] },
-                "value": { "type": "string" },
-                "alpha": { "type": "number", "minimum": 0, "maximum": 1 }
-            },
-            "required": ["type", "value"]
+            "type": "string"
         },
         "intermediateColor": {
             "type": "object",
