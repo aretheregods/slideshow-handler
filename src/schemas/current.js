@@ -497,13 +497,32 @@ export const currentSchema = {
                 { "$ref": "#/definitions/group" },
                 { "$ref": "#/definitions/table" },
                 { "$ref": "#/definitions/chart" },
-                { "$ref": "#/definitions/picture" }
+                { "$ref": "#/definitions/picture" },
+                { "$ref": "#/definitions/connector" }
             ]
         },
         "shape": {
             "type": "object",
             "properties": {
                 "type": { "enum": ["shape"] },
+                "transform": { "type": "string" },
+                "pos": { "$ref": "#/definitions/pos" },
+                "shapeProps": { "$ref": "#/definitions/shapeProps" },
+                "text": {
+                    "oneOf": [
+                        { "type": "null" },
+                        { "$ref": "#/definitions/text" }
+                    ]
+                },
+                "flipH": { "type": "boolean" },
+                "flipV": { "type": "boolean" }
+            },
+            "required": ["type", "transform", "pos", "shapeProps", "text", "flipH", "flipV"]
+        },
+        "connector": {
+            "type": "object",
+            "properties": {
+                "type": { "enum": ["connector"] },
                 "transform": { "type": "string" },
                 "pos": { "$ref": "#/definitions/pos" },
                 "shapeProps": { "$ref": "#/definitions/shapeProps" },
