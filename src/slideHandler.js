@@ -18,8 +18,8 @@ import {
     createImage,
     resolvePath,
     getNormalizedXmlString,
-    transformShape,
 } from 'utils';
+import { transformShape } from './utils/transform.js';
 import {
     EMU_PER_PIXEL,
     PT_TO_PX,
