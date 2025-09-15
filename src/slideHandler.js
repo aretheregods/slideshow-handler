@@ -17,7 +17,8 @@ import {
     parseSourceRectangle,
     createImage,
     resolvePath,
-    getNormalizedXmlString
+    getNormalizedXmlString,
+    transformShape,
 } from 'utils';
 import {
     EMU_PER_PIXEL,
@@ -380,7 +381,7 @@ export class SlideHandler {
             }
         }
 
-        return {
+        return transformShape({
             type: 'shape',
             transform,
             pos,
@@ -388,7 +389,7 @@ export class SlideHandler {
             text: textData,
             flipH,
             flipV,
-        };
+        }, this.slideContext);
     }
 
 	/**
@@ -563,14 +564,14 @@ export class SlideHandler {
             }
         }
 
-        return {
+        return transformShape({
             type: 'picture',
             transform,
             pos,
             placeholderProps,
             pathString,
             image: imageInfo,
-        };
+        }, this.slideContext);
     }
 
     /**
@@ -701,7 +702,7 @@ export class SlideHandler {
                 });
             }
         }
-        return { type: 'table', transform, pos, cells };
+        return transformShape({ type: 'table', transform, pos, cells }, this.slideContext);
     }
 
     /**
@@ -877,6 +878,21 @@ export class SlideHandler {
                 tspan.setAttribute('font-style', run.font.style);
                 tspan.setAttribute('font-weight', run.font.weight);
                 tspan.setAttribute('fill', run.color);
+                if (run.highlight) {
+                    tspan.style.backgroundColor = run.highlight;
+                }
+
+                let decoration = '';
+                if (run.underline && run.underline !== 'none') {
+                    decoration += 'underline ';
+                }
+                if (run.strikethrough && run.strikethrough !== 'noStrike') {
+                    decoration += 'line-through';
+                }
+                if (decoration) {
+                    tspan.setAttribute('text-decoration', decoration.trim());
+                }
+
                 tspan.textContent = run.text;
                 textElement.appendChild(tspan);
             }
@@ -959,6 +975,12 @@ export class SlideHandler {
                     if (solidFill) runProps.color = ColorParser.parseColor(solidFill);
                     const latinFont = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
                     if (latinFont?.getAttribute('typeface')) runProps.font = latinFont.getAttribute('typeface');
+
+                    const highlightNode = rPr.getElementsByTagNameNS(DML_NS, 'highlight')[0];
+                    if (highlightNode) runProps.highlight = ColorParser.parseColor(highlightNode.firstElementChild);
+
+                    runProps.underline = rPr.getAttribute('u');
+                    runProps.strikethrough = rPr.getAttribute('strike');
                 }
 
                 let fontSize = runProps.size || (18 * PT_TO_PX);
@@ -975,7 +997,10 @@ export class SlideHandler {
                     currentLine.runs.push({
                         text: word,
                         font: { style: runProps.italic ? 'italic' : 'normal', weight: runProps.bold ? 'bold' : 'normal', size: fontSize, family: fontFamily },
-                        color: ColorParser.resolveColor(runProps.color, this.slideContext) || '#000000'
+                        color: ColorParser.resolveColor(runProps.color, this.slideContext) || '#000000',
+                        highlight: runProps.highlight,
+                        underline: runProps.underline,
+                        strikethrough: runProps.strikethrough,
                     });
                     currentLine.width += wordWidth;
                     currentLine.height = Math.max(currentLine.height, fontSize * (bodyPr.lnSpcReduction ? 1 - bodyPr.lnSpcReduction : 1.25));
@@ -1021,11 +1046,11 @@ export class SlideHandler {
             height: parseInt(ext.getAttribute("cy")) / EMU_PER_PIXEL,
         };
 
-        return {
+        return transformShape({
             type: 'chart',
             pos,
             chartData: parseChart(chartXml),
-        };
+        }, this.slideContext);
     }
 
     /**

@@ -4,6 +4,7 @@ import * as allUtils from 'utils';
 
 // Mock the entire 'utils' module
 vi.mock('utils', () => ({
+    transformShape: vi.fn(shape => shape),
     SvgRenderer: vi.fn(),
     Matrix: vi.fn(() => ({
         clone: vi.fn().mockReturnThis(),
@@ -402,6 +403,144 @@ describe('SlideHandler', () => {
             expect(textElement.childElementCount).toBe(2); // two tspans
             expect(textElement.children[0].textContent).toBe('Hello, ');
             expect(textElement.children[1].textContent).toBe('World!');
+        });
+
+        it('should render a text run with a highlight', () => {
+            const layout = {
+                totalHeight: 50,
+                lines: [
+                    {
+                        x: 10,
+                        y: 0,
+                        startY: 20,
+                        width: 180,
+                        height: 25,
+                        runs: [
+                            { text: 'Hello, ', font: { size: 24, family: 'Arial' }, color: '#000', highlight: 'rgb(255, 255, 0)' },
+                        ],
+                        paragraphProps: { defRPr: {} },
+                    },
+                ],
+            };
+            const textData = { layout, bodyPr: {}, pos: { x: 0, y: 0, width: 200, height: 100 } };
+            slideHandler.renderer = {
+                currentGroup: document.createElementNS('http://www.w3.org/2000/svg', 'g'),
+            }
+            slideHandler.renderParagraphs(textData, 'text-1');
+
+            const tspan = slideHandler.renderer.currentGroup.querySelector('tspan');
+            expect(tspan.style.backgroundColor).toBe('rgb(255, 255, 0)');
+        });
+
+        it('should render a paragraph with center alignment', () => {
+            const layout = {
+                totalHeight: 50,
+                lines: [
+                    {
+                        x: 10,
+                        y: 0,
+                        startY: 20,
+                        width: 180,
+                        height: 25,
+                        runs: [
+                            { text: 'Hello, World!', font: { size: 24, family: 'Arial' }, color: '#000' },
+                        ],
+                        paragraphProps: { defRPr: {}, align: 'ctr' },
+                    },
+                ],
+            };
+            const textData = { layout, bodyPr: {}, pos: { x: 0, y: 0, width: 200, height: 100 } };
+            slideHandler.renderer = {
+                currentGroup: document.createElementNS('http://www.w3.org/2000/svg', 'g'),
+            }
+            slideHandler.renderParagraphs(textData, 'text-1');
+
+            const textElement = slideHandler.renderer.currentGroup.querySelector('text');
+            expect(textElement.getAttribute('text-anchor')).toBe('middle');
+        });
+
+        it('should render bold text', () => {
+            const layout = {
+                totalHeight: 50,
+                lines: [
+                    {
+                        runs: [
+                            { text: 'Hello', font: { weight: 'bold' } },
+                        ],
+                        paragraphProps: { defRPr: {} },
+                    },
+                ],
+            };
+            const textData = { layout, bodyPr: {}, pos: {} };
+            slideHandler.renderer = {
+                currentGroup: document.createElementNS('http://www.w3.org/2000/svg', 'g'),
+            }
+            slideHandler.renderParagraphs(textData, 'text-1');
+            const tspan = slideHandler.renderer.currentGroup.querySelector('tspan');
+            expect(tspan.getAttribute('font-weight')).toBe('bold');
+        });
+
+        it('should render italic text', () => {
+            const layout = {
+                totalHeight: 50,
+                lines: [
+                    {
+                        runs: [
+                            { text: 'Hello', font: { style: 'italic' } },
+                        ],
+                        paragraphProps: { defRPr: {} },
+                    },
+                ],
+            };
+            const textData = { layout, bodyPr: {}, pos: {} };
+            slideHandler.renderer = {
+                currentGroup: document.createElementNS('http://www.w3.org/2000/svg', 'g'),
+            }
+            slideHandler.renderParagraphs(textData, 'text-1');
+            const tspan = slideHandler.renderer.currentGroup.querySelector('tspan');
+            expect(tspan.getAttribute('font-style')).toBe('italic');
+        });
+
+        it('should render underlined text', () => {
+            const layout = {
+                totalHeight: 50,
+                lines: [
+                    {
+                        runs: [
+                            { text: 'Hello', font: { size: 24 }, underline: 'sng' },
+                        ],
+                        paragraphProps: { defRPr: {} },
+                    },
+                ],
+            };
+            const textData = { layout, bodyPr: {}, pos: {} };
+            slideHandler.renderer = {
+                currentGroup: document.createElementNS('http://www.w3.org/2000/svg', 'g'),
+            }
+            slideHandler.renderParagraphs(textData, 'text-1');
+            const tspan = slideHandler.renderer.currentGroup.querySelector('tspan');
+            expect(tspan.getAttribute('text-decoration')).toContain('underline');
+        });
+
+        it('should render strikethrough text', () => {
+            const layout = {
+                totalHeight: 50,
+                lines: [
+                    {
+                        runs: [
+                            { text: 'Hello', font: { size: 24 }, strikethrough: 'sngStrike' },
+                        ],
+                        paragraphProps: { defRPr: {} },
+                    },
+                ],
+            };
+            const textData = { layout, bodyPr: {}, pos: {} };
+            slideHandler.renderer = {
+                currentGroup: document.createElementNS('http://www.w3.org/2000/svg', 'g'),
+            }
+            slideHandler.renderParagraphs(textData, 'text-1');
+            const tspan = slideHandler.renderer.currentGroup.querySelector('tspan');
+            expect(tspan.getAttribute('text-decoration')).toContain('line-through');
         });
     });
 
