@@ -13,3 +13,4 @@
 - Always test added or refactored code until the tests pass.
 - Don't ever remove tests to get them to pass.
 - Don't ever remove code to get tests to pass.
+- Don't ever commit code with failing tests
