@@ -255,7 +255,9 @@ export class SvgRenderer {
                     rect.setAttribute('fill', this._createPattern(options.fill));
                 } else if (options.fill.type === 'image') {
                     rect.setAttribute('fill', this._createImagePattern(options.fill));
-                }
+				} else if (options.fill.type === 'none') {
+					rect.setAttribute('fill', 'none');
+				}
             } else {
                 rect.setAttribute('fill', options.fill);
             }
@@ -313,7 +315,9 @@ export class SvgRenderer {
                     ellipse.setAttribute('fill', this._createPattern(options.fill));
                 } else if (options.fill.type === 'image') {
                     ellipse.setAttribute('fill', this._createImagePattern(options.fill));
-                }
+                } else if (options.fill.type === 'none') {
+					ellipse.setAttribute('fill', 'none');
+				}
             } else {
                 ellipse.setAttribute('fill', options.fill);
             }
@@ -497,7 +501,9 @@ export class SvgRenderer {
                     path.setAttribute('fill', this._createPattern(options.fill));
                 } else if (options.fill.type === 'image') {
                     path.setAttribute('fill', this._createImagePattern(options.fill));
-                }
+                } else if (options.fill.type === 'none') {
+					path.setAttribute('fill', 'none');
+				}
             } else {
                 path.setAttribute('fill', options.fill);
             }
