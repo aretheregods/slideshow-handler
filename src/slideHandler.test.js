@@ -59,7 +59,7 @@ describe('SlideHandler', () => {
             tableStyles: {},
             defaultTableStyleId: '1234',
             imageMap: {},
-            slideContext: { theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } } } },
+            slideContext: { theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } }, formatScheme: { fills: [] } } },
             finalBg: {},
             showMasterShapes: true,
             masterStaticShapes: [],
@@ -99,7 +99,7 @@ describe('SlideHandler', () => {
                 tableStyles: { table: 'style' },
                 defaultTableStyleId: 'def-tbl',
                 imageMap: { img: 'map' },
-                slideContext: { theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } } } },
+                slideContext: { theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } }, formatScheme: { fills: [] } } },
                 finalBg: { bg: 'final' },
                 showMasterShapes: false,
                 masterStaticShapes: ['master-shape'],
@@ -119,7 +119,7 @@ describe('SlideHandler', () => {
             expect(handler.tableStyles).toEqual({ table: 'style' });
             expect(handler.defaultTableStyleId).toBe('def-tbl');
             expect(handler.imageMap).toEqual({ img: 'map' });
-            expect(handler.slideContext).toEqual({ theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } } } });
+            expect(handler.slideContext).toEqual({ theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } }, formatScheme: { fills: [] } } });
             expect(handler.finalBg).toEqual({ bg: 'final' });
             expect(handler.showMasterShapes).toBe(false);
             expect(handler.masterStaticShapes).toEqual(['master-shape']);

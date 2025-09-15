@@ -44,7 +44,7 @@ function transformText(text, slideContext) {
     return { ...text, layout: newLayout };
 }
 
-function transformShapeProps(shapeProps, slideContext) {
+function transformShapeProps(shapeProps, shape, slideContext) {
     const newShapeProps = { ...shapeProps };
 
     if (shapeProps.fill) {
@@ -59,6 +59,18 @@ function transformShapeProps(shapeProps, slideContext) {
     }
     // Effects might have colors too, but we'll leave that for a future step.
 
+    // --- Default Fill Logic ---
+    if (newShapeProps.fill === null && shape.type !== 'cxnSp') {
+        if (!shape.rawFillNode) { // Only apply default if no fill was specified at all
+            if (slideContext.theme && slideContext.theme.formatScheme.fills.length > 0) {
+                const defaultFill = slideContext.theme.formatScheme.fills[1] || slideContext.theme.formatScheme.fills[0];
+                if (defaultFill.type === 'solid' && defaultFill.color) {
+                    newShapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(defaultFill.color, slideContext) };
+                }
+            }
+        }
+    }
+
     return newShapeProps;
 }
 
@@ -66,7 +78,7 @@ export function transformShape(shape, slideContext) {
     const newShape = { ...shape };
 
     if (newShape.shapeProps) {
-        newShape.shapeProps = transformShapeProps(newShape.shapeProps, slideContext);
+        newShape.shapeProps = transformShapeProps(newShape.shapeProps, newShape, slideContext);
     }
 
     if (newShape.text) {
@@ -74,7 +86,7 @@ export function transformShape(shape, slideContext) {
     }
 
     if (newShape.placeholderProps) {
-        newShape.placeholderProps = transformShapeProps(newShape.placeholderProps, slideContext);
+        newShape.placeholderProps = transformShapeProps(newShape.placeholderProps, newShape, slideContext);
     }
 
     switch (newShape.type) {
