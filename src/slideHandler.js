@@ -201,23 +201,25 @@ export class SlideHandler {
 
         // Render background
         if ( slideData.background ) {
-            const id = `${this.slideId}.background`
-            if (slideData.background.type === 'color') {
+            const id = `${this.slideId}.background`;
+            const background = transformShape(slideData.background, this.slideContext);
+
+            if (background.type === 'color') {
                 const bgRect = document.createElementNS(SVG_NS, 'rect');
                 bgRect.setAttribute('id', id);
                 bgRect.setAttribute('width', '100%');
                 bgRect.setAttribute('height', '100%');
-                bgRect.setAttribute('fill', slideData.background.value);
+                bgRect.setAttribute('fill', background.value);
                 this.svg.insertBefore(bgRect, this.svg.firstChild);
-            } else if (slideData.background.type === 'gradient') {
+            } else if (background.type === 'gradient') {
                 const bgRect = document.createElementNS( SVG_NS, 'rect' );
                 bgRect.setAttribute('id', id);
                 bgRect.setAttribute('width', '100%');
                 bgRect.setAttribute('height', '100%');
-                const gradientUrl = this.renderer._createGradient(slideData.background);
+                const gradientUrl = this.renderer._createGradient(background);
                 bgRect.setAttribute('fill', gradientUrl);
                 this.svg.insertBefore(bgRect, this.svg.firstChild);
-            } else if (slideData.background.type === 'image' && slideData.background.relId && this.imageMap[slideData.background.relId]) {
+            } else if (background.type === 'image' && background.relId && this.imageMap[background.relId]) {
                 const bgImage = document.createElementNS( SVG_NS, 'image' );
                 bgImage.setAttribute('id', id);
                 bgImage.setAttribute('href', this.imageMap[slideData.background.relId]);
@@ -337,23 +339,11 @@ export class SlideHandler {
         const masterShapeProps = masterPh?.shapeProps || {};
         const layoutShapeProps = layoutPh?.shapeProps || {};
         const slideShapeProps = parseShapeProperties(shapeNode, this.slideContext, this.slideNum);
-        let finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
-        const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
-        const finalEffect = slideShapeProps.effect ?? layoutShapeProps.effect ?? masterShapeProps.effect;
-
-        if (shapeNode.getAttribute('useBgFill') === '1') {
-            if (this.finalBg?.type === 'color') {
-                finalFill = { type: 'solid', color: this.finalBg.value };
-            } else {
-                finalFill = 'none';
-            }
-        }
-
         const shapeProps = {
             geometry: slideShapeProps.geometry ?? layoutShapeProps.geometry ?? masterShapeProps.geometry,
-            fill: finalFill,
-            stroke: finalStroke,
-            effect: finalEffect,
+            fill: slideShapeProps.fill,
+            stroke: slideShapeProps.stroke,
+            effect: slideShapeProps.effect,
         };
 
         const shapeBuilder = new ShapeBuilder(null, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize);
@@ -384,6 +374,9 @@ export class SlideHandler {
             transform,
             pos,
             shapeProps,
+            layoutShapeProps,
+            masterShapeProps,
+            useBgFill: shapeNode.getAttribute('useBgFill') === '1',
             text: textData,
             flipH,
             flipV,

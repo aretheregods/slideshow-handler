@@ -1,5 +1,5 @@
 import { ColorParser } from './colorParser.js';
-import { DML_NS } from '../constants';
+import { DML_NS } from 'constants';
 
 /**
  * Parses a gradient fill from a fill node.

@@ -45,20 +45,34 @@ function transformText(text, slideContext) {
     return { ...text, layout: newLayout };
 }
 
-function transformShapeProps(shapeProps, shape, slideContext) {
+function transformShapeProps(shape, slideContext) {
+    const { shapeProps, layoutShapeProps, masterShapeProps, useBgFill, finalBg } = shape;
+
+    let finalFill = shapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
+    const finalStroke = shapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
+    const finalEffect = shapeProps.effect ?? layoutShapeProps.effect ?? masterShapeProps.effect;
+
+    if (useBgFill) {
+        if (finalBg?.type === 'color') {
+            finalFill = { type: 'solid', color: finalBg.value };
+        } else {
+            finalFill = 'none';
+        }
+    }
+
     const newShapeProps = { ...shapeProps };
 
-    if (shapeProps.fill) {
-        newShapeProps.fill = ColorParser.resolveColor(shapeProps.fill, slideContext);
+    if (finalFill) {
+        newShapeProps.fill = ColorParser.resolveColor(finalFill, slideContext);
     }
-    if (shapeProps.stroke) {
-        const resolvedStroke = { ...shapeProps.stroke };
+    if (finalStroke) {
+        const resolvedStroke = { ...finalStroke };
         if (resolvedStroke.color) {
             resolvedStroke.color = ColorParser.resolveColor(resolvedStroke.color, slideContext);
         }
         newShapeProps.stroke = resolvedStroke;
     }
-    // Effects might have colors too, but we'll leave that for a future step.
+    newShapeProps.effect = finalEffect;
 
     // --- Default Fill Logic ---
     if (newShapeProps.fill === null && shape.type !== 'cxnSp') {
@@ -79,7 +93,7 @@ export function transformShape(shape, slideContext) {
     const newShape = { ...shape };
 
     if (newShape.shapeProps) {
-        newShape.shapeProps = transformShapeProps(newShape.shapeProps, newShape, slideContext);
+        newShape.shapeProps = transformShapeProps(newShape, slideContext);
     }
 
     if (newShape.text) {
@@ -87,7 +101,15 @@ export function transformShape(shape, slideContext) {
     }
 
     if (newShape.placeholderProps) {
-        newShape.placeholderProps = transformShapeProps(newShape.placeholderProps, newShape, slideContext);
+        newShape.placeholderProps = transformShapeProps(newShape, slideContext);
+    }
+
+    if (shape.type === 'gradient') {
+        const resolvedStops = shape.gradient.stops.map(stop => ({
+            ...stop,
+            color: ColorParser.resolveColor(stop.color, slideContext, true)
+        }));
+        return { ...shape, gradient: { ...shape.gradient, stops: resolvedStops } };
     }
 
     switch (newShape.type) {

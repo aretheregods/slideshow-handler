@@ -221,7 +221,7 @@ describe('SlideHandler', () => {
 
         it('should render a gradient background', async () => {
             const slideData = {
-                background: { type: 'gradient', value: 'gradient-data' },
+                background: { type: 'gradient', gradient: { stops: [] } },
                 shapes: [],
             };
             slideHandler.renderer._createGradient.mockReturnValue('url(#gradient-1)');
@@ -230,7 +230,7 @@ describe('SlideHandler', () => {
 
             const bgRect = slideHandler.svg.querySelector('rect');
             expect(bgRect).not.toBeNull();
-            expect(slideHandler.renderer._createGradient).toHaveBeenCalledWith(slideData.background);
+            expect(slideHandler.renderer._createGradient).toHaveBeenCalledWith(expect.objectContaining({ type: 'gradient' }));
             expect(bgRect.getAttribute('fill')).toBe('url(#gradient-1)');
         });
 
