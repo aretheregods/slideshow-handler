@@ -23,25 +23,54 @@ export const currentSchema = {
             },
             "required": ["type", "value"]
         },
+        "intermediateColor": {
+            "type": "object",
+            "properties": {
+                "srgb": { "type": "string" },
+                "scheme": { "type": "string" },
+                "tint": { "type": "number" },
+                "shade": { "type": "number" },
+                "alpha": { "type": "number" },
+                "lumMod": { "type": "number" },
+                "lumOff": { "type": "number" }
+            },
+            "oneOf": [
+                { "required": ["srgb"] },
+                { "required": ["scheme"] }
+            ]
+        },
         "gradientFill": {
             "type": "object",
             "properties": {
                 "type": { "const": "gradient" },
-                "gradientType": { "type": "string", "enum": ["linear", "radial", "rectangular", "path"] },
-                "angle": { "type": "number" },
-                "stops": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "color": { "$ref": "#/definitions/color" },
-                            "position": { "type": "number", "minimum": 0, "maximum": 1 }
-                        },
-                        "required": ["color", "position"]
-                    }
+                "gradient": {
+                    "type": "object",
+                    "properties": {
+                        "type": { "type": "string", "enum": ["linear", "radial", "rectangular", "path"] },
+                        "angle": { "type": "number" },
+                        "stops": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "color": {
+                                        "type": "object",
+                                        "properties": {
+                                            "color": { "type": "string" },
+                                            "alpha": { "type": "number", "minimum": 0, "maximum": 1 }
+                                        },
+                                        "required": ["color"]
+                                    },
+                                    "pos": { "type": "number", "minimum": 0, "maximum": 1 }
+                                },
+                                "required": ["color", "pos"]
+                            }
+                        }
+                    },
+                    "required": ["stops"]
                 }
             },
-            "required": ["type", "stops"]
+            "required": ["type", "gradient"]
         },
         "solidFill": {
             "type": "object",
@@ -85,6 +114,7 @@ export const currentSchema = {
         },
         "fill": {
             "oneOf": [
+                { "type": "string" },
                 { "$ref": "#/definitions/solidFill" },
                 { "$ref": "#/definitions/gradientFill" },
                 { "$ref": "#/definitions/blipFill" },
@@ -183,7 +213,7 @@ export const currentSchema = {
                     "type": "object",
                     "properties": {
                         "type": { "type": "string" },
-                        "color": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/color" }] },
+                        "color": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/intermediateColor" }] },
                         "char": { "type": "string" },
                         "font": { "type": "string" },
                         "startAt": { "type": "integer" },
@@ -199,7 +229,7 @@ export const currentSchema = {
                         "size": { "type": "number" },
                         "bold": { "type": "boolean" },
                         "italic": { "type": "boolean" },
-                        "color": { "$ref": "#/definitions/color" },
+                        "color": { "$ref": "#/definitions/intermediateColor" },
                         "font": { "type": "string" }
                     }
                 }
@@ -434,14 +464,7 @@ export const currentSchema = {
                     },
                     "required": ["type", "value"]
                 },
-                {
-                    "type": "object",
-                    "properties": {
-                        "type": { "enum": ["gradient"] },
-                        "value": { "$ref": "#/definitions/gradientFill" }
-                    },
-                    "required": ["type", "value"]
-                },
+                { "$ref": "#/definitions/gradientFill" },
                 {
                     "type": "object",
                     "properties": {
