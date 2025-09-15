@@ -1,5 +1,5 @@
 import { BlobWriter } from "zipjs";
-import { ColorParser, resolvePath, integerToRoman, parseGradientFill } from 'utils';
+import { ColorParser, resolvePath, integerToRoman } from 'utils';
 import { DML_NS, EMU_PER_PIXEL } from "constants";
 
 /**

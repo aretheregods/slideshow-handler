@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as PptxParser from './pptxParser.js';
-import { parseXmlString } from './xml.js';
+import { parseXmlString, ColorParser, parseGradientFill } from 'utils';
 
 describe('PptxParser', () => {
     describe('parseColorMap', () => {
@@ -179,7 +179,7 @@ describe('PptxParser', () => {
             `;
             const xmlDoc = parseXmlString(xml, 'test');
             const node = xmlDoc.documentElement;
-            const result = PptxParser.parseGradientFill(node, slideContext);
+            const result = parseGradientFill(node, slideContext);
             expect(result).toEqual({
                 type: 'gradient',
                 gradient: {
@@ -204,7 +204,7 @@ describe('PptxParser', () => {
             `;
             const xmlDoc = parseXmlString(xml, 'test');
             const node = xmlDoc.documentElement;
-            const result = PptxParser.parseGradientFill(node, slideContext);
+            const result = parseGradientFill(node, slideContext);
             expect(result.gradient.type).toBe('path');
         });
 
@@ -217,7 +217,7 @@ describe('PptxParser', () => {
             `;
             const xmlDoc = parseXmlString(xml, 'test');
             const node = xmlDoc.documentElement;
-            const result = PptxParser.parseGradientFill(node, slideContext);
+            const result = parseGradientFill(node, slideContext);
             expect(result.gradient.stops).toEqual([]);
         });
     });

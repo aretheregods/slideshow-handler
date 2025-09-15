@@ -14,3 +14,4 @@ export { getSlideSize } from './getSlideSize.js';
 export * from './pptxParser.js';
 export * from './drawing.js';
 export * from './transform.js';
+export * from './gradient.js';

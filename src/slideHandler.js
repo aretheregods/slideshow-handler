@@ -692,16 +692,17 @@ export class SlideHandler {
                     if (r + i < numRows && c + j < numCols) renderedGrid[r + i][c + j] = true;
                 }
 
-                const { fill, borders } = this.parseCellProperties(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle);
+                const { fill, borders, tcPrNode } = this.parseCellProperties(cellNode);
                 cells.push({
                     pos: { x: cellX, y: cellY, width: cellWidth, height: cellHeight },
                     fill: fill,
                     borders: borders,
+                    tcPrNode: tcPrNode,
                     text: this.parseCellText(cellNode, { x: cellX, y: cellY, width: cellWidth, height: cellHeight }, getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle)),
                 });
             }
         }
-        return transformShape({ type: 'table', transform, pos, cells, tableStyle }, this.slideContext);
+        return transformShape({ type: 'table', transform, pos, cells, tableStyle, tblPrNode, numRows, numCols }, this.slideContext);
     }
 
     /**
@@ -715,11 +716,7 @@ export class SlideHandler {
      * @param {Object} tableStyle - The table style object.
      * @returns {{fill: Object, borders: Object}} The parsed cell properties.
      */
-    parseCellProperties(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle) {
-        // This function will now just parse the raw properties without resolving colors.
-        // The actual color resolution is deferred to the transformShape function.
-        // NOTE: This is a simplified implementation. A full implementation would
-        // need to merge properties from the table style parts correctly.
+    parseCellProperties(cellNode) {
         const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
         let fill = null;
         let borders = {};
@@ -751,7 +748,7 @@ export class SlideHandler {
             }
         }
 
-        return { fill, borders };
+        return { fill, borders, tcPrNode };
     }
 
     /**

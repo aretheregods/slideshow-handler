@@ -1,4 +1,5 @@
-import { ColorParser } from './colorParser.js';
+import { ColorParser, parseGradientFill } from 'utils';
+import { DML_NS, EMU_PER_PIXEL } from '../constants';
 
 function transformText(text, slideContext) {
     if (!text || !text.layout || !text.layout.lines) {
@@ -94,10 +95,14 @@ export function transformShape(shape, slideContext) {
             // TODO: Add chart color transformation logic here
             break;
         case 'table':
-            newShape.cells = newShape.cells.map(cell => {
+            newShape.cells = newShape.cells.map((cell, index) => {
                 const newCell = { ...cell };
-                newCell.fill = _resolveTableCellFill(newCell, newShape.tableStyle, slideContext);
-                newCell.borders = _resolveTableCellBorders(newCell, newShape.tableStyle, slideContext);
+                const r = Math.floor(index / newShape.numCols);
+                const c = index % newShape.numCols;
+
+                newCell.fill = getCellFillColor(newCell, newShape.tblPrNode, r, c, newShape.numRows, newShape.numCols, newShape.tableStyle, slideContext);
+                newCell.borders = getCellBorders(newCell, newShape.tblPrNode, r, c, newShape.numRows, newShape.numCols, newShape.tableStyle, slideContext);
+
                 if (newCell.text) {
                     newCell.text = transformText(newCell.text, slideContext);
                 }
@@ -109,34 +114,216 @@ export function transformShape(shape, slideContext) {
     return newShape;
 }
 
-// Helper functions for table cell styling, adapted from drawing.js
-// These are kept private to the transform module.
+function getCellBorders(cell, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
+    const borders = {};
+    const tcPrNode = cell.tcPrNode;
 
-function _resolveTableCellFill(cell, tableStyle, slideContext) {
-    // This is a simplified version. A full implementation would need to handle
-    // style precedence (direct format vs. table style parts).
-    // For now, we just resolve the color if it exists.
-    if (cell.fill) {
-        return ColorParser.resolveColor(cell.fill, slideContext);
-    }
-    return null;
-}
+    if (tcPrNode) {
+        const borderMap = { 'lnL': 'left', 'lnR': 'right', 'lnT': 'top', 'lnB': 'bottom' };
+        for (const child of tcPrNode.children) {
+            const side = borderMap[child.localName];
+            if (side) {
+                const lnNode = child;
+                const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+                const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
 
-function _resolveTableCellBorders(cell, tableStyle, slideContext) {
-    // Simplified version for now.
-    const newBorders = {};
-    if (cell.borders) {
-        for (const side in cell.borders) {
-            const border = cell.borders[side];
-            if (border.color) {
-                newBorders[side] = {
-                    ...border,
-                    color: ColorParser.resolveColor(border.color, slideContext),
-                };
-            } else {
-                newBorders[side] = border;
+                if (noFillNode) {
+                    borders[side] = 'none';
+                } else if (solidFillNode) {
+                    const colorObj = ColorParser.parseColor(solidFillNode);
+                    const width = parseInt(lnNode.getAttribute('w') || '0') / EMU_PER_PIXEL;
+                    if (colorObj && width > 0) {
+                        borders[side] = {
+                            color: ColorParser.resolveColor(colorObj, slideContext),
+                            width: width
+                        };
+                    }
+                }
             }
         }
     }
-    return newBorders;
+
+    if (!tableStyle) {
+        return borders;
+    }
+
+    const finalBorders = { ...borders };
+
+    const baseBorders = (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.borders) ? tableStyle.wholeTbl.tcStyle.borders : {};
+
+    const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+    const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+    const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+    const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+    const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+    const bandCol = tblPrNode.getAttribute('bandCol') === '1';
+
+    const isFirstRow = r === 0;
+    const isLastRow = r === numRows - 1;
+    const isFirstCol = c === 0;
+    const isLastCol = c === numCols - 1;
+
+    const partsToCheck = [];
+    if (bandRow) {
+        const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+        if (isDataRow) {
+            const dataRowIdx = firstRow ? r - 1 : r;
+            if (dataRowIdx >= 0) {
+                if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
+                else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+            }
+        }
+    }
+    if (bandCol) {
+        const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+        if (isDataCol) {
+            const dataColIdx = firstCol ? c - 1 : c;
+            if (dataColIdx >= 0) {
+                if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
+                else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+            }
+        }
+    }
+    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
+    if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
+    if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+    if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
+    if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
+    if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
+    if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
+
+    const mergedPartBorders = {};
+    for (const part of partsToCheck) {
+        if (part && part.tcStyle && part.tcStyle.borders) {
+            Object.assign(mergedPartBorders, part.tcStyle.borders);
+        }
+    }
+
+    for (const side of ['left', 'right', 'top', 'bottom']) {
+        if (finalBorders[side] === undefined) {
+            const borderToApply = mergedPartBorders[side] || baseBorders[side];
+            if (borderToApply) {
+                const color = ColorParser.resolveColor(borderToApply.color, slideContext);
+                if (color) {
+                    finalBorders[side] = {
+                        width: borderToApply.width,
+                        color: color
+                    };
+                }
+            }
+        }
+    }
+
+    return finalBorders;
+}
+
+function getCellFillColor(cell, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
+    const tcPrNode = cell.tcPrNode;
+    if (tcPrNode) {
+        for (const child of tcPrNode.children) {
+            if (child.localName === 'noFill') {
+                return 'none';
+            }
+        }
+
+        let gradFillNode = null;
+        for (const child of tcPrNode.children) {
+            if (child.localName === 'gradFill') {
+                gradFillNode = child;
+                break;
+            }
+        }
+        if (gradFillNode) {
+            return parseGradientFill(gradFillNode, slideContext);
+        }
+
+        let solidFillNode = null;
+        for (const child of tcPrNode.children) {
+            if (child.localName === 'solidFill') {
+                solidFillNode = child;
+                break;
+            }
+        }
+        if (solidFillNode) {
+            const colorObj = ColorParser.parseColor(solidFillNode);
+            if (colorObj) {
+                return { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
+            }
+        }
+    }
+
+    if (!tableStyle) return null;
+
+    let finalFill = null;
+
+    if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.fill) {
+        finalFill = tableStyle.wholeTbl.tcStyle.fill;
+    }
+
+    const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+    const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+    const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+    const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+    const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+    const bandCol = tblPrNode.getAttribute('bandCol') === '1';
+
+    const isFirstRow = r === 0;
+    const isLastRow = r === numRows - 1;
+    const isFirstCol = c === 0;
+    const isLastCol = c === numCols - 1;
+
+    const partsToCheck = [];
+    if (bandRow) {
+        const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+        if (isDataRow) {
+            const dataRowIdx = firstRow ? r - 1 : r;
+            if (dataRowIdx >= 0) {
+                if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
+                else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+            }
+        }
+    }
+    if (bandCol) {
+        const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+        if (isDataCol) {
+            const dataColIdx = firstCol ? c - 1 : c;
+            if (dataColIdx >= 0) {
+                if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
+                else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+            }
+        }
+    }
+    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
+    if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
+    if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+    if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
+    if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
+    if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
+    if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
+
+    for (const part of partsToCheck) {
+        if (part && part.tcStyle && part.tcStyle.fill) {
+            finalFill = part.tcStyle.fill;
+        }
+    }
+
+    if (finalFill) {
+        if (finalFill.type === 'none') {
+            return 'none';
+        }
+        if (finalFill.type === 'solid') {
+            return { type: 'solid', color: ColorParser.resolveColor(finalFill.color, slideContext) };
+        }
+        if (finalFill.type === 'gradient') {
+            const resolvedStops = finalFill.gradient.stops.map(stop => ({
+                ...stop,
+                color: ColorParser.resolveColor(stop.color, slideContext, true)
+            }));
+            return { type: 'gradient', gradient: { ...finalFill.gradient, stops: resolvedStops } };
+        }
+    }
+
+    return null;
 }
