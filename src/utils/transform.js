@@ -1,5 +1,5 @@
 import { ColorParser, parseGradientFill } from 'utils';
-import { DML_NS, EMU_PER_PIXEL } from '../constants';
+import { DML_NS, EMU_PER_PIXEL } from 'constants';
 
 function transformText(text, slideContext) {
     if (!text || !text.layout || !text.layout.lines) {
