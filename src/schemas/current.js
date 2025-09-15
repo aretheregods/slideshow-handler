@@ -112,6 +112,13 @@ export const currentSchema = {
             },
             "required": ["type"]
         },
+        "unsupportedFill": {
+            "type": "object",
+            "properties": {
+                "type": { "const": "unsupported" }
+            },
+            "required": ["type"]
+        },
         "fill": {
             "oneOf": [
                 { "type": "string" },
@@ -120,12 +127,14 @@ export const currentSchema = {
                 { "$ref": "#/definitions/blipFill" },
                 { "$ref": "#/definitions/patternFill" },
                 { "$ref": "#/definitions/groupFill" },
-                { "$ref": "#/definitions/noFill" }
+                { "$ref": "#/definitions/noFill" },
+                { "$ref": "#/definitions/unsupportedFill" }
             ]
         },
         "stroke": {
             "type": "object",
             "properties": {
+                "type": { "type": "string", "enum": ["solid"] },
                 "width": { "type": "number" },
                 "color": { "$ref": "#/definitions/color" },
                 "dash": { "type": "array", "items": { "type": "number" } },
@@ -133,7 +142,20 @@ export const currentSchema = {
                 "join": { "type": "string" },
                 "cmpd": { "type": "string" }
             },
-            "required": ["width", "color"]
+            "required": ["type", "width", "color"]
+        },
+        "unsupportedStroke": {
+            "type": "object",
+            "properties": {
+                "type": { "const": "unsupported" }
+            },
+            "required": ["type"]
+        },
+        "themeLine": {
+            "oneOf": [
+                { "$ref": "#/definitions/stroke" },
+                { "$ref": "#/definitions/unsupportedStroke" }
+            ]
         },
         "outerShadowEffect": {
             "type": "object",
@@ -316,7 +338,7 @@ export const currentSchema = {
                     "type": "object",
                     "properties": {
                         "fills": { "type": "array", "items": { "$ref": "#/definitions/fill" } },
-                        "lines": { "type": "array", "items": { "$ref": "#/definitions/stroke" } },
+                        "lines": { "type": "array", "items": { "$ref": "#/definitions/themeLine" } },
                         "effects": { "type": "array", "items": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/effect" }] } },
                         "bgFills": { "type": "array", "items": { "$ref": "#/definitions/fill" } }
                     },
