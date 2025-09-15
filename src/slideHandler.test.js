@@ -362,13 +362,33 @@ describe('SlideHandler', () => {
             })(global.document.createElement);
         });
 
-        it('should parse paragraphs and return layout data', () => {
+        it('should parse paragraphs and produce schema-compliant objects and layout', () => {
             const pos = { x: 0, y: 0, width: 200, height: 100 };
+
+            // We need to temporarily replace _parseParagraphsToSchema to check its output
+            const originalParse = slideHandler._parseParagraphsToSchema;
+            let parsedParagraphs;
+            slideHandler._parseParagraphsToSchema = (...args) => {
+                parsedParagraphs = originalParse.apply(slideHandler, args);
+                return parsedParagraphs;
+            };
+
             const textData = slideHandler.parseParagraphs(mockTxBody, pos, 'body', 'body', {}, {}, {}, slideHandler.defaultTextStyles, slideHandler.masterPlaceholders, slideHandler.layoutPlaceholders);
 
+            // Check schema-compliant paragraphs
+            expect(parsedParagraphs).not.toBeNull();
+            expect(parsedParagraphs.length).toBe(1);
+            expect(parsedParagraphs[0].runs.length).toBe(2);
+            expect(parsedParagraphs[0].runs[0].text).toBe('Hello, ');
+            expect(parsedParagraphs[0].runs[0].bold).toBe(true);
+
+            // Check layout output
             expect(textData).not.toBeNull();
             expect(textData.layout.lines.length).toBeGreaterThan(0);
             expect(textData.layout.lines[0].runs.length).toBeGreaterThan(0);
+
+            // Restore original function
+            slideHandler._parseParagraphsToSchema = originalParse;
         });
 
         it('should render paragraphs to the SVG', () => {

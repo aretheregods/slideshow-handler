@@ -788,6 +788,77 @@ export class SlideHandler {
         return this.parseParagraphs(txBodyNode, pos, null, 'body', listCounters, finalBodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
     }
 
+    _parseParagraphsToSchema(pNodes, phKey, phType, listCounters, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
+        const dts = defaultTextStyles || this.defaultTextStyles;
+        const mph = masterPlaceholders || this.masterPlaceholders;
+        const lph = layoutPlaceholders || this.layoutPlaceholders;
+
+        return pNodes.map(pNode => {
+            const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
+            const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
+            const defaultStyle = (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') ? dts.title : (phType === 'body' ? dts.body : dts.other);
+            const defaultLevelProps = defaultStyle?.[level] || {};
+            const masterPh = mph?.[phKey] || Object.values(mph || {}).find(p => p.type === phType);
+            const masterListStyle = masterPh?.listStyle?.[level] || {};
+            const layoutPh = lph?.[phKey];
+            const layoutListStyle = layoutPh?.listStyle?.[level] || {};
+            const slideLevelProps = parseParagraphProperties(pPrNode, this.slideContext) || { bullet: {}, defRPr: {} };
+
+            const finalProps = {
+                level, ...defaultLevelProps, ...masterListStyle, ...layoutListStyle, ...slideLevelProps,
+                bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
+                defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
+            };
+
+            const runs = [];
+            for (const childNode of Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName))) {
+                if (childNode.localName === 'br') {
+                    runs.push({ text: '\n' });
+                    continue;
+                }
+                const text = childNode.getElementsByTagNameNS(DML_NS, 't')[0]?.textContent || '';
+                if (!text && childNode.localName !== 'r') continue;
+
+                const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+                const runProps = { ...finalProps.defRPr };
+                if (rPr) {
+                    if (rPr.getAttribute('sz')) runProps.size = (parseInt(rPr.getAttribute('sz')) / 100);
+                    if (rPr.getAttribute('b') === '1') runProps.bold = true; else if (rPr.getAttribute('b') === '0') runProps.bold = false;
+                    if (rPr.getAttribute('i') === '1') runProps.italic = true; else if (rPr.getAttribute('i') === '0') runProps.italic = false;
+                    const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                    if (solidFill) runProps.color = ColorParser.parseColor(solidFill);
+                    const latinFont = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                    if (latinFont?.getAttribute('typeface')) runProps.font = latinFont.getAttribute('typeface');
+                }
+
+                runs.push({
+                    text: text,
+                    fontFamily: resolveFontFamily(runProps, phType, this.slideContext),
+                    fontSize: runProps.size || 18,
+                    fontColor: runProps.color ? ColorParser.resolveColor(runProps.color, this.slideContext) : undefined,
+                    bold: runProps.bold,
+                    italic: runProps.italic,
+                });
+            }
+
+            if (finalProps.bullet?.type === 'auto') {
+                if (listCounters[level] === undefined) listCounters[level] = finalProps.bullet.startAt || 1; else listCounters[level]++;
+                finalProps.bullet.character = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]);
+            }
+
+            return {
+                runs,
+                alignment: finalProps.align,
+                indent: finalProps.indent,
+                lineSpacing: finalProps.lnSpc,
+                bullets: finalProps.bullet,
+                level,
+                defRPr: finalProps.defRPr,
+                marL: finalProps.marL,
+            };
+        });
+    }
+
     /**
      * @description Parses the paragraphs within a text body.
      * @param {Element} txBody - The text body element.
@@ -803,14 +874,12 @@ export class SlideHandler {
      * @returns {Object|null} The parsed paragraph data, or null if there are no paragraphs.
      */
     parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
-        const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
-        if (paragraphs.length === 0) return null;
+        const pNodes = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
+        if (pNodes.length === 0) return null;
 
-        const dts = defaultTextStyles || this.defaultTextStyles;
-        const mph = masterPlaceholders || this.masterPlaceholders;
-        const lph = layoutPlaceholders || this.layoutPlaceholders;
+        const schemaParagraphs = this._parseParagraphsToSchema(pNodes, phKey, phType, listCounters, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
 
-        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, dts, mph, lph, listCounters);
+        const layout = this.layoutParagraphs(schemaParagraphs, pos, bodyPr, listCounters);
         return { layout, bodyPr, pos };
     }
 
@@ -899,7 +968,7 @@ export class SlideHandler {
      * @param {Object} listCounters - The counters for list elements.
      * @returns {{totalHeight: number, lines: Array<Object>}} An object containing the total height and the laid-out lines.
      */
-    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters) {
+    layoutParagraphs(schemaParagraphs, pos, bodyPr, listCounters) {
         const paddedPos = {
             x: pos.x + (bodyPr.lIns || 0), y: pos.y + (bodyPr.tIns || 0),
             width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
@@ -909,73 +978,46 @@ export class SlideHandler {
         const lines = [];
         let currentY = 0;
 
-        for (const pNode of paragraphs) {
-            const pPrNode = pNode.getElementsByTagNameNS(DML_NS, 'pPr')[0];
-            const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
-            const defaultStyle = (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') ? defaultTextStyles.title : (phType === 'body' ? defaultTextStyles.body : defaultTextStyles.other);
-            const defaultLevelProps = defaultStyle?.[level] || {};
-            const masterPh = masterPlaceholders?.[phKey] || Object.values(masterPlaceholders || {}).find(p => p.type === phType);
-            const masterListStyle = masterPh?.listStyle?.[level] || {};
-            const layoutPh = layoutPlaceholders?.[phKey];
-            const layoutListStyle = layoutPh?.listStyle?.[level] || {};
-            const slideLevelProps = parseParagraphProperties(pPrNode, this.slideContext) || { bullet: {}, defRPr: {} };
+        for (const p of schemaParagraphs) {
+            const marL = p.marL ?? (p.level > 0 ? (p.level * INDENTATION_AMOUNT) : 0);
+            const indent = p.indent ?? 0;
+            const bulletOffset = (p.bullets?.type && p.bullets.type !== 'none') ? BULLET_OFFSET : 0;
 
-            const finalProps = {
-                level, ...defaultLevelProps, ...masterListStyle, ...layoutListStyle, ...slideLevelProps,
-                bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
-                defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
-            };
-
-            const marL = finalProps.marL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
-            const indent = finalProps.indent ?? 0;
-            const bulletOffset = (finalProps.bullet?.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
-
-            let currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: true };
+            let currentLine = { runs: [], width: 0, height: 0, paragraphProps: p, startY: currentY, isFirstLine: true };
             const pushLine = () => {
                 if (currentLine.runs.length > 0) {
                     lines.push(currentLine);
                     currentY += currentLine.height || LINE_HEIGHT;
                 }
-                currentLine = { runs: [], width: 0, height: 0, paragraphProps: finalProps, startY: currentY, isFirstLine: false };
+                currentLine = { runs: [], width: 0, height: 0, paragraphProps: p, startY: currentY, isFirstLine: false };
             };
 
-            if (finalProps.bullet?.type === 'auto') {
-                if (listCounters[level] === undefined) listCounters[level] = finalProps.bullet.startAt || 1; else listCounters[level]++;
-                currentLine.bulletChar = getAutoNumberingChar(finalProps.bullet.scheme, listCounters[level]);
+            if (p.bullets?.type === 'auto') {
+                currentLine.bulletChar = p.bullets.character;
             }
 
-            for (const childNode of Array.from(pNode.childNodes).filter(n => ['r', 'fld', 'br'].includes(n.localName))) {
-                if (childNode.localName === 'br') { pushLine(); continue; }
-                const text = childNode.textContent;
-                if (!text) continue;
-
-                const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-                const runProps = { ...finalProps.defRPr };
-                if (rPr) {
-                    if (rPr.getAttribute('sz')) runProps.size = (parseInt(rPr.getAttribute('sz')) / 100) * PT_TO_PX;
-                    if (rPr.getAttribute('b') === '1') runProps.bold = true; else if (rPr.getAttribute('b') === '0') runProps.bold = false;
-                    if (rPr.getAttribute('i') === '1') runProps.italic = true; else if (rPr.getAttribute('i') === '0') runProps.italic = false;
-                    const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                    if (solidFill) runProps.color = ColorParser.parseColor(solidFill);
-                    const latinFont = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
-                    if (latinFont?.getAttribute('typeface')) runProps.font = latinFont.getAttribute('typeface');
+            for (const run of p.runs) {
+                if (run.text === '\n') {
+                    pushLine();
+                    continue;
                 }
 
-                let fontSize = runProps.size || (18 * PT_TO_PX);
+                let fontSize = (run.fontSize || 18) * PT_TO_PX;
                 if (bodyPr.fontScale) fontSize *= bodyPr.fontScale;
-                const fontFamily = resolveFontFamily(runProps, phType, this.slideContext);
+                const fontFamily = run.fontFamily;
                 const tempCtx = document.createElement('canvas').getContext('2d');
-                tempCtx.font = `${runProps.italic ? 'italic' : 'normal'} ${runProps.bold ? 'bold' : 'normal'} ${fontSize}px ${fontFamily}`;
+                tempCtx.font = `${run.italic ? 'italic' : 'normal'} ${run.bold ? 'bold' : 'normal'} ${fontSize}px ${fontFamily}`;
 
-                for (const word of text.split(/(\s+)/)) {
+                for (const word of run.text.split(/(\s+)/)) {
                     if (!word) continue;
                     const wordWidth = tempCtx.measureText(word).width;
                     const effectiveWidth = paddedPos.width - (currentLine.isFirstLine ? marL + indent : marL) - bulletOffset;
                     if (currentLine.width + wordWidth > effectiveWidth && currentLine.runs.length > 0) pushLine();
+
                     currentLine.runs.push({
                         text: word,
-                        font: { style: runProps.italic ? 'italic' : 'normal', weight: runProps.bold ? 'bold' : 'normal', size: fontSize, family: fontFamily },
-                        color: ColorParser.resolveColor(runProps.color, this.slideContext) || '#000000'
+                        font: { style: run.italic ? 'italic' : 'normal', weight: run.bold ? 'bold' : 'normal', size: fontSize, family: fontFamily },
+                        color: run.fontColor || '#000000'
                     });
                     currentLine.width += wordWidth;
                     currentLine.height = Math.max(currentLine.height, fontSize * (bodyPr.lnSpcReduction ? 1 - bodyPr.lnSpcReduction : 1.25));
