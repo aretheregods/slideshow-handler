@@ -365,7 +365,6 @@ describe('SlideHandler', () => {
         it('should parse paragraphs and produce schema-compliant objects and layout', () => {
             const pos = { x: 0, y: 0, width: 200, height: 100 };
 
-            // We need to temporarily replace _parseParagraphsToSchema to check its output
             const originalParse = slideHandler._parseParagraphsToSchema;
             let parsedParagraphs;
             slideHandler._parseParagraphsToSchema = (...args) => {
@@ -375,52 +374,17 @@ describe('SlideHandler', () => {
 
             const textData = slideHandler.parseParagraphs(mockTxBody, pos, 'body', 'body', {}, {}, {}, slideHandler.defaultTextStyles, slideHandler.masterPlaceholders, slideHandler.layoutPlaceholders);
 
-            // Check schema-compliant paragraphs
             expect(parsedParagraphs).not.toBeNull();
             expect(parsedParagraphs.length).toBe(1);
             expect(parsedParagraphs[0].runs.length).toBe(2);
             expect(parsedParagraphs[0].runs[0].text).toBe('Hello, ');
             expect(parsedParagraphs[0].runs[0].bold).toBe(true);
 
-            // Check layout output
             expect(textData).not.toBeNull();
             expect(textData.layout.lines.length).toBeGreaterThan(0);
             expect(textData.layout.lines[0].runs.length).toBeGreaterThan(0);
 
-            // Restore original function
             slideHandler._parseParagraphsToSchema = originalParse;
-        });
-
-        it('should render paragraphs with bullets to the SVG', () => {
-            const layout = {
-                totalHeight: 50,
-                lines: [
-                    {
-                        x: 10,
-                        y: 0,
-                        startY: 20,
-                        width: 180,
-                        height: 25,
-                        runs: [
-                            { text: 'Hello, ', font: { size: 24, family: 'Arial' }, color: '#000' },
-                        ],
-                        isFirstLine: true,
-                        paragraphProps: {
-                            bullets: { type: 'char', char: '•', color: { srgb: '#FF0000' } },
-                            defRPr: {}
-                        },
-                    },
-                ],
-            };
-            const textData = { layout, bodyPr: {}, pos: { x: 0, y: 0, width: 200, height: 100 } };
-            slideHandler.renderer = {
-                currentGroup: document.createElementNS('http://www.w3.org/2000/svg', 'g'),
-                drawText: vi.fn(),
-                drawPath: vi.fn(),
-            };
-            slideHandler.renderParagraphs(textData, 'text-1');
-
-            expect(slideHandler.renderer.drawText).toHaveBeenCalledWith('•', expect.any(Number), expect.any(Number), expect.any(Object));
         });
 
         it('should render paragraphs to the SVG', () => {

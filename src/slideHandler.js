@@ -909,34 +909,24 @@ export class SlideHandler {
 
         for (const [lineIndex, line] of layout.lines.entries()) {
             const { paragraphProps: finalProps } = line;
-            if (line.isFirstLine && finalProps.bullets?.type && finalProps.bullets.type !== 'none') {
-                const bulletColor = ColorParser.resolveColor(finalProps.bullets.color, this.slideContext) || ColorParser.resolveColor(finalProps.defRPr.color, this.slideContext) || '#000';
+            if (line.isFirstLine && finalProps.bullet?.type && finalProps.bullet.type !== 'none') {
+                const bulletColor = ColorParser.resolveColor(finalProps.bullet.color, this.slideContext) || ColorParser.resolveColor(finalProps.defRPr.color, this.slideContext) || '#000';
                 const firstRunSize = line.runs[0]?.font.size || (finalProps.defRPr.size || 18 * PT_TO_PX);
                 const bulletBaselineY = startY + line.startY + firstRunSize;
                 const bulletX = line.x - BULLET_OFFSET;
 
-                if (finalProps.bullets.type === 'char') {
-                    this.renderer.drawText(finalProps.bullets.char, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${firstRunSize}px`, fontFamily: finalProps.bullets.font || 'Arial' });
-                } else if (finalProps.bullets.type === 'auto') {
-                    this.renderer.drawText(finalProps.bullets.character, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${firstRunSize}px`, fontFamily: finalProps.bullets.font || 'Arial' });
-                } else if (finalProps.bullets.type === 'image' && finalProps.bullets.relId && this.imageMap[finalProps.bullets.relId]) {
-                    this.renderer.drawImage(this.imageMap[finalProps.bullets.relId], bulletX, bulletBaselineY - 8, 16, 16);
+                if (finalProps.bullet.type === 'char') {
+                    this.renderer.drawText(finalProps.bullet.char, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${finalProps.defRPr.size || 18 * PT_TO_PX}px`, fontFamily: finalProps.bullet.font || 'Arial' });
+                } else if (finalProps.bullet.type === 'auto') {
+                    this.renderer.drawText(line.bulletChar, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${finalProps.defRPr.size || 18 * PT_TO_PX}px`, fontFamily: finalProps.bullet.font || 'Arial' });
+                } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && this.imageMap[finalProps.bullet.relId]) {
+                    this.renderer.drawImage(this.imageMap[finalProps.bullet.relId], bulletX, bulletBaselineY - 8, 16, 16);
                 }
             }
 
             const textElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            const align = finalProps.align || 'l';
-            let xPos = line.x;
-            if (align === 'ctr') {
-                textElement.setAttribute('x', xPos + line.width / 2);
-                textElement.setAttribute('text-anchor', 'middle');
-            } else if (align === 'r') {
-                textElement.setAttribute('x', xPos + line.width);
-                textElement.setAttribute('text-anchor', 'end');
-            } else {
-                textElement.setAttribute('x', xPos);
-                textElement.setAttribute('text-anchor', 'start');
-            }
+            textElement.setAttribute('x', line.anchorX);
+            textElement.setAttribute('text-anchor', line.anchor);
             textElement.setAttribute('y', startY + line.startY + (line.runs[0]?.font.size || 0));
 
             for (const run of line.runs) {
@@ -1027,16 +1017,27 @@ export class SlideHandler {
         }
 
         for (const line of lines) {
-            const { align, level, marL: pMarL, indent: pIndent } = line.paragraphProps;
+            const { alignment, level, marL: pMarL, indent: pIndent } = line.paragraphProps;
+            const align = alignment || 'l';
             const marL = pMarL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
             const indent = pIndent ?? 0;
             const bulletOffset = (line.paragraphProps.bullet?.type && line.paragraphProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
             const lineIndent = marL + indent;
             const effectiveWidth = paddedPos.width - lineIndent - bulletOffset;
-            let lineXOffset = 0;
-            if (align === 'ctr') lineXOffset = (effectiveWidth - line.width) / 2;
-            else if (align === 'r') lineXOffset = effectiveWidth - line.width;
-            line.x = paddedPos.x + lineIndent + bulletOffset + lineXOffset;
+            const lineStartX = paddedPos.x + lineIndent + bulletOffset;
+
+            line.x = lineStartX;
+
+            if (align === 'ctr') {
+                line.anchor = 'middle';
+                line.anchorX = lineStartX + effectiveWidth / 2;
+            } else if (align === 'r') {
+                line.anchor = 'end';
+                line.anchorX = lineStartX + effectiveWidth;
+            } else { // 'l' or 'just'
+                line.anchor = 'start';
+                line.anchorX = lineStartX;
+            }
         }
 
         return { totalHeight: currentY, lines };
