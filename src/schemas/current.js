@@ -288,7 +288,12 @@ export const currentSchema = {
             "properties": {
                 "bold": { "type": "boolean" },
                 "italic": { "type": "boolean" },
-                "color": { "$ref": "#/definitions/color" }
+                "color": {
+                    "oneOf": [
+                        { "type": "null" },
+                        { "$ref": "#/definitions/intermediateColor" }
+                    ]
+                }
             }
         },
         "tableStylePart": {
