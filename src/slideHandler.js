@@ -17,7 +17,8 @@ import {
     parseSourceRectangle,
     createImage,
     resolvePath,
-    getNormalizedXmlString
+    getNormalizedXmlString,
+    parseExtensions,
 } from 'utils';
 import {
     EMU_PER_PIXEL,
@@ -318,6 +319,10 @@ export class SlideHandler {
 	 * @returns {Promise<Object|null>} A promise that resolves to the parsed shape data, or null if the shape is not visible.
 	 */
     async parseShape(shapeNode, listCounters, parentMatrix, slideLevelVisibility) {
+        const nvSpPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'nvSpPr')[0];
+        const cNvPrNode = nvSpPrNode?.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+        const extensions = cNvPrNode ? parseExtensions(cNvPrNode) : null;
+
         const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
         let phKey = null, phType = null;
         if (nvPr) {
@@ -392,6 +397,7 @@ export class SlideHandler {
             text: textData,
             flipH,
             flipV,
+            extensions,
         };
     }
 
@@ -506,6 +512,8 @@ export class SlideHandler {
         let pos;
 
         const nvPicPrNode = picNode.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0];
+        const cNvPrNode = nvPicPrNode?.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
+        let extensions = cNvPrNode ? parseExtensions(cNvPrNode) : null;
         const phNode = nvPicPrNode?.getElementsByTagNameNS(PML_NS, 'nvPr')[0]?.getElementsByTagNameNS(PML_NS, 'ph')[0];
 
         if (phNode) {
@@ -558,6 +566,11 @@ export class SlideHandler {
         const blipFillNode = picNode.getElementsByTagNameNS(PML_NS, 'blipFill')[0];
         if (blipFillNode) {
             const blipNode = blipFillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
+            const blipExtensions = blipNode ? parseExtensions(blipNode) : null;
+            if ( blipExtensions ) {
+                extensions = (extensions || []).concat(blipExtensions);
+            }
+
             const relId = blipNode?.getAttribute('r:embed');
             if (relId && this.imageMap[relId]) {
                 imageInfo = {
@@ -574,6 +587,7 @@ export class SlideHandler {
             placeholderProps,
             pathString,
             image: imageInfo,
+            extensions,
         };
     }
 
