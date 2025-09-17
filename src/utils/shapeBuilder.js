@@ -379,7 +379,18 @@ export class ShapeBuilder {
                     pos.width = this.slideSize.width - ( pos.x * 2 );
                 }
 
+                if ( placeholder.transform ) {
+                    rot = placeholder.transform.rot / 60000;
+                    flipH = placeholder.transform.flipH;
+                    flipV = placeholder.transform.flipV;
+                }
+
                 localMatrix.translate( pos.x, pos.y );
+                localMatrix.translate( pos.width / 2, pos.height / 2 );
+                localMatrix.rotate( rot * Math.PI / 180 );
+                localMatrix.scale( flipH ? -1 : 1, flipV ? -1 : 1 );
+                localMatrix.translate( -pos.width / 2, -pos.height / 2 );
+
                 pos.x = 0;
                 pos.y = 0;
             }
