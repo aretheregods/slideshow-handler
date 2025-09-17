@@ -62,6 +62,7 @@ export class ShapeBuilder {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
                 case 'ellipse':
@@ -69,6 +70,7 @@ export class ShapeBuilder {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
                 case 'line':
@@ -132,6 +134,7 @@ export class ShapeBuilder {
                     this.renderer.drawPath(arcPath, {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
                 case 'custom':
@@ -176,6 +179,7 @@ export class ShapeBuilder {
                             fill: shapeProps.fill,
                             stroke: shapeProps.stroke,
                             effect: shapeProps.effect,
+                            pos,
                         });
                     }
                     break;
@@ -217,6 +221,7 @@ export class ShapeBuilder {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
                 case 'roundRect':
@@ -241,6 +246,7 @@ export class ShapeBuilder {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
                 case 'round1Rect':
@@ -284,6 +290,7 @@ export class ShapeBuilder {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
              }

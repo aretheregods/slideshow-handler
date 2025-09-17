@@ -162,6 +162,7 @@ describe('ShapeBuilder', () => {
                 fill: 'blue',
                 stroke: 'black',
                 effect: 'shadow',
+                pos,
             });
         });
 
@@ -181,6 +182,7 @@ describe('ShapeBuilder', () => {
                 fill: 'red',
                 stroke: 'green',
                 effect: 'glow',
+                pos,
             });
         });
 
@@ -217,7 +219,7 @@ describe('ShapeBuilder', () => {
 
             expect(renderer.drawPath).toHaveBeenCalledWith(
                 "M 6.698729810778062 25.000000000000004 A 50 50 0 0 1 37.05904774487396 1.7037086855465873",
-                { stroke: 'black', effect: undefined }
+                { stroke: 'black', effect: undefined, pos }
             );
         });
 
@@ -246,6 +248,7 @@ describe('ShapeBuilder', () => {
                 fill: 'yellow',
                 stroke: undefined,
                 effect: undefined,
+                pos,
             });
         });
 
@@ -264,7 +267,7 @@ describe('ShapeBuilder', () => {
 
             expect(renderer.drawPath).toHaveBeenCalledWith(
                 "M 0 49.99999999999999 A 50 50 0 0 1 100 50 L 87.5 50 A 37.5 37.5 0 0 0 12.5 49.99999999999999 Z",
-                { fill: 'purple', stroke: undefined, effect: undefined }
+                { fill: 'purple', stroke: undefined, effect: undefined, pos }
             );
         });
 
@@ -283,7 +286,7 @@ describe('ShapeBuilder', () => {
 
             expect(renderer.drawPath).toHaveBeenCalledWith(
                 "M 18.75 0 L 81.25 0 A 18.75 18.75 0 0 1 100 18.75 L 100 31.25 A 18.75 18.75 0 0 1 81.25 50 L 18.75 50 A 18.75 18.75 0 0 1 0 31.25 L 0 18.75 A 18.75 18.75 0 0 1 18.75 0 Z",
-                { fill: 'orange', stroke: undefined, effect: undefined }
+                { fill: 'orange', stroke: undefined, effect: undefined, pos }
             );
         });
 
@@ -296,7 +299,7 @@ describe('ShapeBuilder', () => {
             shapeBuilder.renderShape(pos, shapeProps, new Matrix(), false, false);
             expect(renderer.drawPath).toHaveBeenCalledWith(
                 'M 0 25 A 25 25 0 0 1 25 0 L 100 0 L 100 100 L 0 100 Z',
-                { fill: 'cyan', stroke: undefined, effect: undefined }
+                { fill: 'cyan', stroke: undefined, effect: undefined, pos }
             );
         });
 

@@ -148,7 +148,7 @@ describe('SvgRenderer', () => {
             };
             renderer.drawRect(10, 20, 100, 50, fillOptions);
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'linearGradient');
-            expect(mockLinearGradientElement.setAttribute).toHaveBeenCalledWith('gradientTransform', expect.stringContaining('rotate(90'));
+            expect(mockLinearGradientElement.setAttribute).toHaveBeenCalledWith('gradientTransform', 'rotate(90, 0.5, 0.5)');
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'stop');
             expect(renderer.defs.appendChild).toHaveBeenCalledWith(mockLinearGradientElement);
             expect(mockRectElement.setAttribute).toHaveBeenCalledWith('fill', expect.stringMatching(/^url\(#grad-\d+\)$/));
@@ -171,10 +171,38 @@ describe('SvgRenderer', () => {
         it('should draw a simple line', () => {
             const options = { stroke: { color: 'black', width: 1 } };
             renderer.drawLine(10, 10, 100, 100, options);
+            expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'line');
+            expect(mockLineElement.setAttribute).toHaveBeenCalledWith('x1', 10);
+            expect(mockLineElement.setAttribute).toHaveBeenCalledWith('y1', 10);
+            expect(mockLineElement.setAttribute).toHaveBeenCalledWith('x2', 100);
+            expect(mockLineElement.setAttribute).toHaveBeenCalledWith('y2', 100);
+            expect(renderer.currentGroup.appendChild).toHaveBeenCalledWith(mockLineElement);
+        });
+
+        it('should draw a line with a gradient fill using a clipped rectangle', () => {
+            const gradientFill = {
+                type: 'gradient',
+                gradient: {
+                    angle: 90,
+                    stops: [{ pos: 0, color: { color: 'red' } }, { pos: 1, color: { color: 'blue' } }],
+                },
+            };
+            const options = { stroke: { color: gradientFill, width: 2 } };
+            renderer.drawLine(10, 10, 10, 110, options);
+
+            // Check for clipPath creation
+            expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'clipPath');
+
+            // Check for path inside clipPath
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'path');
-            expect(mockPathElement.setAttribute).toHaveBeenCalledWith('d', 'M 10 10 L 100 100');
-            expect(mockPathElement.setAttribute).toHaveBeenCalledWith('fill', 'none');
-            expect(renderer.currentGroup.appendChild).toHaveBeenCalledWith(mockPathElement);
+            expect(mockPathElement.setAttribute).toHaveBeenCalledWith('d', 'M 10 10 L 10 110');
+
+            // Check for rect with gradient and clip-path
+            expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'rect');
+            expect(mockRectElement.setAttribute).toHaveBeenCalledWith('fill', expect.stringMatching(/^url\(#grad-\d+\)$/));
+            expect(mockRectElement.setAttribute).toHaveBeenCalledWith('clip-path', expect.stringMatching(/^url\(#clip-line-\d+\)$/));
+
+            expect(renderer.currentGroup.appendChild).toHaveBeenCalledWith(mockRectElement);
         });
     });
 

@@ -448,33 +448,66 @@ export class SvgRenderer {
             if (options.stroke.cmpd && options.stroke.cmpd !== 'sng') {
                 this._drawCompoundLine(x1, y1, x2, y2, options);
             } else {
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                if ( options.id ) {
-                    path.setAttribute( 'id', options.id );
-                }
-                path.setAttribute('d', `M ${x1} ${y1} L ${x2} ${y2}`);
-                path.setAttribute('fill', 'none'); // Important for lines represented as paths
-
                 if (typeof options.stroke.color === 'object' && options.stroke.color?.type === 'gradient') {
-                    path.setAttribute('stroke', this._createGradient(options.stroke.color));
-                } else {
-                    path.setAttribute('stroke', options.stroke.color);
-                }
-                path.setAttribute('stroke-width', options.stroke.width);
+                    const lineId = options.id || `line-${this.defs.children.length}`;
+                    const clipId = `clip-${lineId}`;
 
-                if (options.stroke.dash) {
-                    path.setAttribute('stroke-dasharray', options.stroke.dash.join(' '));
+                    const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+                    clipPath.setAttribute('id', clipId);
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', `M ${x1} ${y1} L ${x2} ${y2}`);
+                    path.setAttribute('stroke', '#000000'); // stroke color doesn't matter for clipping
+                    path.setAttribute('stroke-width', options.stroke.width);
+                    if (options.stroke.cap) {
+                        path.setAttribute('stroke-linecap', options.stroke.cap || 'butt');
+                    }
+                    clipPath.appendChild(path);
+                    this.defs.appendChild(clipPath);
+
+                    const boundingBox = {
+                        x: Math.min(x1, x2) - options.stroke.width,
+                        y: Math.min(y1, y2) - options.stroke.width,
+                        width: Math.abs(x2 - x1) + 2 * options.stroke.width,
+                        height: Math.abs(y2 - y1) + 2 * options.stroke.width,
+                    };
+
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', boundingBox.x);
+                    rect.setAttribute('y', boundingBox.y);
+                    rect.setAttribute('width', boundingBox.width);
+                    rect.setAttribute('height', boundingBox.height);
+                    rect.setAttribute('fill', this._createGradient(options.stroke.color));
+                    rect.setAttribute('clip-path', `url(#${clipId})`);
+                    if (filterUrl) {
+                        rect.setAttribute('filter', filterUrl);
+                    }
+                    this.currentGroup.appendChild(rect);
+
+                } else {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                     if ( options.id ) {
+                        line.setAttribute( 'id', options.id );
+                    }
+                    line.setAttribute('x1', x1);
+                    line.setAttribute('y1', y1);
+                    line.setAttribute('x2', x2);
+                    line.setAttribute('y2', y2);
+                    line.setAttribute('stroke', options.stroke.color);
+                    line.setAttribute('stroke-width', options.stroke.width);
+                    if (options.stroke.dash) {
+                        line.setAttribute('stroke-dasharray', options.stroke.dash.join(' '));
+                    }
+                    if (options.stroke.join) {
+                        line.setAttribute('stroke-linejoin', options.stroke.join);
+                    }
+                    if (options.stroke.cap) {
+                        line.setAttribute('stroke-linecap', options.stroke.cap || 'butt');
+                    }
+                    if (filterUrl) {
+                        line.setAttribute('filter', filterUrl);
+                    }
+                    this.currentGroup.appendChild(line);
                 }
-                if (options.stroke.join) {
-                    path.setAttribute('stroke-linejoin', options.stroke.join);
-                }
-                if (options.stroke.cap) {
-                    path.setAttribute('stroke-linecap', options.stroke.cap || 'butt');
-                }
-                 if (filterUrl) {
-                    path.setAttribute('filter', filterUrl);
-                }
-                this.currentGroup.appendChild(path);
             }
         }
     }
