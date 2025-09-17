@@ -77,6 +77,7 @@ export function parseTheme(themeXml) {
                                 stops.push({ pos, color: colorObj });
                             }
                         }
+                        stops.sort((a, b) => a.pos - b.pos);
                     }
                     let angle = 0;
                     let type = 'linear';
@@ -185,6 +186,7 @@ export function parseTheme(themeXml) {
                                 stops.push({ pos, color: colorObj });
                             }
                         }
+                        stops.sort((a, b) => a.pos - b.pos);
                     }
                     let angle = 0;
                     let type = 'linear';
@@ -312,6 +314,7 @@ export function parseStylePart(partNode) {
                             stops.push({ pos, color: colorObj });
                         }
                     }
+                    stops.sort((a, b) => a.pos - b.pos);
                 }
                 let angle = 0;
                 let type = 'linear';
@@ -511,6 +514,7 @@ export function parseGradientFill(fillNode, slideContext) {
                 stops.push({ pos, color: ColorParser.resolveColor(colorObj, slideContext, true) });
             }
         }
+        stops.sort((a, b) => a.pos - b.pos);
     }
 
     let angle = 0;
