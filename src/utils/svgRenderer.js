@@ -156,6 +156,72 @@ export class SvgRenderer {
     }
 
     /**
+     * Creates a duotone filter definition in the SVG's `<defs>`.
+     * @param {string} color1 - The first color (for dark tones).
+     * @param {string} color2 - The second color (for light tones).
+     * @returns {string} The URL of the created filter.
+     */
+    createDuotoneFilter(color1, color2) {
+        const filterId = `duotone-${this.filterIdCounter++}`;
+        const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+        filter.setAttribute('id', filterId);
+        filter.setAttribute('color-interpolation-filters', 'sRGB');
+
+        // Convert to grayscale first using luminance
+        const feColorMatrix = document.createElementNS('http://www.w3.org/2000/svg', 'feColorMatrix');
+        feColorMatrix.setAttribute('type', 'matrix');
+        feColorMatrix.setAttribute('values', '0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0');
+        filter.appendChild(feColorMatrix);
+
+        // Map grayscale to the two colors
+        const feComponentTransfer = document.createElementNS('http://www.w3.org/2000/svg', 'feComponentTransfer');
+        const rgb1 = ColorParser.hexToRgb(color1);
+        const rgb2 = ColorParser.hexToRgb(color2);
+
+        if (rgb1 && rgb2) {
+            const feFuncR = document.createElementNS('http://www.w3.org/2000/svg', 'feFuncR');
+            feFuncR.setAttribute('type', 'table');
+            feFuncR.setAttribute('tableValues', `${rgb1.r / 255} ${rgb2.r / 255}`);
+            feComponentTransfer.appendChild(feFuncR);
+
+            const feFuncG = document.createElementNS('http://www.w3.org/2000/svg', 'feFuncG');
+            feFuncG.setAttribute('type', 'table');
+            feFuncG.setAttribute('tableValues', `${rgb1.g / 255} ${rgb2.g / 255}`);
+            feComponentTransfer.appendChild(feFuncG);
+
+            const feFuncB = document.createElementNS('http://www.w3.org/2000/svg', 'feFuncB');
+            feFuncB.setAttribute('type', 'table');
+            feFuncB.setAttribute('tableValues', `${rgb1.b / 255} ${rgb2.b / 255}`);
+            feComponentTransfer.appendChild(feFuncB);
+        }
+
+        filter.appendChild(feComponentTransfer);
+        this.defs.appendChild(filter);
+
+        return `url(#${filterId})`;
+    }
+
+    /**
+     * Creates an alpha filter definition in the SVG's `<defs>`.
+     * @param {number} opacity - The opacity value (0-1).
+     * @returns {string} The URL of the created filter.
+     */
+    createAlphaFilter(opacity) {
+        const filterId = `alpha-${this.filterIdCounter++}`;
+        const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+        filter.setAttribute('id', filterId);
+
+        const feColorMatrix = document.createElementNS('http://www.w3.org/2000/svg', 'feColorMatrix');
+        feColorMatrix.setAttribute('type', 'matrix');
+        feColorMatrix.setAttribute('values', `1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 ${opacity} 0`);
+        filter.appendChild(feColorMatrix);
+
+        this.defs.appendChild(filter);
+
+        return `url(#${filterId})`;
+    }
+
+    /**
      * Creates an image pattern definition in the SVG's `<defs>`.
      * @param {Object} fillData - The fill data containing image information.
      * @returns {string} The URL of the created pattern.
@@ -607,14 +673,36 @@ export class SvgRenderer {
      * @param {number} y - The y-coordinate of the image.
      * @param {number} width - The width of the image.
      * @param {number} height - The height of the image.
+     * @param {object} [options] - The rendering options.
      */
-    drawImage(href, x, y, width, height) {
+    drawImage(href, x, y, width, height, options = {}) {
         const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
         image.setAttribute('href', href);
         image.setAttribute('x', x);
         image.setAttribute('y', y);
         image.setAttribute('width', width);
         image.setAttribute('height', height);
+
+        if (options.opacity !== undefined) {
+            image.setAttribute('opacity', options.opacity);
+        }
+
+        if (options.filter) {
+            image.setAttribute('filter', options.filter);
+        }
+
+        if (options.clipPath) {
+            image.setAttribute('clip-path', options.clipPath);
+        }
+
+        if (options.viewBox) {
+            image.setAttribute('viewBox', options.viewBox);
+        }
+
+        if (options.preserveAspectRatio) {
+            image.setAttribute('preserveAspectRatio', options.preserveAspectRatio);
+        }
+
         this.currentGroup.appendChild(image);
     }
 }

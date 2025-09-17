@@ -147,6 +147,30 @@ export class ColorParser {
     }
 
     /**
+     * Applies saturation modification to a hex color.
+     * @param {string} hex - The hex color string.
+     * @param {number} satMod - The saturation modification factor.
+     * @returns {string} The modified hex color string.
+     */
+    static applySaturation(hex, satMod) {
+        const rgb = ColorParser.hexToRgb(hex);
+        if (!rgb) return hex;
+
+        const hsl = ColorParser.rgbToHsl(rgb.r, rgb.g, rgb.b);
+        let newS = hsl.s;
+
+        if (satMod) {
+            newS *= (satMod / 100000);
+        }
+
+        // Clamp saturation to the valid range [0, 1]
+        newS = Math.max(0, Math.min(1, newS));
+
+        const newRgb = ColorParser.hslToRgb(hsl.h, newS, hsl.l);
+        return ColorParser.rgbToHex(newRgb.r, newRgb.g, newRgb.b);
+    }
+
+    /**
      * Parses a color from a color node.
      * @param {Element} colorNode - The XML node containing the color data.
      * @returns {Object|null} The parsed color object, or null if invalid.
@@ -180,6 +204,17 @@ export class ColorParser {
             const lumOffNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'lumOff')[0];
             if (lumOffNode) color.lumOff = parseInt(lumOffNode.getAttribute('val'));
 
+            const satModNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'satMod')[0];
+            if (satModNode) color.satMod = parseInt(satModNode.getAttribute('val'));
+
+            return color;
+        }
+
+        const prstClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'prstClr')[0];
+        if (prstClrNode) {
+            const color = { prst: prstClrNode.getAttribute('val') };
+            // Preset colors can also have transformations, although it's less common.
+            // You can add more parsing here if needed for things like tint, shade on preset colors.
             return color;
         }
 
@@ -198,6 +233,12 @@ export class ColorParser {
             return null;
         }
 
+        const PRESET_COLORS = {
+            'white': '#FFFFFF',
+            'black': '#000000',
+            // Add other preset colors as needed
+        };
+
         let hex;
         if (colorObj.srgb) {
             hex = colorObj.srgb;
@@ -213,7 +254,10 @@ export class ColorParser {
                 if (colorObj.tint) hex = ColorParser.applyTint(hex, colorObj.tint);
                 if (colorObj.shade) hex = ColorParser.applyShade(hex, colorObj.shade);
                 if (colorObj.lumMod || colorObj.lumOff) hex = ColorParser.applyLuminance(hex, colorObj.lumMod, colorObj.lumOff);
+                if (colorObj.satMod) hex = ColorParser.applySaturation(hex, colorObj.satMod);
             }
+        } else if (colorObj.prst) {
+            hex = PRESET_COLORS[colorObj.prst] || null;
         }
 
         if (hex) {

@@ -577,6 +577,19 @@ export class SlideHandler {
                     href: this.imageMap[relId],
                     srcRect: parseSourceRectangle(blipFillNode),
                 };
+
+                const alphaModFixNode = blipNode.getElementsByTagNameNS(DML_NS, 'alphaModFix')[0];
+                if (alphaModFixNode) {
+                    imageInfo.opacity = parseInt(alphaModFixNode.getAttribute('amt')) / 100000;
+                }
+
+                const duotoneNode = blipNode.getElementsByTagNameNS(DML_NS, 'duotone')[0];
+                if (duotoneNode) {
+                    const colors = Array.from(duotoneNode.children).map(node => ColorParser.parseColor(node));
+                    if (colors.length === 2) {
+                        imageInfo.duotone = colors;
+                    }
+                }
             }
         }
 
@@ -613,22 +626,34 @@ export class SlideHandler {
         }
 
         if (picData.image) {
-            const imageEl = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-            imageEl.setAttribute( 'href', picData.image.href );
-            imageEl.setAttribute( 'id', `${id}.image` );
+            const imageOptions = {
+                id: `${id}.image`,
+            };
+
+            const filters = [];
+            if (picData.image.opacity !== undefined) {
+                filters.push(this.renderer.createAlphaFilter(picData.image.opacity));
+            }
+
+            if (picData.image.duotone) {
+                const color1 = ColorParser.resolveColor(picData.image.duotone[0], this.slideContext);
+                const color2 = ColorParser.resolveColor(picData.image.duotone[1], this.slideContext);
+                if (color1 && color2) {
+                    filters.push(this.renderer.createDuotoneFilter(color1, color2));
+                }
+            }
+
+            if (filters.length > 0) {
+                imageOptions.filter = filters.join(' ');
+            }
 
             if (picData.image.srcRect) {
                 const img = await createImage(picData.image.href);
                 const crop = picData.image.srcRect;
                 const viewBox = `${img.width * crop.l} ${img.height * crop.t} ${img.width * (1 - crop.l - crop.r)} ${img.height * (1 - crop.t - crop.b)}`;
-                imageEl.setAttribute('viewBox', viewBox);
-                imageEl.setAttribute('preserveAspectRatio', 'none');
+                imageOptions.viewBox = viewBox;
+                imageOptions.preserveAspectRatio = 'none';
             }
-
-            imageEl.setAttribute('x', 0);
-            imageEl.setAttribute('y', 0);
-            imageEl.setAttribute('width', picData.pos.width);
-            imageEl.setAttribute('height', picData.pos.height);
 
             if (picData.pathString) {
                 const clipId = `clip-${Math.random().toString(36).slice(2, 11)}`;
@@ -638,9 +663,17 @@ export class SlideHandler {
                 path.setAttribute('d', picData.pathString);
                 clipPath.appendChild(path);
                 this.renderer.defs.appendChild(clipPath);
-                imageEl.setAttribute('clip-path', `url(#${clipId})`);
+                imageOptions.clipPath = `url(#${clipId})`;
             }
-            this.renderer.currentGroup.appendChild(imageEl);
+
+            this.renderer.drawImage(
+                picData.image.href,
+                0,
+                0,
+                picData.pos.width,
+                picData.pos.height,
+                imageOptions,
+            );
         }
 
         if (picData.placeholderProps?.stroke) {
@@ -869,7 +902,7 @@ export class SlideHandler {
                 } else if (finalProps.bullet.type === 'auto') {
                     this.renderer.drawText(line.bulletChar, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${finalProps.defRPr.size || 18 * PT_TO_PX}px`, fontFamily: finalProps.bullet.font || 'Arial' });
                 } else if (finalProps.bullet.type === 'image' && finalProps.bullet.relId && this.imageMap[finalProps.bullet.relId]) {
-                    this.renderer.drawImage(this.imageMap[finalProps.bullet.relId], bulletX, bulletBaselineY - 8, 16, 16);
+                    this.renderer.drawImage(this.imageMap[finalProps.bullet.relId], bulletX, bulletBaselineY - 8, 16, 16, {});
                 }
             }
 
