@@ -448,31 +448,33 @@ export class SvgRenderer {
             if (options.stroke.cmpd && options.stroke.cmpd !== 'sng') {
                 this._drawCompoundLine(x1, y1, x2, y2, options);
             } else {
-                const line = document.createElementNS( 'http://www.w3.org/2000/svg', 'line' );
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                 if ( options.id ) {
-                    line.setAttribute( 'id', options.id );
+                    path.setAttribute( 'id', options.id );
                 }
-                line.setAttribute('x1', x1);
-                line.setAttribute('y1', y1);
-                line.setAttribute('x2', x2);
-                line.setAttribute('y2', y2);
+                path.setAttribute('d', `M ${x1} ${y1} L ${x2} ${y2}`);
+                path.setAttribute('fill', 'none'); // Important for lines represented as paths
 
-                line.setAttribute('stroke', options.stroke.color);
-                line.setAttribute('stroke-width', options.stroke.width);
+                if (typeof options.stroke.color === 'object' && options.stroke.color?.type === 'gradient') {
+                    path.setAttribute('stroke', this._createGradient(options.stroke.color));
+                } else {
+                    path.setAttribute('stroke', options.stroke.color);
+                }
+                path.setAttribute('stroke-width', options.stroke.width);
 
                 if (options.stroke.dash) {
-                    line.setAttribute('stroke-dasharray', options.stroke.dash.join(' '));
+                    path.setAttribute('stroke-dasharray', options.stroke.dash.join(' '));
                 }
                 if (options.stroke.join) {
-                    line.setAttribute('stroke-linejoin', options.stroke.join);
+                    path.setAttribute('stroke-linejoin', options.stroke.join);
                 }
                 if (options.stroke.cap) {
-                    line.setAttribute('stroke-linecap', options.stroke.cap || 'butt');
+                    path.setAttribute('stroke-linecap', options.stroke.cap || 'butt');
                 }
                  if (filterUrl) {
-                    line.setAttribute('filter', filterUrl);
+                    path.setAttribute('filter', filterUrl);
                 }
-                this.currentGroup.appendChild(line);
+                this.currentGroup.appendChild(path);
             }
         }
     }
