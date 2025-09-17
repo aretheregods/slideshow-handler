@@ -82,11 +82,16 @@ export class SvgRenderer {
             gradient.setAttribute( 'id', options.id );
         }
         gradient.setAttribute('id', gradientId);
-        gradient.setAttribute('x1', '0%');
-        gradient.setAttribute('y1', '0%');
-        gradient.setAttribute('x2', '100%');
-        gradient.setAttribute('y2', '0%');
-        gradient.setAttribute('gradientTransform', `rotate(${fillData.gradient.angle}, 0.5, 0.5)`);
+        const angle = fillData.gradient.angle * Math.PI / 180;
+        const x1 = 50 - 50 * Math.cos(angle);
+        const y1 = 50 - 50 * Math.sin(angle);
+        const x2 = 50 + 50 * Math.cos(angle);
+        const y2 = 50 + 50 * Math.sin(angle);
+
+        gradient.setAttribute('x1', `${x1}%`);
+        gradient.setAttribute('y1', `${y1}%`);
+        gradient.setAttribute('x2', `${x2}%`);
+        gradient.setAttribute('y2', `${y2}%`);
 
         fillData.gradient.stops.forEach(stop => {
             const stopEl = document.createElementNS('http://www.w3.org/2000/svg', 'stop');

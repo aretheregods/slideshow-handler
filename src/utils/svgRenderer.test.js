@@ -148,7 +148,10 @@ describe('SvgRenderer', () => {
             };
             renderer.drawRect(10, 20, 100, 50, fillOptions);
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'linearGradient');
-            expect(mockLinearGradientElement.setAttribute).toHaveBeenCalledWith('gradientTransform', 'rotate(90, 0.5, 0.5)');
+            expect(mockLinearGradientElement.setAttribute).toHaveBeenCalledWith('x1', '50%');
+            expect(mockLinearGradientElement.setAttribute).toHaveBeenCalledWith('y1', '0%');
+            expect(mockLinearGradientElement.setAttribute).toHaveBeenCalledWith('x2', '50%');
+            expect(mockLinearGradientElement.setAttribute).toHaveBeenCalledWith('y2', '100%');
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'stop');
             expect(renderer.defs.appendChild).toHaveBeenCalledWith(mockLinearGradientElement);
             expect(mockRectElement.setAttribute).toHaveBeenCalledWith('fill', expect.stringMatching(/^url\(#grad-\d+\)$/));
