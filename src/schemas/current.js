@@ -54,6 +54,7 @@ export const currentSchema = {
                     "properties": {
                         "type": { "type": "string", "enum": ["linear", "radial", "rectangular", "path"] },
                         "angle": { "type": "number" },
+                        "rotWithShape": { "type": "boolean" },
                         "stops": {
                             "type": "array",
                             "items": {
@@ -90,7 +91,8 @@ export const currentSchema = {
             "type": "object",
             "properties": {
                 "type": { "const": "image" },
-                "relId": { "type": "string" }
+                "relId": { "type": "string" },
+                "rotWithShape": { "type": "boolean" }
             },
             "required": ["type", "relId"]
         },
@@ -533,6 +535,7 @@ export const currentSchema = {
                 },
                 "flipH": { "type": "boolean" },
                 "flipV": { "type": "boolean" },
+                "rot": { "type": "number" },
                 "extensions": {
                     "oneOf": [
                         { "type": "null" },
@@ -619,6 +622,7 @@ export const currentSchema = {
                         { "$ref": "#/definitions/image" }
                     ]
                 },
+                "rot": { "type": "number" },
                 "extensions": {
                     "oneOf": [
                         { "type": "null" },

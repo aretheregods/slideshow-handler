@@ -34,13 +34,13 @@ export class ShapeBuilder {
      */
     getShapeProperties(shapeNode, parentMatrix) {
         const { phKey, phType } = this.#shapeAttr(shapeNode);
-        const { pos, localMatrix, flipH, flipV } = this.#localMatrix(phKey, phType, shapeNode);
+        const { pos, localMatrix, flipH, flipV, rot } = this.#localMatrix(phKey, phType, shapeNode);
         if (!pos) return { pos: null, transform: null };
 
         const finalMatrix = parentMatrix.clone().multiply(localMatrix);
         const transform = `matrix(${finalMatrix.m.join(' ')})`;
 
-        return { pos, transform, flipH, flipV };
+        return { pos, transform, flipH, flipV, rot };
     }
 
     /**
@@ -53,6 +53,7 @@ export class ShapeBuilder {
      */
     renderShape(pos, shapeProps, matrix, flipH, flipV) {
         const txBody = shapeProps.txBody; // Assuming txBody is passed in shapeProps if needed
+        const rotation = Math.atan2(matrix.m[1], matrix.m[0]) * 180 / Math.PI;
 
         if (shapeProps && shapeProps.geometry) {
              const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
@@ -63,6 +64,7 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
+                        rotation,
                     });
                     break;
                 case 'ellipse':
@@ -71,6 +73,7 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
+                        rotation,
                     });
                     break;
                 case 'line':
@@ -135,6 +138,7 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
+                        rotation,
                     });
                     break;
                 case 'custom':
@@ -180,6 +184,7 @@ export class ShapeBuilder {
                             stroke: shapeProps.stroke,
                             effect: shapeProps.effect,
                             pos,
+                            rotation,
                         });
                     }
                     break;
@@ -222,6 +227,7 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
+                        rotation,
                     });
                     break;
                 case 'roundRect':
@@ -247,6 +253,7 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
+                        rotation,
                     });
                     break;
                 case 'round1Rect':
@@ -291,6 +298,7 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
+                        rotation,
                     });
                     break;
              }
@@ -398,7 +406,7 @@ export class ShapeBuilder {
             }
         }
 
-        return { pos, localMatrix, flipH, flipV };
+        return { pos, localMatrix, flipH, flipV, rot };
     }
 
     /**

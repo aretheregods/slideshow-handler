@@ -75,18 +75,24 @@ export class SvgRenderer {
      * @returns {string} The URL of the created gradient.
      * @private
      */
-    _createGradient(fillData, id) {
+    _createGradient(fillData, pos, id) {
         const gradientId = `grad-${this.defs.children.length}`;
-        const gradient = document.createElementNS( 'http://www.w3.org/2000/svg', 'linearGradient' );
-        if ( id ) {
-            gradient.setAttribute( 'id', options.id );
+        const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+        if (id) {
+            gradient.setAttribute('id', id);
         }
         gradient.setAttribute('id', gradientId);
+
+        let angle = fillData.gradient.angle;
+        if (fillData.gradient.rotWithShape && pos && pos.rotation) {
+            angle += pos.rotation;
+        }
+
         gradient.setAttribute('x1', '0%');
         gradient.setAttribute('y1', '0%');
         gradient.setAttribute('x2', '100%');
         gradient.setAttribute('y2', '0%');
-        gradient.setAttribute('gradientTransform', `rotate(${fillData.gradient.angle / 60000}, 0.5, 0.5)`);
+        gradient.setAttribute('gradientTransform', `rotate(${angle}, 0.5, 0.5)`);
 
         fillData.gradient.stops.forEach(stop => {
             const stopEl = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
@@ -227,11 +233,14 @@ export class SvgRenderer {
      * @returns {string} The URL of the created pattern.
      * @private
      */
-    _createImagePattern(fillData) {
+    _createImagePattern(fillData, rotation) {
         const patternId = `img-patt-${this.defs.children.length}`;
         const pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
         pattern.setAttribute('id', patternId);
         pattern.setAttribute('patternContentUnits', 'objectBoundingBox');
+        if (fillData.rotWithShape) {
+            pattern.setAttribute('patternTransform', `rotate(${rotation})`);
+        }
         pattern.setAttribute('width', '1');
         pattern.setAttribute('height', '1');
 
@@ -314,13 +323,13 @@ export class SvgRenderer {
         if (options.fill) {
             if (typeof options.fill === 'object') {
                 if (options.fill.type === 'gradient') {
-                    rect.setAttribute('fill', this._createGradient(options.fill));
+                    rect.setAttribute('fill', this._createGradient(options.fill, options.pos));
                 } else if (options.fill.type === 'solid') {
                     rect.setAttribute('fill', options.fill.color);
                 } else if (options.fill.type === 'pattern') {
                     rect.setAttribute('fill', this._createPattern(options.fill));
                 } else if (options.fill.type === 'image') {
-                    rect.setAttribute('fill', this._createImagePattern(options.fill));
+                    rect.setAttribute('fill', this._createImagePattern(options.fill, options.rotation));
 				} else if (options.fill.type === 'none') {
 					rect.setAttribute('fill', 'none');
 				}
@@ -374,13 +383,14 @@ export class SvgRenderer {
         if (options.fill) {
             if (typeof options.fill === 'object') {
                 if (options.fill.type === 'gradient') {
-                    ellipse.setAttribute('fill', this._createGradient(options.fill));
+                    const pos = { x: cx - rx, y: cy - ry, width: 2 * rx, height: 2 * ry, rotation: options.rotation };
+                    ellipse.setAttribute('fill', this._createGradient(options.fill, pos));
                 } else if (options.fill.type === 'solid') {
                     ellipse.setAttribute('fill', options.fill.color);
                 } else if (options.fill.type === 'pattern') {
                     ellipse.setAttribute('fill', this._createPattern(options.fill));
                 } else if (options.fill.type === 'image') {
-                    ellipse.setAttribute('fill', this._createImagePattern(options.fill));
+                    ellipse.setAttribute('fill', this._createImagePattern(options.fill, options.rotation));
                 } else if (options.fill.type === 'none') {
 					ellipse.setAttribute('fill', 'none');
 				}
@@ -594,13 +604,13 @@ export class SvgRenderer {
         if (options.fill) {
             if (typeof options.fill === 'object') {
                 if (options.fill.type === 'gradient') {
-                    path.setAttribute('fill', this._createGradient(options.fill));
+                    path.setAttribute('fill', this._createGradient(options.fill, options.pos));
                 } else if (options.fill.type === 'solid') {
                     path.setAttribute('fill', options.fill.color);
                 } else if (options.fill.type === 'pattern') {
                     path.setAttribute('fill', this._createPattern(options.fill));
                 } else if (options.fill.type === 'image') {
-                    path.setAttribute('fill', this._createImagePattern(options.fill));
+                    path.setAttribute('fill', this._createImagePattern(options.fill, options.rotation));
                 } else if (options.fill.type === 'none') {
 					path.setAttribute('fill', 'none');
 				}
