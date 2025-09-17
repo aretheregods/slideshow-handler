@@ -529,7 +529,9 @@ export function parseGradientFill(fillNode, slideContext) {
         type = 'path';
     }
 
-    return { type: 'gradient', gradient: { type, stops, angle } };
+    const rotWithShape = fillNode.getAttribute('rotWithShape') !== '0';
+
+    return { type: 'gradient', gradient: { type, stops, angle, rotWithShape } };
 }
 
 /**
@@ -679,7 +681,8 @@ export function parseShapeProperties(shapeNode, slideContext, slideNum) {
         } else if (fillNode.localName === 'blipFill') {
             const blipNode = fillNode.getElementsByTagNameNS(DML_NS, 'blip')[0];
             if (blipNode) {
-                properties.fill = { type: 'image', relId: blipNode.getAttribute('r:embed') };
+                const rotWithShape = fillNode.getAttribute('rotWithShape') !== '0';
+                properties.fill = { type: 'image', relId: blipNode.getAttribute('r:embed'), rotWithShape };
             }
         } else if (fillNode.localName === 'pattFill') {
             const fgClrNode = fillNode.getElementsByTagNameNS(DML_NS, 'fgClr')[0];

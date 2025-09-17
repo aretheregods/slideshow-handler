@@ -57,6 +57,7 @@ import {
  * @property {string|null} transform
  * @property {Pos} pos
  * @property {ShapeProps} shapeProps
+ * @property {number} rot
  */
 
 /**
@@ -367,7 +368,7 @@ export class SlideHandler {
         };
 
         const shapeBuilder = new ShapeBuilder(null, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize);
-        const { pos, transform, flipH, flipV } = shapeBuilder.getShapeProperties(shapeNode, parentMatrix);
+        const { pos, transform, flipH, flipV, rot } = shapeBuilder.getShapeProperties(shapeNode, parentMatrix);
 
         let textData = null;
         if (pos) {
@@ -397,6 +398,7 @@ export class SlideHandler {
             text: textData,
             flipH,
             flipV,
+            rot,
             extensions,
         };
     }
@@ -417,6 +419,7 @@ export class SlideHandler {
         this.renderer.setTransform(matrix, id);
 
         const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
+        shapeData.pos.rotation = shapeData.rot;
         shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
 
         if (shapeData.text) {
@@ -524,6 +527,7 @@ export class SlideHandler {
         const spPrNode = picNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
         const xfrmNode = spPrNode?.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
 
+        let rot = 0;
         if (xfrmNode) {
             const offNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
             const extNode = xfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
@@ -532,11 +536,11 @@ export class SlideHandler {
                 const y = parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL;
                 const w = parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL;
                 const h = parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL;
-                const rot = parseInt(xfrmNode.getAttribute('rot') || '0') / 60000;
+                rot = parseInt(xfrmNode.getAttribute('rot') || '0');
                 const flipH = xfrmNode.getAttribute('flipH') === '1';
                 const flipV = xfrmNode.getAttribute('flipV') === '1';
                 pos = { width: w, height: h };
-                localMatrix.translate(x, y).translate(w / 2, h / 2).rotate(rot * Math.PI / 180).scale(flipH ? -1 : 1, flipV ? -1 : 1).translate(-w / 2, -h / 2);
+                localMatrix.translate(x, y).translate(w / 2, h / 2).rotate(rot / 60000 * Math.PI / 180).scale(flipH ? -1 : 1, flipV ? -1 : 1).translate(-w / 2, -h / 2);
             }
         } else if (phNode) {
             const phKey = phNode.getAttribute('idx') ? `idx_${phNode.getAttribute('idx')}` : phNode.getAttribute('type');
@@ -600,6 +604,7 @@ export class SlideHandler {
             placeholderProps,
             pathString,
             image: imageInfo,
+            rot,
             extensions,
         };
     }
@@ -620,7 +625,10 @@ export class SlideHandler {
         this.renderer.setTransform(matrix, id);
 
         if (picData.placeholderProps?.fill?.type === 'solid' || picData.placeholderProps?.fill?.type === 'gradient') {
-            const fillOptions = { fill: picData.placeholderProps.fill.type === 'gradient' ? picData.placeholderProps.fill : picData.placeholderProps.fill.color };
+            const fillOptions = {
+                fill: picData.placeholderProps.fill.type === 'gradient' ? picData.placeholderProps.fill : picData.placeholderProps.fill.color,
+                pos: { ...picData.pos, rotation: picData.rot },
+            };
             if (picData.pathString) this.renderer.drawPath(picData.pathString, fillOptions);
             else this.renderer.drawRect(0, 0, picData.pos.width, picData.pos.height, fillOptions);
         }
