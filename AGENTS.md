@@ -14,3 +14,4 @@
 - Don't ever remove tests to get them to pass.
 - Don't ever remove code to get tests to pass.
 - Don't ever commit code with failing tests
+- Always verify that the JSON schema as defined src/schemas/current.js is full and complete after your changes and before you submit changes to github.
