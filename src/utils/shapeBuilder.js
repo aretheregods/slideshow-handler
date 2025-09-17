@@ -374,11 +374,6 @@ export class ShapeBuilder {
             if ( placeholder && placeholder.pos ) {
                 pos = { ...placeholder.pos };
 
-                // Special handling for footers to stretch across the slide
-                if ( phType === 'ftr' ) {
-                    pos.width = this.slideSize.width - ( pos.x * 2 );
-                }
-
                 if ( placeholder.transform ) {
                     rot = placeholder.transform.rot / 60000;
                     flipH = placeholder.transform.flipH;

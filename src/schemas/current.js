@@ -14,15 +14,6 @@ export const currentSchema = {
             },
             "required": ["x", "y", "width", "height"]
         },
-        "transform": {
-            "type": "object",
-            "properties": {
-                "rot": { "type": "number" },
-                "flipH": { "type": "boolean" },
-                "flipV": { "type": "boolean" }
-            },
-            "required": ["rot", "flipH", "flipV"]
-        },
         "extension": {
             "type": "object",
             "properties": {
@@ -149,19 +140,15 @@ export const currentSchema = {
         "stroke": {
             "type": "object",
             "properties": {
+                "type": { "type": "string", "enum": ["solid"] },
                 "width": { "type": "number" },
-                "color": {
-                    "oneOf": [
-                        { "type": "null" },
-                        { "$ref": "#/definitions/fill" }
-                    ]
-                },
+                "color": { "$ref": "#/definitions/color" },
                 "dash": { "type": "array", "items": { "type": "number" } },
                 "cap": { "type": "string" },
                 "join": { "type": "string" },
                 "cmpd": { "type": "string" }
             },
-            "required": ["width", "color"]
+            "required": ["type", "width", "color"]
         },
         "unsupportedStroke": {
             "type": "object",
@@ -335,8 +322,7 @@ export const currentSchema = {
         "placeholder": {
             "type": "object",
             "properties": {
-                "pos": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/pos" }] },
-                "transform": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/transform" }] },
+                "pos": { "$ref": "#/definitions/pos" },
                 "type": { "type": "string" },
                 "listStyle": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/textStyle" }] },
                 "shapeProps": { "$ref": "#/definitions/shapeProps" },

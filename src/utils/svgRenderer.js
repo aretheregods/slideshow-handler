@@ -457,7 +457,11 @@ export class SvgRenderer {
                 line.setAttribute('x2', x2);
                 line.setAttribute('y2', y2);
 
-                line.setAttribute('stroke', options.stroke.color);
+                if (typeof options.stroke.color === 'object' && options.stroke.color?.type === 'gradient') {
+                    line.setAttribute('stroke', this._createGradient(options.stroke.color));
+                } else {
+                    line.setAttribute('stroke', options.stroke.color);
+                }
                 line.setAttribute('stroke-width', options.stroke.width);
 
                 if (options.stroke.dash) {
