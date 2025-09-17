@@ -1,5 +1,6 @@
 import { parseXmlString, ColorParser } from 'utils';
 import { EMU_PER_PIXEL, PT_TO_PX, PML_NS, DML_NS, CHART_NS } from '../constants.js';
+import { parseExtensions } from './extensionParser.js';
 
 /**
  * Parses the theme XML file.
@@ -963,6 +964,20 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
     const defaultTextStyles = {};
     let colorMap = null;
     let colorMapOverride = null;
+    let extensions = null;
+
+    const rootNode = xmlDoc.documentElement;
+    if ( rootNode ) {
+        const cSldNode = rootNode.getElementsByTagNameNS(PML_NS, 'cSld')[0];
+        if ( cSldNode ) {
+            extensions = parseExtensions(cSldNode);
+        }
+
+        const rootExtensions = parseExtensions(rootNode);
+        if ( rootExtensions ) {
+            extensions = (extensions || []).concat(rootExtensions);
+        }
+    }
 
     if (isLayout) {
         const clrMapOvrNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'clrMapOvr')[0];
@@ -1050,7 +1065,7 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
             }
         }
     }
-    return { placeholders, staticShapes, defaultTextStyles, colorMap, colorMapOverride };
+    return { placeholders, staticShapes, defaultTextStyles, colorMap, colorMapOverride, extensions };
 }
 
 /**

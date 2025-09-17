@@ -14,6 +14,18 @@ export const currentSchema = {
             },
             "required": ["x", "y", "width", "height"]
         },
+        "extension": {
+            "type": "object",
+            "properties": {
+                "uri": { "type": "string" },
+                "xml": { "type": "string" }
+            },
+            "required": ["uri", "xml"]
+        },
+        "extensions": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/extension" }
+        },
         "color": {
             "type": "string"
         },
@@ -520,7 +532,13 @@ export const currentSchema = {
                     ]
                 },
                 "flipH": { "type": "boolean" },
-                "flipV": { "type": "boolean" }
+                "flipV": { "type": "boolean" },
+                "extensions": {
+                    "oneOf": [
+                        { "type": "null" },
+                        { "$ref": "#/definitions/extensions" }
+                    ]
+                }
             },
             "required": ["type", "transform", "pos", "shapeProps", "text", "flipH", "flipV"]
         },
@@ -599,6 +617,12 @@ export const currentSchema = {
                     "oneOf": [
                         { "type": "null" },
                         { "$ref": "#/definitions/image" }
+                    ]
+                },
+                "extensions": {
+                    "oneOf": [
+                        { "type": "null" },
+                        { "$ref": "#/definitions/extensions" }
                     ]
                 }
             },
