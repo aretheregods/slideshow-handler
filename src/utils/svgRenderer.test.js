@@ -178,6 +178,32 @@ describe('SvgRenderer', () => {
             expect(mockLineElement.setAttribute).toHaveBeenCalledWith('y2', 100);
             expect(renderer.currentGroup.appendChild).toHaveBeenCalledWith(mockLineElement);
         });
+
+        it('should draw a line with a gradient fill using a clipped rectangle', () => {
+            const gradientFill = {
+                type: 'gradient',
+                gradient: {
+                    angle: 90,
+                    stops: [{ pos: 0, color: { color: 'red' } }, { pos: 1, color: { color: 'blue' } }],
+                },
+            };
+            const options = { stroke: { color: gradientFill, width: 2 } };
+            renderer.drawLine(10, 10, 10, 110, options);
+
+            // Check for clipPath creation
+            expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'clipPath');
+
+            // Check for path inside clipPath
+            expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'path');
+            expect(mockPathElement.setAttribute).toHaveBeenCalledWith('d', 'M 10 10 L 10 110');
+
+            // Check for rect with gradient and clip-path
+            expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'rect');
+            expect(mockRectElement.setAttribute).toHaveBeenCalledWith('fill', expect.stringMatching(/^url\(#grad-\d+\)$/));
+            expect(mockRectElement.setAttribute).toHaveBeenCalledWith('clip-path', expect.stringMatching(/^url\(#clip-line-\d+\)$/));
+
+            expect(renderer.currentGroup.appendChild).toHaveBeenCalledWith(mockRectElement);
+        });
     });
 
     describe('drawPath', () => {

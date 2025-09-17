@@ -62,6 +62,7 @@ export class ShapeBuilder {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
                 case 'ellipse':
@@ -69,6 +70,7 @@ export class ShapeBuilder {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
                 case 'line':
@@ -132,6 +134,7 @@ export class ShapeBuilder {
                     this.renderer.drawPath(arcPath, {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
                 case 'custom':
@@ -176,6 +179,7 @@ export class ShapeBuilder {
                             fill: shapeProps.fill,
                             stroke: shapeProps.stroke,
                             effect: shapeProps.effect,
+                            pos,
                         });
                     }
                     break;
@@ -217,6 +221,7 @@ export class ShapeBuilder {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
                 case 'roundRect':
@@ -241,6 +246,7 @@ export class ShapeBuilder {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
                 case 'round1Rect':
@@ -284,6 +290,7 @@ export class ShapeBuilder {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
+                        pos,
                     });
                     break;
              }
@@ -374,12 +381,18 @@ export class ShapeBuilder {
             if ( placeholder && placeholder.pos ) {
                 pos = { ...placeholder.pos };
 
-                // Special handling for footers to stretch across the slide
-                if ( phType === 'ftr' ) {
-                    pos.width = this.slideSize.width - ( pos.x * 2 );
+                if ( placeholder.transform ) {
+                    rot = placeholder.transform.rot / 60000;
+                    flipH = placeholder.transform.flipH;
+                    flipV = placeholder.transform.flipV;
                 }
 
                 localMatrix.translate( pos.x, pos.y );
+                localMatrix.translate( pos.width / 2, pos.height / 2 );
+                localMatrix.rotate( rot * Math.PI / 180 );
+                localMatrix.scale( flipH ? -1 : 1, flipV ? -1 : 1 );
+                localMatrix.translate( -pos.width / 2, -pos.height / 2 );
+
                 pos.x = 0;
                 pos.y = 0;
             }

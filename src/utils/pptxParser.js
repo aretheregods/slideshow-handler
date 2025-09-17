@@ -610,6 +610,11 @@ export function parseLineProperties(lnNode, slideContext) {
         props.color = ColorParser.resolveColor(ColorParser.parseColor(solidFillNode), slideContext);
     }
 
+    const gradFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
+    if (gradFillNode) {
+        props.color = parseGradientFill(gradFillNode, slideContext);
+    }
+
     return props;
 }
 
@@ -1043,6 +1048,11 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
                             y: parseInt(offNode.getAttribute("y")) / EMU_PER_PIXEL,
                             width: parseInt(extNode.getAttribute("cx")) / EMU_PER_PIXEL,
                             height: parseInt(extNode.getAttribute("cy")) / EMU_PER_PIXEL,
+                        };
+                        placeholderData.transform = {
+                            rot: parseInt(xfrmNode.getAttribute('rot') || '0'),
+                            flipH: xfrmNode.getAttribute('flipH') === '1',
+                            flipV: xfrmNode.getAttribute('flipV') === '1',
                         };
                     }
                 }
