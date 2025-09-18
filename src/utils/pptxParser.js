@@ -873,6 +873,22 @@ export function parseParagraphProperties(pPrNode, slideContext) {
     const indent = pPrNode.getAttribute('indent');
     if (indent) properties.indent = parseInt(indent) / EMU_PER_PIXEL;
 
+    const spcBefNode = pPrNode.getElementsByTagNameNS(DML_NS, 'spcBef')[0];
+    if (spcBefNode) {
+        const spcPtsNode = spcBefNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+        if (spcPtsNode) {
+            properties.spcBef = (parseInt(spcPtsNode.getAttribute('val')) / 100) * PT_TO_PX;
+        }
+    }
+
+    const spcAftNode = pPrNode.getElementsByTagNameNS(DML_NS, 'spcAft')[0];
+    if (spcAftNode) {
+        const spcPtsNode = spcAftNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+        if (spcPtsNode) {
+            properties.spcAft = (parseInt(spcPtsNode.getAttribute('val')) / 100) * PT_TO_PX;
+        }
+    }
+
     const buNone = pPrNode.getElementsByTagNameNS(DML_NS, 'buNone')[0];
     if (buNone) properties.bullet.type = 'none';
 

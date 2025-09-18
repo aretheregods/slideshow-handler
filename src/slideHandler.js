@@ -1027,6 +1027,8 @@ export class SlideHandler {
                 defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
             };
 
+            currentY += finalProps.spcBef || 0;
+
             const marL = finalProps.marL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
             const indent = finalProps.indent ?? 0;
             const bulletOffset = (finalProps.bullet?.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
@@ -1083,6 +1085,8 @@ export class SlideHandler {
                 }
             }
             pushLine();
+
+            currentY += finalProps.spcAft || 0;
         }
 
         for (const line of lines) {
