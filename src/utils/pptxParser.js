@@ -840,7 +840,6 @@ export function parseBodyProperties(txBodyNode) {
 
     const normAutofitNode = bodyPrNode.getElementsByTagNameNS(DML_NS, 'normAutofit')[0];
     if (normAutofitNode) {
-        props.autofit = true;
         const fontScale = normAutofitNode.getAttribute('fontScale');
         if (fontScale) {
             props.fontScale = parseInt(fontScale) / 100000;
@@ -873,34 +872,6 @@ export function parseParagraphProperties(pPrNode, slideContext) {
 
     const indent = pPrNode.getAttribute('indent');
     if (indent) properties.indent = parseInt(indent) / EMU_PER_PIXEL;
-
-    const spcBefNode = pPrNode.getElementsByTagNameNS(DML_NS, 'spcBef')[0];
-    if (spcBefNode) {
-        const spcPtsNode = spcBefNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
-        if (spcPtsNode) {
-            properties.spcBef = (parseInt(spcPtsNode.getAttribute('val')) / 100) * PT_TO_PX;
-        }
-    }
-
-    const spcAftNode = pPrNode.getElementsByTagNameNS(DML_NS, 'spcAft')[0];
-    if (spcAftNode) {
-        const spcPtsNode = spcAftNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
-        if (spcPtsNode) {
-            properties.spcAft = (parseInt(spcPtsNode.getAttribute('val')) / 100) * PT_TO_PX;
-        }
-    }
-
-    const lnSpcNode = pPrNode.getElementsByTagNameNS(DML_NS, 'lnSpc')[0];
-    if (lnSpcNode) {
-        const spcPctNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPct')[0];
-        if (spcPctNode) {
-            properties.lnSpc = { type: 'pct', value: parseInt(spcPctNode.getAttribute('val')) / 1000 };
-        }
-        const spcPtsNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
-        if (spcPtsNode) {
-            properties.lnSpc = { type: 'pts', value: (parseInt(spcPtsNode.getAttribute('val')) / 100) * PT_TO_PX };
-        }
-    }
 
     const buNone = pPrNode.getElementsByTagNameNS(DML_NS, 'buNone')[0];
     if (buNone) properties.bullet.type = 'none';

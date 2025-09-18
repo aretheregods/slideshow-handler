@@ -10,6 +10,7 @@ import {
     parseShapeProperties,
     parseBodyProperties,
     parseParagraphProperties,
+    parseTextStyle,
     getCellFillColor,
     getCellTextStyle,
     getCellBorders,
@@ -415,51 +416,20 @@ export class SlideHandler {
         let textData = null;
         if (pos) {
             const slideTxBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-            const layoutTxBody = layoutPh?.txBodyNode;
-            const masterTxBody = masterPh?.txBodyNode;
+            let txBodyToParse = slideTxBody;
 
-            // Determine which txBody has the paragraph *content*.
-            // The heuristic is that if the slide's txBody has a text run, it contains the user's content.
-            // Otherwise, we fall back to the layout or master for placeholder text.
-            let txBodyWithContent = (slideTxBody && slideTxBody.querySelector('a\\:t, dml\\:t')) ? slideTxBody : (layoutTxBody || masterTxBody);
+            const slideTextContent = slideTxBody?.textContent.trim() ?? '';
+            if (slideTextContent === '') {
+                if (layoutPh?.txBodyNode) txBodyToParse = layoutPh.txBodyNode;
+                else if (masterPh?.txBodyNode) txBodyToParse = masterPh.txBodyNode;
+            }
 
-            if (txBodyWithContent) {
-                // Merge all body properties, with slide's properties taking precedence.
-                const masterBodyPr = masterTxBody ? parseBodyProperties(masterTxBody) : {};
-                const layoutBodyPr = layoutTxBody ? parseBodyProperties(layoutTxBody) : {};
-                const slideBodyPr = slideTxBody ? parseBodyProperties(slideTxBody) : {};
+            if (txBodyToParse) {
+                const slideBodyPr = parseBodyProperties(slideTxBody);
+                const masterBodyPr = masterPh?.bodyPr || {};
+                const layoutBodyPr = layoutPh?.bodyPr || {};
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-
-                // The slide's list style is parsed separately and passed to layoutParagraphs for merging.
-                const slideLstStyleNode = slideTxBody?.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
-                const slideListStyle = slideLstStyleNode ? parseTextStyle(slideLstStyleNode, this.slideContext) : null;
-
-                textData = this.parseParagraphs(
-                    txBodyWithContent,
-                    pos,
-                    phKey,
-                    phType,
-                    listCounters,
-                    finalBodyPr,
-                    {}, // tableTextStyle
-                    slideListStyle,
-                    this.defaultTextStyles,
-                    this.masterPlaceholders,
-                    this.layoutPlaceholders
-                );
-
-                if (textData && finalBodyPr.autofit) {
-                    const newHeight = textData.layout.totalHeight;
-                    const heightDifference = pos.height - newHeight;
-
-                    pos.height = newHeight;
-
-                    if (finalBodyPr.anchor === 'ctr') {
-                        pos.y += heightDifference / 2;
-                    } else if (finalBodyPr.anchor === 'b') {
-                        pos.y += heightDifference;
-                    }
-                }
+                textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {});
             }
         }
 
@@ -917,7 +887,7 @@ export class SlideHandler {
         const masterPlaceholders = {};
         const layoutPlaceholders = {};
 
-        return this.parseParagraphs(txBodyNode, pos, null, 'body', listCounters, finalBodyPr, tableTextStyle, null, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
+        return this.parseParagraphs(txBodyNode, pos, null, 'body', listCounters, finalBodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
     }
 
     /**
@@ -934,7 +904,7 @@ export class SlideHandler {
      * @param {Object} layoutPlaceholders - The placeholders from the slide layout.
      * @returns {Object|null} The parsed paragraph data, or null if there are no paragraphs.
      */
-    parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, slideListStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
+    parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
         const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
         if (paragraphs.length === 0) return null;
 
@@ -942,7 +912,7 @@ export class SlideHandler {
         const mph = masterPlaceholders || this.masterPlaceholders;
         const lph = layoutPlaceholders || this.layoutPlaceholders;
 
-        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, dts, mph, lph, listCounters, slideListStyle);
+        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, dts, mph, lph, listCounters);
         return { layout, bodyPr, pos };
     }
 
@@ -1031,7 +1001,7 @@ export class SlideHandler {
      * @param {Object} listCounters - The counters for list elements.
      * @returns {{totalHeight: number, lines: Array<Object>}} An object containing the total height and the laid-out lines.
      */
-    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters, slideListStyle) {
+    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters) {
         const paddedPos = {
             x: pos.x + (bodyPr.lIns || 0), y: pos.y + (bodyPr.tIns || 0),
             width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
@@ -1050,16 +1020,13 @@ export class SlideHandler {
             const masterListStyle = masterPh?.listStyle?.[level] || {};
             const layoutPh = layoutPlaceholders?.[phKey];
             const layoutListStyle = layoutPh?.listStyle?.[level] || {};
-            const slideListLevelStyle = slideListStyle?.[level] || {};
             const slideLevelProps = parseParagraphProperties(pPrNode, this.slideContext) || { bullet: {}, defRPr: {} };
 
             const finalProps = {
-                level, ...defaultLevelProps, ...masterListStyle, ...layoutListStyle, ...slideListLevelStyle, ...slideLevelProps,
-                bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideListLevelStyle.bullet, ...slideLevelProps.bullet },
-                defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideListLevelStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
+                level, ...defaultLevelProps, ...masterListStyle, ...layoutListStyle, ...slideLevelProps,
+                bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
+                defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
             };
-
-            currentY += finalProps.spcBef || 0;
 
             const marL = finalProps.marL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
             const indent = finalProps.indent ?? 0;
@@ -1113,24 +1080,10 @@ export class SlideHandler {
                         color: ColorParser.resolveColor(runProps.color, this.slideContext) || '#000000'
                     });
                     currentLine.width += wordWidth;
-
-                    let lineHeight = fontSize * 1.2; // Default line height
-                    if (finalProps.lnSpc) {
-                        if (finalProps.lnSpc.type === 'pct') {
-                            lineHeight = fontSize * (finalProps.lnSpc.value / 100);
-                        } else if (finalProps.lnSpc.type === 'pts') {
-                            lineHeight = finalProps.lnSpc.value;
-                        }
-                    }
-                    if (bodyPr.lnSpcReduction) {
-                        lineHeight *= (1 - bodyPr.lnSpcReduction);
-                    }
-                    currentLine.height = Math.max(currentLine.height, lineHeight);
+                    currentLine.height = Math.max(currentLine.height, fontSize * (bodyPr.lnSpcReduction ? 1 - bodyPr.lnSpcReduction : 1.25));
                 }
             }
             pushLine();
-
-            currentY += finalProps.spcAft || 0;
         }
 
         for (const line of lines) {
