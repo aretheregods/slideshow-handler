@@ -525,6 +525,12 @@ describe('SlideHandler', () => {
                 return new DOMParser().parseFromString(xmlString, 'text/xml');
             });
 
+            allUtils.ColorParser.resolveColor.mockImplementation((color) => {
+                if (color?.scheme === 'accent1') return '#0000FF';
+                if (color?.srgb) return `#${color.srgb}`;
+                return '#000000';
+            });
+
             const drawingXml = `
                 <dsp:drawing xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
                     <dsp:spTree>
@@ -532,7 +538,12 @@ describe('SlideHandler', () => {
                             <dsp:spPr>
                                 <a:xfrm><a:off x="1000" y="2000"/><a:ext cx="1000000" cy="500000"/></a:xfrm>
                                 <a:prstGeom prst="rect"/>
+                                <a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>
+                                <a:ln><a:solidFill><a:srgbClr val="00FF00"/></a:solidFill></a:ln>
                             </dsp:spPr>
+                            <dsp:style>
+                                <a:fontRef idx="minor"><a:schemeClr val="accent1"/></a:fontRef>
+                            </dsp:style>
                             <dsp:txBody><a:p><a:r><a:t></a:t></a:r></a:p></dsp:txBody>
                         </dsp:sp>
                     </dsp:spTree>
@@ -574,6 +585,8 @@ describe('SlideHandler', () => {
                 ['ppt/slides/diagrams/data1.xml', { getData: async () => dataXml }],
                 ['ppt/slides/diagrams/drawing1.xml', { getData: async () => drawingXml }],
             ]);
+            slideHandler.slideContext.colorMap = { 'accent1': 'accent1' };
+            slideHandler.slideContext.theme.colorScheme = { 'accent1': '#0000FF' };
             slideHandler.slideRels = {
                 'rId2': { target: 'diagrams/data1.xml' },
                 'rId3': { target: 'diagrams/layout.xml' },
@@ -592,6 +605,10 @@ describe('SlideHandler', () => {
             expect(diagramShape.text).toBeDefined();
             const fullText = diagramShape.text.layout.lines.map(l => l.runs.map(r => r.text).join('')).join('');
             expect(fullText).toBe('Test Title');
+
+            expect(diagramShape.shapeProps.fill.color).toBe('#FF0000');
+            expect(diagramShape.shapeProps.stroke.color).toBe('#00FF00');
+            expect(diagramShape.text.layout.lines[0].runs[0].color).toBe('#0000FF');
         });
     });
 });

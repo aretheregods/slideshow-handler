@@ -133,7 +133,10 @@ function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
                 }
             }
             // Simplified text layout for diagrams
-            const layout = layoutDiagramParagraphs(paragraphs, textPos, bodyPr, slideContext);
+            const styleNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'style')[0];
+            const fontRefNode = styleNode?.getElementsByTagNameNS(DML_NS, 'fontRef')[0];
+            const fontRef = fontRefNode ? { idx: fontRefNode.getAttribute('idx'), color: ColorParser.parseColor(fontRefNode) } : null;
+            const layout = layoutDiagramParagraphs(paragraphs, textPos, bodyPr, slideContext, fontRef);
             textData = { layout, bodyPr, pos: textPos };
         }
     }
@@ -150,7 +153,7 @@ function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
     };
 }
 
-function layoutDiagramParagraphs(paragraphs, pos, bodyPr, slideContext) {
+function layoutDiagramParagraphs(paragraphs, pos, bodyPr, slideContext, fontRef) {
     const paddedPos = {
         x: pos.x + (bodyPr.lIns || 0), y: pos.y + (bodyPr.tIns || 0),
         width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
@@ -181,6 +184,9 @@ function layoutDiagramParagraphs(paragraphs, pos, bodyPr, slideContext) {
 
             const rPr = childNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
             const runProps = { ...finalProps.defRPr };
+            if (!runProps.color && fontRef?.color) {
+                runProps.color = fontRef.color;
+            }
             if (rPr) {
                 if (rPr.getAttribute('sz')) runProps.size = (parseInt(rPr.getAttribute('sz')) / 100);
                 if (rPr.getAttribute('b') === '1') runProps.bold = true; else if (rPr.getAttribute('b') === '0') runProps.bold = false;
@@ -263,6 +269,18 @@ export async function parseDiagram(frameNode, slideRels, entriesMap, slideContex
     const spTree = drawingDoc.getElementsByTagNameNS('http://schemas.microsoft.com/office/drawing/2008/diagram', 'spTree')[0];
     if (!spTree) return [];
 
+    const colorRelId = diagramRelIds.getAttribute('r:cs');
+    const styleRelId = diagramRelIds.getAttribute('r:qs');
+
+    const colorPath = resolvePath('ppt/slides', slideRels[colorRelId].target);
+    const stylePath = resolvePath('ppt/slides', slideRels[styleRelId].target);
+
+    const colorXml = await getNormalizedXmlString(entriesMap, colorPath);
+    const styleXml = await getNormalizedXmlString(entriesMap, stylePath);
+
+    const colorMap = parseDiagramColors(colorXml);
+    const styleMap = parseDiagramStyle(styleXml);
+
     const dataModel = {};
     const ptNodes = dataDoc.getElementsByTagNameNS(DIAGRAM_NS, 'pt');
     for (const ptNode of ptNodes) {
@@ -284,4 +302,65 @@ export async function parseDiagram(frameNode, slideRels, entriesMap, slideContex
     }
 
     return shapes;
+}
+
+function parseDiagramColors(colorXml) {
+    if (!colorXml) return {};
+
+    const colorMap = {};
+    const xmlDoc = parseXmlString(colorXml);
+    const styleLblNodes = xmlDoc.getElementsByTagNameNS(DIAGRAM_NS, 'styleLbl');
+
+    for (const styleLblNode of styleLblNodes) {
+        const name = styleLblNode.getAttribute('name');
+        if (name) {
+            const fillClrLstNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'fillClrLst')[0];
+            const linClrLstNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'linClrLst')[0];
+            const effectClrLstNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'effectClrLst')[0];
+            const txLinClrLstNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'txLinClrLst')[0];
+            const txFillClrLstNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'txFillClrLst')[0];
+            const txEffectClrLstNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'txEffectClrLst')[0];
+
+            colorMap[name] = {
+                fill: fillClrLstNode ? Array.from(fillClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
+                line: linClrLstNode ? Array.from(linClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
+                effect: effectClrLstNode ? Array.from(effectClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
+                txLine: txLinClrLstNode ? Array.from(txLinClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
+                txFill: txFillClrLstNode ? Array.from(txFillClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
+                txEffect: txEffectClrLstNode ? Array.from(txEffectClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
+            };
+        }
+    }
+
+    return colorMap;
+}
+
+function parseDiagramStyle(styleXml) {
+    if (!styleXml) return {};
+
+    const styleMap = {};
+    const xmlDoc = parseXmlString(styleXml);
+    const styleLblNodes = xmlDoc.getElementsByTagNameNS(DIAGRAM_NS, 'styleLbl');
+
+    for (const styleLblNode of styleLblNodes) {
+        const name = styleLblNode.getAttribute('name');
+        if (name) {
+            const styleNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'style')[0];
+            if (styleNode) {
+                const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
+                const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
+                const effectRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'effectRef')[0];
+                const fontRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fontRef')[0];
+
+                styleMap[name] = {
+                    lnRef: lnRefNode ? { idx: lnRefNode.getAttribute('idx'), color: ColorParser.parseColor(lnRefNode) } : null,
+                    fillRef: fillRefNode ? { idx: fillRefNode.getAttribute('idx'), color: ColorParser.parseColor(fillRefNode) } : null,
+                    effectRef: effectRefNode ? { idx: effectRefNode.getAttribute('idx'), color: ColorParser.parseColor(effectRefNode) } : null,
+                    fontRef: fontRefNode ? { idx: fontRefNode.getAttribute('idx'), color: ColorParser.parseColor(fontRefNode) } : null,
+                };
+            }
+        }
+    }
+
+    return styleMap;
 }
