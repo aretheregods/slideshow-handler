@@ -450,7 +450,7 @@ export class SlideHandler {
 
                 // Resize container to fit text.
 				if ( 
-					(finalBodyPr.anchor !== 'b' && textData?.bodyPr.tIns === 0 && textData?.bodyPr.bIns === 0 && textData?.layout?.totalHeight && textData?.layout?.lines?.length > 1) ||
+					(finalBodyPr.anchor !== 'b' && textData?.bodyPr?.tIns === 0 && textData?.bodyPr?.bIns === 0 && textData?.layout?.totalHeight && textData?.layout?.lines?.length > 1) ||
 					// This textData pos height implies that the element is the approximate full height of the slide, meaning it is not a child of another shape
 					(finalBodyPr.anchor === 'ctr' && finalBodyPr.autofitType === 'norm' && textData?.layout?.lines?.length > 1 && (textData?.pos.height/this.slideSize.height) < 0.83)
 				) {
