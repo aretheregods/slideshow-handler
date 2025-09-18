@@ -19,6 +19,7 @@ import {
     resolvePath,
     getNormalizedXmlString,
     parseExtensions,
+    parseDiagram,
 } from 'utils';
 import {
     EMU_PER_PIXEL,
@@ -26,7 +27,7 @@ import {
     LINE_HEIGHT,
     INDENTATION_AMOUNT,
     BULLET_OFFSET,
-    PML_NS, DML_NS, CHART_NS, TABLE_NS,
+    PML_NS, DML_NS, CHART_NS, TABLE_NS, DIAGRAM_NS,
 } from 'constants';
 
 /**
@@ -312,6 +313,18 @@ export class SlideHandler {
                         if (chartXml) {
                             shapeData = await this.parseChart(element, chartXml, parentMatrix.clone());
                         }
+                    }
+                } else if (graphicData?.getAttribute('uri') === DIAGRAM_NS) {
+                    const diagramShapes = await parseDiagram(
+                        element,
+                        this.slideRels,
+                        this.entriesMap,
+                        this.slideContext,
+                        parentMatrix.clone()
+                    );
+
+                    if (diagramShapes) {
+                        shapes.push(...diagramShapes);
                     }
                 }
             } else if (tagName === 'pic') {
@@ -1192,4 +1205,5 @@ export class SlideHandler {
             }
         });
     }
+
 }
