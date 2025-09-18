@@ -10,6 +10,7 @@ import {
     parseShapeProperties,
     parseBodyProperties,
     parseParagraphProperties,
+    parseTextStyle,
     getCellFillColor,
     getCellTextStyle,
     getCellBorders,
@@ -983,9 +984,6 @@ export class SlideHandler {
                 tspan.setAttribute('font-weight', run.font.weight);
                 tspan.setAttribute('fill', run.color);
                 tspan.textContent = run.text;
-                const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-                title.textContent = `Resolved color: ${run.color}`;
-                tspan.appendChild(title);
                 textElement.appendChild(tspan);
             }
             textGroup.appendChild(textElement);
