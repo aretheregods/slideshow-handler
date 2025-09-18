@@ -429,13 +429,19 @@ export class SlideHandler {
                 const layoutBodyPr = layoutPh?.bodyPr || {};
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
 
-                const useMasterFontSize = layoutBodyPr.noAutofit && !masterBodyPr.noAutofit;
-                if (useMasterFontSize) {
-                    finalBodyPr.fontScale = masterBodyPr.fontScale;
-                    finalBodyPr.lnSpcReduction = masterBodyPr.lnSpcReduction;
+                if (!finalBodyPr.anchor) {
+                    finalBodyPr.anchor = 't';
                 }
 
-                textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {}, useMasterFontSize);
+                textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {});
+
+                const isProblematicCase = layoutBodyPr.noAutofit && !masterBodyPr.noAutofit;
+                if (isProblematicCase && textData?.layout?.totalHeight) {
+                    const textHeight = textData.layout.totalHeight;
+                    const topMargin = finalBodyPr.tIns || 0;
+                    const bottomMargin = finalBodyPr.bIns || 0;
+                    pos.height = textHeight + topMargin + bottomMargin;
+                }
             }
         }
 
@@ -910,7 +916,7 @@ export class SlideHandler {
      * @param {Object} layoutPlaceholders - The placeholders from the slide layout.
      * @returns {Object|null} The parsed paragraph data, or null if there are no paragraphs.
      */
-    parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, useMasterFontSize) {
+    parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
         const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
         if (paragraphs.length === 0) return null;
 
@@ -918,7 +924,7 @@ export class SlideHandler {
         const mph = masterPlaceholders || this.masterPlaceholders;
         const lph = layoutPlaceholders || this.layoutPlaceholders;
 
-        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, dts, mph, lph, listCounters, useMasterFontSize);
+        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, dts, mph, lph, listCounters);
         return { layout, bodyPr, pos };
     }
 
@@ -1007,7 +1013,7 @@ export class SlideHandler {
      * @param {Object} listCounters - The counters for list elements.
      * @returns {{totalHeight: number, lines: Array<Object>}} An object containing the total height and the laid-out lines.
      */
-    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters, useMasterFontSize) {
+    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters) {
         const paddedPos = {
             x: pos.x + (bodyPr.lIns || 0), y: pos.y + (bodyPr.tIns || 0),
             width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
@@ -1032,11 +1038,6 @@ export class SlideHandler {
             const masterListStyle = masterPh?.listStyle?.[level] || {};
             const layoutPh = layoutPlaceholders?.[phKey];
             const layoutListStyle = layoutPh?.listStyle?.[level] || {};
-
-            if (useMasterFontSize && layoutListStyle.defRPr?.size) {
-                delete layoutListStyle.defRPr.size;
-            }
-
             const slideLevelProps = parseParagraphProperties(pPrNode, this.slideContext) || { bullet: {}, defRPr: {} };
 
             const finalProps = {
