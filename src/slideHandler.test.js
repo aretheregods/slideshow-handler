@@ -299,7 +299,7 @@ describe('SlideHandler', () => {
         });
 
         it('should parse a shape and return its data', async () => {
-            const shapeData = await slideHandler.parseShape(mockShapeNode, {}, new allUtils.Matrix(), {});
+            const shapeData = await slideHandler.parseShape(mockShapeNode, {}, new allUtils.Matrix(), {}, new Set());
 
             expect(shapeData.type).toBe('shape');
             expect(shapeData.pos).toBeDefined();
@@ -464,7 +464,7 @@ describe('SlideHandler', () => {
             const mockExtensions = [{ uri: '{TEST_URI}', xml: '<test/>' }];
             allUtils.parseExtensions.mockReturnValue(mockExtensions);
 
-            const shapeData = await slideHandler.parseShape(mockShapeNode, {}, new allUtils.Matrix(), {});
+            const shapeData = await slideHandler.parseShape(mockShapeNode, {}, new allUtils.Matrix(), {}, new Set());
 
             expect(allUtils.parseExtensions).toHaveBeenCalled();
             expect(shapeData.extensions).toEqual(mockExtensions);

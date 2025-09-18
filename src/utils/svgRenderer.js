@@ -548,10 +548,10 @@ export class SvgRenderer {
                     };
 
                     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                    rect.setAttribute('x', boundingBox.x);
-                    rect.setAttribute('y', boundingBox.y);
-                    rect.setAttribute('width', boundingBox.width - 2);
-                    rect.setAttribute('height', boundingBox.height - 2);
+                    rect.setAttribute('x', String(boundingBox.x));
+                    rect.setAttribute('y', String(boundingBox.y));
+                    rect.setAttribute('width', String(boundingBox.width - 2));
+                    rect.setAttribute('height', String(boundingBox.height - 2));
                     rect.setAttribute('fill', this._createGradient(options.stroke.color));
                     if (filterUrl) {
                         rect.setAttribute('filter', filterUrl);

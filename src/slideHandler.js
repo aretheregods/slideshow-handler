@@ -163,6 +163,48 @@ export class SlideHandler {
 	 */
     async parse( slideXml ) {
         const xmlDoc = parseXmlString( slideXml || this.slideXml, `slide number ${this.slideNum}`);
+        const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
+
+        const picFilledPlaceholders = new Set();
+        if (spTreeNode) {
+            const picNodes = spTreeNode.getElementsByTagNameNS(PML_NS, 'pic');
+            for (const picNode of picNodes) {
+                const nvPicPrNode = picNode.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0];
+                const phNode = nvPicPrNode?.getElementsByTagNameNS(PML_NS, 'nvPr')[0]?.getElementsByTagNameNS(PML_NS, 'ph')[0];
+                if (phNode) {
+                    const phType = phNode.getAttribute('type');
+                    const phIdx = phNode.getAttribute('idx');
+                    const phKey = phIdx ? `idx_${phIdx}` : phType;
+                    if (phKey) {
+                        picFilledPlaceholders.add(phKey);
+                    }
+                }
+            }
+        }
+
+        const getPlaceholderKey = (shapeNode) => {
+            const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
+            if (nvPr) {
+                const placeholder = nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0];
+                if (placeholder) {
+                    const phType = placeholder.getAttribute('type');
+                    const phIdx = placeholder.getAttribute('idx');
+                    return phIdx ? `idx_${phIdx}` : (phType || null);
+                }
+            }
+            return null;
+        };
+
+        const filteredMasterShapes = (this.masterStaticShapes || []).filter(shapeNode => {
+            const key = getPlaceholderKey(shapeNode);
+            return !key || !picFilledPlaceholders.has(key);
+        });
+
+        const filteredLayoutShapes = (this.layoutStaticShapes || []).filter(shapeNode => {
+            const key = getPlaceholderKey(shapeNode);
+            return !key || !picFilledPlaceholders.has(key);
+        });
+
         const hfNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'hf')[0];
         const slideLevelVisibility = {
             ftr: !hfNode || hfNode.getAttribute('ftr') !== '0',
@@ -170,15 +212,15 @@ export class SlideHandler {
             sldNum: !hfNode || hfNode.getAttribute('sldNum') !== '0',
         };
 
+
         const initialMatrix = new Matrix();
         const masterShapes = this.showMasterShapes && this.masterStaticShapes
-            ? await this.parseShapeTree(this.masterStaticShapes, initialMatrix.clone(), slideLevelVisibility)
+            ? await this.parseShapeTree(filteredMasterShapes, initialMatrix.clone(), slideLevelVisibility)
             : [];
         const layoutShapes = this.showMasterShapes && this.layoutStaticShapes
-            ? await this.parseShapeTree(this.layoutStaticShapes, initialMatrix.clone(), slideLevelVisibility)
+            ? await this.parseShapeTree(filteredLayoutShapes, initialMatrix.clone(), slideLevelVisibility)
             : [];
 
-        const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
         const slideShapes = spTreeNode
             ? await this.parseShapeTree(spTreeNode.children, initialMatrix.clone(), slideLevelVisibility)
             : [];

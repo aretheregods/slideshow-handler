@@ -53,7 +53,6 @@ export class ShapeBuilder {
      */
     renderShape(pos, shapeProps, matrix, flipH, flipV) {
         const txBody = shapeProps.txBody; // Assuming txBody is passed in shapeProps if needed
-        const rotation = Math.atan2(matrix.m[1], matrix.m[0]) * 180 / Math.PI;
 
         if (shapeProps && shapeProps.geometry) {
              const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
@@ -64,7 +63,6 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                        rotation,
                     });
                     break;
                 case 'ellipse':
@@ -73,7 +71,6 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                        rotation,
                     });
                     break;
                 case 'line':
@@ -138,7 +135,6 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                        rotation,
                     });
                     break;
                 case 'custom':
@@ -184,7 +180,6 @@ export class ShapeBuilder {
                             stroke: shapeProps.stroke,
                             effect: shapeProps.effect,
                             pos,
-                            rotation,
                         });
                     }
                     break;
@@ -227,7 +222,6 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                        rotation,
                     });
                     break;
                 case 'roundRect':
@@ -253,7 +247,6 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                        rotation,
                     });
                     break;
                 case 'round1Rect':
@@ -298,7 +291,6 @@ export class ShapeBuilder {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                        rotation,
                     });
                     break;
              }
