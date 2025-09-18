@@ -218,8 +218,9 @@ export class SvgRenderer {
         filter.setAttribute('id', filterId);
 
         const feColorMatrix = document.createElementNS('http://www.w3.org/2000/svg', 'feColorMatrix');
-        feColorMatrix.setAttribute('type', 'matrix');
-        feColorMatrix.setAttribute('values', `1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 ${opacity} 0`);
+		feColorMatrix.setAttribute('type', 'matrix');
+		console.log( { opacity } );
+        feColorMatrix.setAttribute('values', `1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 ${Number.isNaN(parseInt(opacity)) ? 1 : opacity} 0`);
         filter.appendChild(feColorMatrix);
 
         this.defs.appendChild(filter);
