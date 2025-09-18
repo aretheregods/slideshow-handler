@@ -10,7 +10,6 @@ import {
     parseShapeProperties,
     parseBodyProperties,
     parseParagraphProperties,
-    parseTextStyle,
     getCellFillColor,
     getCellTextStyle,
     getCellBorders,
@@ -420,7 +419,7 @@ export class SlideHandler {
             const masterTxBody = masterPh?.txBodyNode;
 
             // Determine which txBody has the paragraph *content*.
-            // The heuristic is that if the slide's txBody has more than just empty paragraphs, it contains the user's content.
+            // The heuristic is that if the slide's txBody has a text run, it contains the user's content.
             // Otherwise, we fall back to the layout or master for placeholder text.
             let txBodyWithContent = (slideTxBody && slideTxBody.querySelector('a\\:t, dml\\:t')) ? slideTxBody : (layoutTxBody || masterTxBody);
 
@@ -443,8 +442,24 @@ export class SlideHandler {
                     listCounters,
                     finalBodyPr,
                     {}, // tableTextStyle
-                    slideListStyle
+                    slideListStyle,
+                    this.defaultTextStyles,
+                    this.masterPlaceholders,
+                    this.layoutPlaceholders
                 );
+
+                if (textData && finalBodyPr.autofit) {
+                    const newHeight = textData.layout.totalHeight;
+                    const heightDifference = pos.height - newHeight;
+
+                    pos.height = newHeight;
+
+                    if (finalBodyPr.anchor === 'ctr') {
+                        pos.y += heightDifference / 2;
+                    } else if (finalBodyPr.anchor === 'b') {
+                        pos.y += heightDifference;
+                    }
+                }
             }
         }
 
@@ -1044,6 +1059,8 @@ export class SlideHandler {
                 defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideListLevelStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
             };
 
+            currentY += finalProps.spcBef || 0;
+
             const marL = finalProps.marL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
             const indent = finalProps.indent ?? 0;
             const bulletOffset = (finalProps.bullet?.type && finalProps.bullet.type !== 'none') ? BULLET_OFFSET : 0;
@@ -1096,10 +1113,24 @@ export class SlideHandler {
                         color: ColorParser.resolveColor(runProps.color, this.slideContext) || '#000000'
                     });
                     currentLine.width += wordWidth;
-                    currentLine.height = Math.max(currentLine.height, fontSize * (bodyPr.lnSpcReduction ? 1 - bodyPr.lnSpcReduction : 1.25));
+
+                    let lineHeight = fontSize * 1.2; // Default line height
+                    if (finalProps.lnSpc) {
+                        if (finalProps.lnSpc.type === 'pct') {
+                            lineHeight = fontSize * (finalProps.lnSpc.value / 100);
+                        } else if (finalProps.lnSpc.type === 'pts') {
+                            lineHeight = finalProps.lnSpc.value;
+                        }
+                    }
+                    if (bodyPr.lnSpcReduction) {
+                        lineHeight *= (1 - bodyPr.lnSpcReduction);
+                    }
+                    currentLine.height = Math.max(currentLine.height, lineHeight);
                 }
             }
             pushLine();
+
+            currentY += finalProps.spcAft || 0;
         }
 
         for (const line of lines) {
