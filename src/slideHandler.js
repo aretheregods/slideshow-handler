@@ -428,7 +428,11 @@ export class SlideHandler {
                 const masterBodyPr = masterPh?.bodyPr || {};
                 const layoutBodyPr = layoutPh?.bodyPr || {};
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
-                textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {});
+
+                const slideLstStyleNode = slideTxBody?.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+                const slideListStyle = slideLstStyleNode ? parseTextStyle(slideLstStyleNode, this.slideContext) : null;
+
+                textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {}, slideListStyle);
             }
         }
 
@@ -903,7 +907,7 @@ export class SlideHandler {
      * @param {Object} layoutPlaceholders - The placeholders from the slide layout.
      * @returns {Object|null} The parsed paragraph data, or null if there are no paragraphs.
      */
-    parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
+    parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, slideListStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
         const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
         if (paragraphs.length === 0) return null;
 
@@ -911,7 +915,7 @@ export class SlideHandler {
         const mph = masterPlaceholders || this.masterPlaceholders;
         const lph = layoutPlaceholders || this.layoutPlaceholders;
 
-        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, dts, mph, lph, listCounters);
+        const layout = this.layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, dts, mph, lph, listCounters, slideListStyle);
         return { layout, bodyPr, pos };
     }
 
@@ -979,6 +983,9 @@ export class SlideHandler {
                 tspan.setAttribute('font-weight', run.font.weight);
                 tspan.setAttribute('fill', run.color);
                 tspan.textContent = run.text;
+                const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+                title.textContent = `Resolved color: ${run.color}`;
+                tspan.appendChild(title);
                 textElement.appendChild(tspan);
             }
             textGroup.appendChild(textElement);
@@ -1000,7 +1007,7 @@ export class SlideHandler {
      * @param {Object} listCounters - The counters for list elements.
      * @returns {{totalHeight: number, lines: Array<Object>}} An object containing the total height and the laid-out lines.
      */
-    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters) {
+    layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters, slideListStyle) {
         const paddedPos = {
             x: pos.x + (bodyPr.lIns || 0), y: pos.y + (bodyPr.tIns || 0),
             width: pos.width - (bodyPr.lIns || 0) - (bodyPr.rIns || 0),
@@ -1019,15 +1026,14 @@ export class SlideHandler {
             const masterListStyle = masterPh?.listStyle?.[level] || {};
             const layoutPh = layoutPlaceholders?.[phKey];
             const layoutListStyle = layoutPh?.listStyle?.[level] || {};
+            const slideListLevelStyle = slideListStyle?.[level] || {};
             const slideLevelProps = parseParagraphProperties(pPrNode, this.slideContext) || { bullet: {}, defRPr: {} };
 
             const finalProps = {
-                level, ...defaultLevelProps, ...masterListStyle, ...layoutListStyle, ...slideLevelProps,
-                bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideLevelProps.bullet },
-                defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
+                level, ...defaultLevelProps, ...masterListStyle, ...layoutListStyle, ...slideListLevelStyle, ...slideLevelProps,
+                bullet: { ...defaultLevelProps.bullet, ...masterListStyle.bullet, ...layoutListStyle.bullet, ...slideListLevelStyle.bullet, ...slideLevelProps.bullet },
+                defRPr: { ...defaultLevelProps.defRPr, ...masterListStyle.defRPr, ...layoutListStyle.defRPr, ...slideListLevelStyle.defRPr, ...slideLevelProps.defRPr, ...tableTextStyle }
             };
-
-            currentY += finalProps.spcBef || 0;
 
             const marL = finalProps.marL ?? (level > 0 ? (level * INDENTATION_AMOUNT) : 0);
             const indent = finalProps.indent ?? 0;
@@ -1081,24 +1087,10 @@ export class SlideHandler {
                         color: ColorParser.resolveColor(runProps.color, this.slideContext) || '#000000'
                     });
                     currentLine.width += wordWidth;
-
-                    let lineHeight = fontSize * 1.2; // Default line height
-                    if (finalProps.lnSpc) {
-                        if (finalProps.lnSpc.type === 'pct') {
-                            lineHeight = fontSize * (finalProps.lnSpc.value / 100);
-                        } else if (finalProps.lnSpc.type === 'pts') {
-                            lineHeight = finalProps.lnSpc.value;
-                        }
-                    }
-                    if (bodyPr.lnSpcReduction) {
-                        lineHeight *= (1 - bodyPr.lnSpcReduction);
-                    }
-                    currentLine.height = Math.max(currentLine.height, lineHeight);
+                    currentLine.height = Math.max(currentLine.height, fontSize * (bodyPr.lnSpcReduction ? 1 - bodyPr.lnSpcReduction : 1.25));
                 }
             }
             pushLine();
-
-            currentY += finalProps.spcAft || 0;
         }
 
         for (const line of lines) {
