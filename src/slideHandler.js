@@ -1015,7 +1015,13 @@ export class SlideHandler {
             const level = pPrNode ? parseInt(pPrNode.getAttribute('lvl') || '0') : 0;
             const defaultStyle = (phType === 'title' || phType === 'ctrTitle' || phType === 'subTitle') ? defaultTextStyles.title : (phType === 'body' ? defaultTextStyles.body : defaultTextStyles.other);
             const defaultLevelProps = defaultStyle?.[level] || {};
-            const masterPh = masterPlaceholders?.[phKey] || Object.values(masterPlaceholders || {}).find(p => p.type === phType);
+            let masterPh = masterPlaceholders?.[phKey];
+            if (masterPh && phType && masterPh.type !== phType) {
+                masterPh = undefined;
+            }
+            if (!masterPh) {
+                masterPh = Object.values(masterPlaceholders || {}).find(p => p.type === phType);
+            }
             const masterListStyle = masterPh?.listStyle?.[level] || {};
             const layoutPh = layoutPlaceholders?.[phKey];
             const layoutListStyle = layoutPh?.listStyle?.[level] || {};
