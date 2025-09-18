@@ -800,13 +800,16 @@ export function parseShapeProperties(shapeNode, slideContext, slideNum) {
  * @param {Object} slideContext - The context of the slide.
  * @returns {Object|null} The parsed text styles, or null if the style node is not provided.
  */
-export function parseTextStyle(styleNode, slideContext) {
+export function parseTextStyle(styleNode, slideContext, isLayout = false) {
     if (!styleNode) return null;
     const styles = {};
     for (let i = 1; i <= 9; i++) {
         const lvlPr = styleNode.getElementsByTagNameNS(DML_NS, `lvl${i}pPr`)[0];
         if (lvlPr) {
             styles[i - 1] = parseParagraphProperties(lvlPr, slideContext);
+            if (isLayout && styles[i - 1]?.defRPr?.size) {
+                delete styles[i - 1].defRPr.size;
+            }
         }
     }
     return styles;
@@ -1008,9 +1011,9 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
         colorMap: isLayout ? { ...(masterColorMap || {}), ...(colorMapOverride || {}) } : colorMap,
     };
     if (txStyles) {
-        defaultTextStyles.title = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'titleStyle')[0], tempSlideContext);
-        defaultTextStyles.body = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'bodyStyle')[0], tempSlideContext);
-        defaultTextStyles.other = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'otherStyle')[0], tempSlideContext);
+        defaultTextStyles.title = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'titleStyle')[0], tempSlideContext, isLayout);
+        defaultTextStyles.body = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'bodyStyle')[0], tempSlideContext, isLayout);
+        defaultTextStyles.other = parseTextStyle(txStyles.getElementsByTagNameNS(PML_NS, 'otherStyle')[0], tempSlideContext, isLayout);
     }
 
     const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
@@ -1062,7 +1065,7 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
                 if (txBodyNode) {
                     const lstStyleNode = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
                     if (lstStyleNode) {
-                        placeholderData.listStyle = parseTextStyle(lstStyleNode, tempSlideContext);
+                    placeholderData.listStyle = parseTextStyle(lstStyleNode, tempSlideContext, isLayout);
                     }
                     placeholderData.bodyPr = parseBodyProperties(txBodyNode);
                     placeholderData.txBodyNode = txBodyNode;
