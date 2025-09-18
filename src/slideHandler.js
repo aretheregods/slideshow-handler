@@ -430,6 +430,10 @@ export class SlideHandler {
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
 
                 const useMasterFontSize = layoutBodyPr.noAutofit && !masterBodyPr.noAutofit;
+                if (useMasterFontSize) {
+                    finalBodyPr.fontScale = masterBodyPr.fontScale;
+                    finalBodyPr.lnSpcReduction = masterBodyPr.lnSpcReduction;
+                }
 
                 textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {}, useMasterFontSize);
             }
