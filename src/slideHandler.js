@@ -416,24 +416,35 @@ export class SlideHandler {
         let textData = null;
         if (pos) {
             const slideTxBody = shapeNode.getElementsByTagNameNS(PML_NS, 'txBody')[0];
-            let txBodyToParse = slideTxBody;
+            const layoutTxBody = layoutPh?.txBodyNode;
+            const masterTxBody = masterPh?.txBodyNode;
 
-            const slideTextContent = slideTxBody?.textContent.trim() ?? '';
-            if (slideTextContent === '') {
-                if (layoutPh?.txBodyNode) txBodyToParse = layoutPh.txBodyNode;
-                else if (masterPh?.txBodyNode) txBodyToParse = masterPh.txBodyNode;
-            }
+            // Determine which txBody has the paragraph *content*.
+            // The heuristic is that if the slide's txBody has more than just empty paragraphs, it contains the user's content.
+            // Otherwise, we fall back to the layout or master for placeholder text.
+            let txBodyWithContent = (slideTxBody && slideTxBody.querySelector('a\\:t, dml\\:t')) ? slideTxBody : (layoutTxBody || masterTxBody);
 
-            if (txBodyToParse) {
-                const slideBodyPr = parseBodyProperties(slideTxBody);
-                const masterBodyPr = masterPh?.bodyPr || {};
-                const layoutBodyPr = layoutPh?.bodyPr || {};
+            if (txBodyWithContent) {
+                // Merge all body properties, with slide's properties taking precedence.
+                const masterBodyPr = masterTxBody ? parseBodyProperties(masterTxBody) : {};
+                const layoutBodyPr = layoutTxBody ? parseBodyProperties(layoutTxBody) : {};
+                const slideBodyPr = slideTxBody ? parseBodyProperties(slideTxBody) : {};
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
 
+                // The slide's list style is parsed separately and passed to layoutParagraphs for merging.
                 const slideLstStyleNode = slideTxBody?.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
                 const slideListStyle = slideLstStyleNode ? parseTextStyle(slideLstStyleNode, this.slideContext) : null;
 
-                textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {}, slideListStyle);
+                textData = this.parseParagraphs(
+                    txBodyWithContent,
+                    pos,
+                    phKey,
+                    phType,
+                    listCounters,
+                    finalBodyPr,
+                    {}, // tableTextStyle
+                    slideListStyle
+                );
             }
         }
 
@@ -891,7 +902,7 @@ export class SlideHandler {
         const masterPlaceholders = {};
         const layoutPlaceholders = {};
 
-        return this.parseParagraphs(txBodyNode, pos, null, 'body', listCounters, finalBodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
+        return this.parseParagraphs(txBodyNode, pos, null, 'body', listCounters, finalBodyPr, tableTextStyle, null, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
     }
 
     /**
