@@ -529,9 +529,7 @@ export function parseGradientFill(fillNode, slideContext) {
         type = 'path';
     }
 
-    const rotWithShape = fillNode.getAttribute('rotWithShape') !== '0';
-
-    return { type: 'gradient', gradient: { type, stops, angle, rotWithShape } };
+    return { type: 'gradient', gradient: { type, stops, angle } };
 }
 
 /**

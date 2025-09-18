@@ -164,11 +164,13 @@ export class SlideHandler {
     async parse( slideXml ) {
         const xmlDoc = parseXmlString( slideXml || this.slideXml, `slide number ${this.slideNum}`);
         const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
+
         const picFilledPlaceholders = new Set();
         if (spTreeNode) {
             const picNodes = spTreeNode.getElementsByTagNameNS(PML_NS, 'pic');
             for (const picNode of picNodes) {
-                const phNode = picNode.getElementsByTagNameNS(PML_NS, 'ph')[0];
+                const nvPicPrNode = picNode.getElementsByTagNameNS(PML_NS, 'nvPicPr')[0];
+                const phNode = nvPicPrNode?.getElementsByTagNameNS(PML_NS, 'nvPr')[0]?.getElementsByTagNameNS(PML_NS, 'ph')[0];
                 if (phNode) {
                     const phType = phNode.getAttribute('type');
                     const phIdx = phNode.getAttribute('idx');
@@ -180,6 +182,29 @@ export class SlideHandler {
             }
         }
 
+        const getPlaceholderKey = (shapeNode) => {
+            const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
+            if (nvPr) {
+                const placeholder = nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0];
+                if (placeholder) {
+                    const phType = placeholder.getAttribute('type');
+                    const phIdx = placeholder.getAttribute('idx');
+                    return phIdx ? `idx_${phIdx}` : (phType || null);
+                }
+            }
+            return null;
+        };
+
+        const filteredMasterShapes = (this.masterStaticShapes || []).filter(shapeNode => {
+            const key = getPlaceholderKey(shapeNode);
+            return !key || !picFilledPlaceholders.has(key);
+        });
+
+        const filteredLayoutShapes = (this.layoutStaticShapes || []).filter(shapeNode => {
+            const key = getPlaceholderKey(shapeNode);
+            return !key || !picFilledPlaceholders.has(key);
+        });
+
         const hfNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'hf')[0];
         const slideLevelVisibility = {
             ftr: !hfNode || hfNode.getAttribute('ftr') !== '0',
@@ -187,16 +212,17 @@ export class SlideHandler {
             sldNum: !hfNode || hfNode.getAttribute('sldNum') !== '0',
         };
 
+
         const initialMatrix = new Matrix();
         const masterShapes = this.showMasterShapes && this.masterStaticShapes
-            ? await this.parseShapeTree(this.masterStaticShapes, initialMatrix.clone(), slideLevelVisibility, picFilledPlaceholders)
+            ? await this.parseShapeTree(filteredMasterShapes, initialMatrix.clone(), slideLevelVisibility)
             : [];
         const layoutShapes = this.showMasterShapes && this.layoutStaticShapes
-            ? await this.parseShapeTree(this.layoutStaticShapes, initialMatrix.clone(), slideLevelVisibility, picFilledPlaceholders)
+            ? await this.parseShapeTree(filteredLayoutShapes, initialMatrix.clone(), slideLevelVisibility)
             : [];
 
         const slideShapes = spTreeNode
-            ? await this.parseShapeTree(spTreeNode.children, initialMatrix.clone(), slideLevelVisibility, picFilledPlaceholders)
+            ? await this.parseShapeTree(spTreeNode.children, initialMatrix.clone(), slideLevelVisibility)
             : [];
 
         return {
@@ -255,10 +281,9 @@ export class SlideHandler {
 	 * @param {Element[]} elements - The full list of elements to be parsed from the slide's shape tree.
 	 * @param {Matrix} parentMatrix - The matrix positioning data for the shape tree's SVG rendering logic.
 	 * @param {Object} slideLevelVisibility - An object indicating whether a shape is visible on this slide.
-     * @param {Set<string>} picFilledPlaceholders - A set of keys for picture-filled placeholders.
 	 * @returns {Promise<Object[]>} The list of shapes parsed from this tree.
 	 */
-    async parseShapeTree(elements, parentMatrix, slideLevelVisibility, picFilledPlaceholders) {
+    async parseShapeTree(elements, parentMatrix, slideLevelVisibility) {
         const shapes = [];
         const listCounters = {}; // Reset for each shape tree (master, layout, slide)
 
@@ -267,9 +292,9 @@ export class SlideHandler {
             let shapeData;
 
             if (tagName === 'sp' || tagName === 'cxnSp') {
-                shapeData = await this.parseShape(element, listCounters, parentMatrix, slideLevelVisibility, picFilledPlaceholders);
+                shapeData = await this.parseShape(element, listCounters, parentMatrix, slideLevelVisibility);
             } else if (tagName === 'grpSp') {
-                shapeData = await this.parseGroupShape(element, listCounters, parentMatrix, slideLevelVisibility, picFilledPlaceholders);
+                shapeData = await this.parseGroupShape(element, listCounters, parentMatrix, slideLevelVisibility);
                 // For groups, we get an array of shapes, so we need to flatten it
                 if (shapeData) {
                     shapes.push(...shapeData.shapes);
@@ -334,10 +359,9 @@ export class SlideHandler {
 	 * @param {Object} listCounters - The counters for determining the position of an element within a list of elements.
 	 * @param {Matrix} parentMatrix - Matrix data for the positioning of the shape's parent in the shape tree.
 	 * @param {Object} slideLevelVisibility - Whether a shape is visible on this particular slide, as distinct from its declaration in the layout or master.
-     * @param {Set<string>} picFilledPlaceholders - A set of keys for picture-filled placeholders.
 	 * @returns {Promise<Object|null>} A promise that resolves to the parsed shape data, or null if the shape is not visible.
 	 */
-    async parseShape(shapeNode, listCounters, parentMatrix, slideLevelVisibility, picFilledPlaceholders) {
+    async parseShape(shapeNode, listCounters, parentMatrix, slideLevelVisibility) {
         const nvSpPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'nvSpPr')[0];
         const cNvPrNode = nvSpPrNode?.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
         const extensions = cNvPrNode ? parseExtensions(cNvPrNode) : null;
@@ -395,13 +419,8 @@ export class SlideHandler {
 
             const slideTextContent = slideTxBody?.textContent.trim() ?? '';
             if (slideTextContent === '') {
-                if (picFilledPlaceholders.has(phKey)) {
-                    txBodyToParse = null;
-                } else if (layoutPh?.txBodyNode) {
-                    txBodyToParse = layoutPh.txBodyNode;
-                } else if (masterPh?.txBodyNode) {
-                    txBodyToParse = masterPh.txBodyNode;
-                }
+                if (layoutPh?.txBodyNode) txBodyToParse = layoutPh.txBodyNode;
+                else if (masterPh?.txBodyNode) txBodyToParse = masterPh.txBodyNode;
             }
 
             if (txBodyToParse) {
@@ -456,10 +475,9 @@ export class SlideHandler {
      * @param {Object} listCounters - The counters for list elements.
      * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
      * @param {Object} slideLevelVisibility - An object indicating shape visibility.
-     * @param {Set<string>} picFilledPlaceholders - A set of keys for picture-filled placeholders.
      * @returns {Promise<Object|null>} A promise that resolves to the parsed group shape data, or null if the group is not visible.
      */
-    async parseGroupShape(groupNode, listCounters, parentMatrix, slideLevelVisibility, picFilledPlaceholders) {
+    async parseGroupShape(groupNode, listCounters, parentMatrix, slideLevelVisibility) {
         if (slideLevelVisibility) {
             const placeholders = Array.from(groupNode.getElementsByTagNameNS(PML_NS, 'ph'));
             if (placeholders.length > 0) {
@@ -507,7 +525,7 @@ export class SlideHandler {
             }
         }
 
-        const childShapes = await this.parseShapeTree(groupNode.children, finalMatrixForChildren, slideLevelVisibility, picFilledPlaceholders);
+        const childShapes = await this.parseShapeTree(groupNode.children, finalMatrixForChildren, slideLevelVisibility);
 
         return {
             type: 'group',

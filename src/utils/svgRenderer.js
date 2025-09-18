@@ -548,11 +548,12 @@ export class SvgRenderer {
                     };
 
                     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                    rect.setAttribute('x', boundingBox.x);
-                    rect.setAttribute('y', boundingBox.y);
-                    rect.setAttribute('width', boundingBox.width - 2);
-                    rect.setAttribute('height', boundingBox.height - 2);
+                    rect.setAttribute('x', String(boundingBox.x));
+                    rect.setAttribute('y', String(boundingBox.y));
+                    rect.setAttribute('width', String(boundingBox.width));
+                    rect.setAttribute('height', String(boundingBox.height));
                     rect.setAttribute('fill', this._createGradient(options.stroke.color));
+                    rect.setAttribute('clip-path', `url(#${clipId})`);
                     if (filterUrl) {
                         rect.setAttribute('filter', filterUrl);
                     }
