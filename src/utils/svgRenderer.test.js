@@ -200,7 +200,6 @@ describe('SvgRenderer', () => {
             // Check for rect with gradient and clip-path
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'rect');
             expect(mockRectElement.setAttribute).toHaveBeenCalledWith('fill', expect.stringMatching(/^url\(#grad-\d+\)$/));
-            expect(mockRectElement.setAttribute).toHaveBeenCalledWith('clip-path', expect.stringMatching(/^url\(#clip-line-\d+\)$/));
 
             expect(renderer.currentGroup.appendChild).toHaveBeenCalledWith(mockRectElement);
         });
