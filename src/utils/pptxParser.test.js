@@ -288,7 +288,7 @@ describe('PptxParser', () => {
             expect(result).toEqual({});
         });
 
-        it('should parse all body properties', () => {
+        it('should parse body properties with normAutofit', () => {
             const xml = `
                 <p:txBody xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
                     <a:bodyPr anchor="ctr" lIns="12700" tIns="25400" rIns="38100" bIns="50800">
@@ -305,9 +305,38 @@ describe('PptxParser', () => {
                 tIns: 2,
                 rIns: 3,
                 bIns: 4,
+                autofitType: 'norm',
                 fontScale: 0.5,
                 lnSpcReduction: 0.2,
             });
+        });
+
+        it('should parse body properties with noAutofit', () => {
+            const xml = `
+                <p:txBody xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                    <a:bodyPr>
+                        <a:noAutofit />
+                    </a:bodyPr>
+                </p:txBody>
+            `;
+            const xmlDoc = parseXmlString(xml, 'test');
+            const node = xmlDoc.documentElement;
+            const result = PptxParser.parseBodyProperties(node);
+            expect(result.autofitType).toBe('none');
+        });
+
+        it('should parse body properties with spAutoFit', () => {
+            const xml = `
+                <p:txBody xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                    <a:bodyPr>
+                        <a:spAutoFit />
+                    </a:bodyPr>
+                </p:txBody>
+            `;
+            const xmlDoc = parseXmlString(xml, 'test');
+            const node = xmlDoc.documentElement;
+            const result = PptxParser.parseBodyProperties(node);
+            expect(result.autofitType).toBe('sp');
         });
     });
 

@@ -839,12 +839,13 @@ export function parseBodyProperties(txBodyNode) {
     if (bIns) props.bIns = parseInt(bIns) / EMU_PER_PIXEL;
 
     const noAutofitNode = bodyPrNode.getElementsByTagNameNS(DML_NS, 'noAutofit')[0];
-    if (noAutofitNode) {
-        props.noAutofit = true;
-    }
-
     const normAutofitNode = bodyPrNode.getElementsByTagNameNS(DML_NS, 'normAutofit')[0];
-    if (normAutofitNode) {
+    const spAutofitNode = bodyPrNode.getElementsByTagNameNS(DML_NS, 'spAutoFit')[0];
+
+    if (noAutofitNode) {
+        props.autofitType = 'none';
+    } else if (normAutofitNode) {
+        props.autofitType = 'norm';
         const fontScale = normAutofitNode.getAttribute('fontScale');
         if (fontScale) {
             props.fontScale = parseInt(fontScale) / 100000;
@@ -853,6 +854,8 @@ export function parseBodyProperties(txBodyNode) {
         if (lnSpcReduction) {
             props.lnSpcReduction = parseInt(lnSpcReduction) / 100000;
         }
+    } else if (spAutofitNode) {
+        props.autofitType = 'sp';
     }
 
     return props;

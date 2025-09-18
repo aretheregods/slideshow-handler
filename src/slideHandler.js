@@ -435,8 +435,8 @@ export class SlideHandler {
 
                 textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {});
 
-                const isProblematicCase = layoutBodyPr.noAutofit && !masterBodyPr.noAutofit;
-                if (isProblematicCase && textData?.layout?.totalHeight) {
+                // Resize container to fit text, unless the shape is explicitly set to "Resize shape to fit text"
+                if (finalBodyPr.autofitType !== 'sp' && textData?.layout?.totalHeight) {
                     const textHeight = textData.layout.totalHeight;
                     const topMargin = finalBodyPr.tIns || 0;
                     const bottomMargin = finalBodyPr.bIns || 0;
