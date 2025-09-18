@@ -11,6 +11,7 @@ vi.mock('utils', () => ({
         translate: vi.fn().mockReturnThis(),
         scale: vi.fn().mockReturnThis(),
         rotate: vi.fn().mockReturnThis(),
+        m: [1, 0, 0, 1, 0, 0],
     })),
     ShapeBuilder: vi.fn(),
     ColorParser: {
@@ -21,6 +22,7 @@ vi.mock('utils', () => ({
     getAutoNumberingChar: vi.fn(),
     resolveFontFamily: vi.fn().mockReturnValue('Arial'),
     parseChart: vi.fn(),
+    parseDiagram: vi.fn(),
     parseShapeProperties: vi.fn().mockReturnValue({ fill: {}, stroke: {}, effect: {} }),
     parseBodyProperties: vi.fn().mockReturnValue({}),
     parseParagraphProperties: vi.fn().mockReturnValue({ bullet: {}, defRPr: {} }),
@@ -294,7 +296,7 @@ describe('SlideHandler', () => {
                 renderShape: vi.fn(),
             }));
 
-            slideHandler.parseParagraphs = vi.fn().mockReturnValue({ text: 'parsed' });
+            slideHandler.parseParagraphs = vi.fn().mockReturnValue({ layout: { lines: [1, 2], totalHeight: 50 }, bodyPr: { tIns: 0, bIns: 0 }, pos: { height: 100 } });
             slideHandler.renderParagraphs = vi.fn();
         });
 
@@ -304,7 +306,7 @@ describe('SlideHandler', () => {
             expect(shapeData.type).toBe('shape');
             expect(shapeData.pos).toBeDefined();
             expect(shapeData.transform).toBeDefined();
-            expect(shapeData.text).toEqual({ text: 'parsed' });
+            expect(shapeData.text).toEqual({ layout: { lines: [1, 2], totalHeight: 50 }, bodyPr: { tIns: 0, bIns: 0 }, pos: { height: 100 } });
         });
 
         it('should render a shape and its text', async () => {
@@ -508,6 +510,105 @@ describe('SlideHandler', () => {
 
             expect(allUtils.parseExtensions).toHaveBeenCalledTimes(2);
             expect(picData.extensions).toEqual([...mockExtensions1, ...mockExtensions2]);
+        });
+    });
+
+    describe('Diagram Parsing', () => {
+        it('should correctly parse a diagram from a graphicFrame', async () => {
+            // Arrange
+            const { parseDiagram: actualParseDiagram, resolvePath: actualResolvePath, getNormalizedXmlString: actualGetNormalizedXmlString } = await vi.importActual('utils');
+            allUtils.parseDiagram.mockImplementation(actualParseDiagram);
+            allUtils.resolvePath.mockImplementation(actualResolvePath);
+            allUtils.getNormalizedXmlString.mockImplementation(actualGetNormalizedXmlString);
+
+            allUtils.parseXmlString.mockImplementation((xmlString) => {
+                return new DOMParser().parseFromString(xmlString, 'text/xml');
+            });
+
+            allUtils.ColorParser.resolveColor.mockImplementation((color) => {
+                if (color?.scheme === 'accent1') return '#0000FF';
+                if (color?.srgb) return `#${color.srgb}`;
+                return '#000000';
+            });
+
+            const drawingXml = `
+                <dsp:drawing xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                    <dsp:spTree>
+                        <dsp:sp modelId="{CA3A6A4E-2D39-41D2-A6B1-B590D0C452D2}">
+                            <dsp:spPr>
+                                <a:xfrm><a:off x="1000" y="2000"/><a:ext cx="1000000" cy="500000"/></a:xfrm>
+                                <a:prstGeom prst="rect"/>
+                                <a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>
+                                <a:ln><a:solidFill><a:srgbClr val="00FF00"/></a:solidFill></a:ln>
+                            </dsp:spPr>
+                            <dsp:style>
+                                <a:fontRef idx="minor"><a:schemeClr val="accent1"/></a:fontRef>
+                            </dsp:style>
+                            <dsp:txBody><a:p><a:r><a:t></a:t></a:r></a:p></dsp:txBody>
+                        </dsp:sp>
+                    </dsp:spTree>
+                </dsp:drawing>
+            `;
+            const dataXml = `
+                <dgm:dataModel xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                    <dgm:ptLst>
+                        <dgm:pt modelId="{CA3A6A4E-2D39-41D2-A6B1-B590D0C452D2}">
+                            <dgm:t><a:p><a:r><a:t>Test Title</a:t></a:r></a:p></dgm:t>
+                        </dgm:pt>
+                    </dgm:ptLst>
+                    <dgm:extLst>
+                        <a:ext uri="http://schemas.microsoft.com/office/drawing/2008/diagram">
+                            <dsp:dataModelExt xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" relId="rId6"/>
+                        </a:ext>
+                    </dgm:extLst>
+                </dgm:dataModel>
+            `;
+
+            const slideXml = `
+                <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram">
+                    <p:cSld>
+                        <p:spTree>
+                            <p:graphicFrame>
+                                <a:graphic>
+                                    <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/diagram">
+                                        <dgm:relIds r:dm="rId2" r:lo="rId3" r:qs="rId4" r:cs="rId5" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
+                                    </a:graphicData>
+                                </a:graphic>
+                            </p:graphicFrame>
+                        </p:spTree>
+                    </p:cSld>
+                </p:sld>
+            `;
+
+            slideHandler.slideXml = slideXml;
+            slideHandler.entriesMap = new Map([
+                ['ppt/slides/diagrams/data1.xml', { getData: async () => dataXml }],
+                ['ppt/slides/diagrams/drawing1.xml', { getData: async () => drawingXml }],
+            ]);
+            slideHandler.slideContext.colorMap = { 'accent1': 'accent1' };
+            slideHandler.slideContext.theme.colorScheme = { 'accent1': '#0000FF' };
+            slideHandler.slideRels = {
+                'rId2': { target: 'diagrams/data1.xml' },
+                'rId3': { target: 'diagrams/layout.xml' },
+                'rId4': { target: 'diagrams/quickStyle.xml' },
+                'rId5': { target: 'diagrams/colors.xml' },
+                'rId6': { target: 'diagrams/drawing1.xml' },
+            };
+
+            // Act
+            const result = await slideHandler.parse();
+
+            // Assert
+            expect(result.shapes.length).toBe(1);
+            const diagramShape = result.shapes[0];
+            expect(diagramShape.type).toBe('shape');
+            expect(diagramShape.text).toBeDefined();
+            const fullText = diagramShape.text.layout.lines.map(l => l.runs.map(r => r.text).join('')).join('');
+            expect(fullText).toBe('Test Title');
+
+            expect(diagramShape.shapeProps.fill.color).toBe('#FF0000');
+            expect(diagramShape.shapeProps.stroke.color).toBe('#00FF00');
+            expect(diagramShape.text.layout.lines[0].runs[0].color).toBe('#0000FF');
         });
     });
 });
