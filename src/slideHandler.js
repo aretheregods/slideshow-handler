@@ -428,6 +428,9 @@ export class SlideHandler {
                 const masterBodyPr = masterPh?.bodyPr || {};
                 const layoutBodyPr = layoutPh?.bodyPr || {};
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
+                if (!finalBodyPr.anchor) {
+                    finalBodyPr.anchor = 't';
+                }
                 textData = this.parseParagraphs(txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {});
             }
         }

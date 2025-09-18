@@ -556,6 +556,7 @@ export class SvgRenderer {
                     if (filterUrl) {
                         rect.setAttribute('filter', filterUrl);
                     }
+                    rect.setAttribute('clip-path', `url(#${clipId})`);
                     this.currentGroup.appendChild(rect);
 
                 } else {
