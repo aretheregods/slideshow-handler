@@ -1081,7 +1081,19 @@ export class SlideHandler {
                         color: ColorParser.resolveColor(runProps.color, this.slideContext) || '#000000'
                     });
                     currentLine.width += wordWidth;
-                    currentLine.height = Math.max(currentLine.height, fontSize * (bodyPr.lnSpcReduction ? 1 - bodyPr.lnSpcReduction : 1.25));
+
+                    let lineHeight = fontSize * 1.2; // Default line height
+                    if (finalProps.lnSpc) {
+                        if (finalProps.lnSpc.type === 'pct') {
+                            lineHeight = fontSize * (finalProps.lnSpc.value / 100);
+                        } else if (finalProps.lnSpc.type === 'pts') {
+                            lineHeight = finalProps.lnSpc.value;
+                        }
+                    }
+                    if (bodyPr.lnSpcReduction) {
+                        lineHeight *= (1 - bodyPr.lnSpcReduction);
+                    }
+                    currentLine.height = Math.max(currentLine.height, lineHeight);
                 }
             }
             pushLine();

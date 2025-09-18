@@ -889,6 +889,18 @@ export function parseParagraphProperties(pPrNode, slideContext) {
         }
     }
 
+    const lnSpcNode = pPrNode.getElementsByTagNameNS(DML_NS, 'lnSpc')[0];
+    if (lnSpcNode) {
+        const spcPctNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPct')[0];
+        if (spcPctNode) {
+            properties.lnSpc = { type: 'pct', value: parseInt(spcPctNode.getAttribute('val')) / 1000 };
+        }
+        const spcPtsNode = lnSpcNode.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+        if (spcPtsNode) {
+            properties.lnSpc = { type: 'pts', value: (parseInt(spcPtsNode.getAttribute('val')) / 100) * PT_TO_PX };
+        }
+    }
+
     const buNone = pPrNode.getElementsByTagNameNS(DML_NS, 'buNone')[0];
     if (buNone) properties.bullet.type = 'none';
 
