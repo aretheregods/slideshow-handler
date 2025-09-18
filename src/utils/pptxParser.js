@@ -826,6 +826,13 @@ export function parseBodyProperties(txBodyNode) {
     const anchor = bodyPrNode.getAttribute('anchor');
     if (anchor) props.anchor = anchor;
 
+    const wrap = bodyPrNode.getAttribute('wrap');
+    if (wrap === 'none') {
+        props.wrap = false;
+    } else {
+        props.wrap = true;
+    }
+
     const lIns = bodyPrNode.getAttribute('lIns');
     if (lIns) props.lIns = parseInt(lIns) / EMU_PER_PIXEL;
 
@@ -840,6 +847,7 @@ export function parseBodyProperties(txBodyNode) {
 
     const normAutofitNode = bodyPrNode.getElementsByTagNameNS(DML_NS, 'normAutofit')[0];
     if (normAutofitNode) {
+        props.autofit = 'normAutofit';
         const fontScale = normAutofitNode.getAttribute('fontScale');
         if (fontScale) {
             props.fontScale = parseInt(fontScale) / 100000;
@@ -848,6 +856,11 @@ export function parseBodyProperties(txBodyNode) {
         if (lnSpcReduction) {
             props.lnSpcReduction = parseInt(lnSpcReduction) / 100000;
         }
+    }
+
+    const spAutoFitNode = bodyPrNode.getElementsByTagNameNS(DML_NS, 'spAutoFit')[0];
+    if (spAutoFitNode) {
+        props.autofit = 'spAutoFit';
     }
 
     return props;
@@ -923,6 +936,34 @@ export function parseParagraphProperties(pPrNode, slideContext) {
         const schemeClr = buClr.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
         if (schemeClr) {
             properties.bullet.color = ColorParser.parseColor(buClr);
+        }
+    }
+
+    const spcBef = pPrNode.getElementsByTagNameNS(DML_NS, 'spcBef')[0];
+    if (spcBef) {
+        const spcPts = spcBef.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+        if (spcPts) {
+            properties.spcBef = parseInt(spcPts.getAttribute('val')) / 100 * PT_TO_PX;
+        }
+    }
+
+    const spcAft = pPrNode.getElementsByTagNameNS(DML_NS, 'spcAft')[0];
+    if (spcAft) {
+        const spcPts = spcAft.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+        if (spcPts) {
+            properties.spcAft = parseInt(spcPts.getAttribute('val')) / 100 * PT_TO_PX;
+        }
+    }
+
+    const lnSpc = pPrNode.getElementsByTagNameNS(DML_NS, 'lnSpc')[0];
+    if (lnSpc) {
+        const spcPct = lnSpc.getElementsByTagNameNS(DML_NS, 'spcPct')[0];
+        if (spcPct) {
+            properties.lnSpc = { type: 'pct', value: parseInt(spcPct.getAttribute('val')) / 1000 };
+        }
+        const spcPts = lnSpc.getElementsByTagNameNS(DML_NS, 'spcPts')[0];
+        if (spcPts) {
+            properties.lnSpc = { type: 'pts', value: parseInt(spcPts.getAttribute('val')) / 100 * PT_TO_PX };
         }
     }
 
