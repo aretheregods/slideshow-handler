@@ -242,6 +242,161 @@ function layoutDiagramParagraphs(paragraphs, pos, bodyPr, slideContext, fontRef)
  * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
  * @returns {Promise<Array>} A promise that resolves to an array of shape objects.
  */
+
+
+
+function processLayoutNode(layoutNode, dataContext, slideContext) {
+    let childShapes = [];
+    let algType = null;
+    let algNode = null;
+
+    for (const child of Array.from(layoutNode.childNodes)) {
+        if (child.nodeType !== 1) continue;
+
+        switch (child.localName) {
+            case 'alg':
+                algNode = child;
+                algType = child.getAttribute('type');
+                break;
+            case 'forEach':
+                childShapes.push(...handleForEach(child, dataContext, slideContext));
+                break;
+        }
+    }
+
+    if (algType === 'sp') {
+        return handleSp(layoutNode, dataContext, slideContext);
+    }
+
+    if (algType === 'lin') {
+        return handleLin(algNode, childShapes);
+    }
+
+    return childShapes;
+}
+
+function getDataPoint(presOfNode, dataContext) {
+    const axis = presOfNode.getAttribute('axis');
+    const ptType = presOfNode.getAttribute('ptType');
+
+    if (axis === 'self') {
+        if (dataContext.localName === 'ptLst') {
+            return Array.from(dataContext.children).find(c => c.localName === 'pt' && c.getAttribute('type') === ptType);
+        } else if (dataContext.localName === 'pt') {
+            return dataContext;
+        }
+    }
+    return null;
+}
+
+function handleSp(layoutNode, dataContext, slideContext) {
+    const presOfNode = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'presOf')[0];
+    if (!presOfNode) return [];
+    const dataPoint = getDataPoint(presOfNode, dataContext);
+    if (dataPoint) {
+        const tNode = dataPoint.getElementsByTagNameNS(DIAGRAM_NS, 't')[0];
+        const text = tNode ? tNode.textContent : '';
+        const modelId = dataPoint.getAttribute('modelId');
+        const shape = {
+            type: 'shape',
+            text: text,
+            modelId: modelId,
+            pos: { x: 0, y: 0, w: 0, h: 0 },
+            shapeProps: {},
+        };
+        const constrNodes = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'constr');
+        for (const constrNode of constrNodes) {
+            const type = constrNode.getAttribute('type');
+            const val = parseInt(constrNode.getAttribute('val'), 10);
+            if (type === 'w') shape.pos.w = val / EMU_PER_PIXEL;
+            if (type === 'h') shape.pos.h = val / EMU_PER_PIXEL;
+        }
+        const styleLblNode = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'styleLbl')[0];
+        if (styleLblNode) {
+            const styleLbl = styleLblNode.getAttribute('name');
+            shape.styleLbl = styleLbl;
+            if (styleLbl && slideContext.diagram?.styleMap) {
+                const styleInfo = slideContext.diagram.styleMap[styleLbl];
+                if (styleInfo) {
+                    if (styleInfo.fillRef && slideContext.theme?.formatScheme?.fills) {
+                        const fillRefIdx = parseInt(styleInfo.fillRef.idx, 10);
+                        const themeFill = slideContext.theme.formatScheme.fills[fillRefIdx - 1];
+                        if (themeFill) {
+                            const color = ColorParser.resolveColor(styleInfo.fillRef.color, slideContext);
+                            shape.shapeProps.fill = { type: 'solid', color };
+                        }
+                    }
+                    if (styleInfo.lnRef && slideContext.theme?.formatScheme?.lines) {
+                        const lnRefIdx = parseInt(styleInfo.lnRef.idx, 10);
+                        const themeLine = slideContext.theme.formatScheme.lines[lnRefIdx - 1];
+                        if (themeLine) {
+                            const color = ColorParser.resolveColor(styleInfo.lnRef.color, slideContext);
+                            shape.shapeProps.stroke = {
+                                color: color,
+                                width: (themeLine.width || 9525) / EMU_PER_PIXEL,
+                                cap: themeLine.cap || 'flat',
+                                dash: themeLine.prstDash || 'solid',
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        return [shape];
+    }
+    return [];
+}
+
+function handleForEach(forEachNode, dataContext, slideContext) {
+    const childShapes = [];
+    const axis = forEachNode.getAttribute('axis');
+    const ptType = forEachNode.getAttribute('ptType');
+
+    if (axis === 'ch') {
+        const childLayoutNode = forEachNode.getElementsByTagNameNS(DIAGRAM_NS, 'layoutNode')[0];
+        if (childLayoutNode) {
+            const allPtNodes = dataContext.getElementsByTagNameNS(DIAGRAM_NS, 'pt');
+            let i = 0;
+            let dataPointNode;
+            while ((dataPointNode = allPtNodes[i++])) {
+                if (dataPointNode.parentNode === dataContext && dataPointNode.getAttribute('type') === ptType) {
+                    childShapes.push(...processLayoutNode(childLayoutNode, dataPointNode, slideContext));
+                }
+            }
+        }
+    }
+    return childShapes;
+}
+
+function handleLin(algNode, childShapes) {
+    const flow = algNode.getAttribute('flow') || 'horz';
+    let currentX = 0;
+    let currentY = 0;
+    for (const shape of childShapes) {
+        shape.pos.x = currentX;
+        shape.pos.y = currentY;
+        if (flow === 'vert') {
+            currentY += shape.pos.h;
+        } else {
+            currentX += shape.pos.w;
+        }
+    }
+    return childShapes;
+}
+
+function parseLayout(layoutDoc, dataDoc, slideContext) {
+    const layoutDef = layoutDoc.getElementsByTagNameNS(DIAGRAM_NS, 'layoutDef')[0];
+    if (!layoutDef) return [];
+
+    const rootLayoutNode = layoutDef.getElementsByTagNameNS(DIAGRAM_NS, 'layoutNode')[0];
+    if (!rootLayoutNode) return [];
+
+    const dataModelRoot = dataDoc.getElementsByTagNameNS(DIAGRAM_NS, 'ptLst')[0];
+    if (!dataModelRoot) return [];
+
+    return processLayoutNode(rootLayoutNode, dataModelRoot, slideContext);
+}
+
 export async function parseDiagram(frameNode, slideRels, entriesMap, slideContext, parentMatrix) {
     const graphicData = frameNode.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
     if (!graphicData) return [];
@@ -259,50 +414,76 @@ export async function parseDiagram(frameNode, slideRels, entriesMap, slideContex
     const dataModelExt = ext?.getElementsByTagNameNS('http://schemas.microsoft.com/office/drawing/2008/diagram', 'dataModelExt')[0];
     const drawingRelId = dataModelExt?.getAttribute('relId');
 
-    if (!drawingRelId || !slideRels[drawingRelId]) return [];
+    if (drawingRelId && slideRels[drawingRelId]) {
+        const drawingPath = resolvePath('ppt/slides', slideRels[drawingRelId].target);
+        const drawingXml = await getNormalizedXmlString(entriesMap, drawingPath);
+        if (!drawingXml) return [];
 
-    const drawingPath = resolvePath('ppt/slides', slideRels[drawingRelId].target);
-    const drawingXml = await getNormalizedXmlString(entriesMap, drawingPath);
-    if (!drawingXml) return [];
+        const drawingDoc = parseXmlString(drawingXml);
+        const spTree = drawingDoc.getElementsByTagNameNS('http://schemas.microsoft.com/office/drawing/2008/diagram', 'spTree')[0];
+        if (!spTree) return [];
 
-    const drawingDoc = parseXmlString(drawingXml);
-    const spTree = drawingDoc.getElementsByTagNameNS('http://schemas.microsoft.com/office/drawing/2008/diagram', 'spTree')[0];
-    if (!spTree) return [];
+        const colorRelId = diagramRelIds.getAttribute('r:cs');
+        const styleRelId = diagramRelIds.getAttribute('r:qs');
 
-    const colorRelId = diagramRelIds.getAttribute('r:cs');
-    const styleRelId = diagramRelIds.getAttribute('r:qs');
+        const colorPath = resolvePath('ppt/slides', slideRels[colorRelId].target);
+        const stylePath = resolvePath('ppt/slides', slideRels[styleRelId].target);
 
-    const colorPath = resolvePath('ppt/slides', slideRels[colorRelId].target);
-    const stylePath = resolvePath('ppt/slides', slideRels[styleRelId].target);
+        const colorXml = await getNormalizedXmlString(entriesMap, colorPath);
+        const styleXml = await getNormalizedXmlString(entriesMap, stylePath);
 
-    const colorXml = await getNormalizedXmlString(entriesMap, colorPath);
-    const styleXml = await getNormalizedXmlString(entriesMap, stylePath);
+        const colorMap = parseDiagramColors(colorXml);
+        const styleMap = parseDiagramStyle(styleXml);
 
-    const colorMap = parseDiagramColors(colorXml);
-    const styleMap = parseDiagramStyle(styleXml);
-
-    const dataModel = {};
-    const ptNodes = dataDoc.getElementsByTagNameNS(DIAGRAM_NS, 'pt');
-    for (const ptNode of ptNodes) {
-        const modelId = ptNode.getAttribute('modelId');
-        if (modelId) {
-            const tNode = ptNode.getElementsByTagNameNS(DIAGRAM_NS, 't')[0];
-            if (tNode) {
-                dataModel[modelId] = tNode;
+        const dataModel = {};
+        const ptNodes = dataDoc.getElementsByTagNameNS(DIAGRAM_NS, 'pt');
+        for (const ptNode of ptNodes) {
+            const modelId = ptNode.getAttribute('modelId');
+            if (modelId) {
+                const tNode = ptNode.getElementsByTagNameNS(DIAGRAM_NS, 't')[0];
+                if (tNode) {
+                    dataModel[modelId] = tNode;
+                }
             }
         }
-    }
 
-    const shapes = [];
-    for (const dspSpNode of spTree.getElementsByTagNameNS('http://schemas.microsoft.com/office/drawing/2008/diagram', 'sp')) {
-        const shape = parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix);
-        if (shape) {
-            shapes.push(shape);
+        const shapes = [];
+        for (const dspSpNode of spTree.getElementsByTagNameNS('http://schemas.microsoft.com/office/drawing/2008/diagram', 'sp')) {
+            const shape = parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix);
+            if (shape) {
+                shapes.push(shape);
+            }
         }
-    }
 
-    return shapes;
+        return shapes;
+    } else {
+        const layoutRelId = diagramRelIds.getAttribute('r:lo');
+        if (!layoutRelId || !slideRels[layoutRelId]) return [];
+
+        const layoutPath = resolvePath('ppt/slides', slideRels[layoutRelId].target);
+        const layoutXml = await getNormalizedXmlString(entriesMap, layoutPath);
+        if (!layoutXml) return [];
+        const layoutDoc = parseXmlString(layoutXml);
+
+        const colorRelId = diagramRelIds.getAttribute('r:cs');
+        const styleRelId = diagramRelIds.getAttribute('r:qs');
+
+        const colorPath = resolvePath('ppt/slides', slideRels[colorRelId].target);
+        const stylePath = resolvePath('ppt/slides', slideRels[styleRelId].target);
+
+        const colorXml = await getNormalizedXmlString(entriesMap, colorPath);
+        const styleXml = await getNormalizedXmlString(entriesMap, stylePath);
+
+        const colorMap = parseDiagramColors(colorXml);
+        const styleMap = parseDiagramStyle(styleXml);
+
+        const slideCtx = { ...slideContext, diagram: { styleMap, colorMap } };
+
+        return parseLayout(layoutDoc, dataDoc, slideCtx);
+    }
 }
+
+
 
 function parseDiagramColors(colorXml) {
     if (!colorXml) return {};
