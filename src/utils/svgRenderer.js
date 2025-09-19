@@ -1,3 +1,5 @@
+import { ColorParser } from './colorParser.js';
+
 /**
  * @class SvgRenderer
  * @classdesc A class for rendering shapes as SVG elements.

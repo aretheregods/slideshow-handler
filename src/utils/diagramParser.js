@@ -89,6 +89,8 @@ function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
         };
     }
 
+    // Apply styles in the correct cascading order.
+    // 1. Apply the referenced theme style from <dsp:style> as the base.
     const styleNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'style')[0];
     if (styleNode) {
         const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
@@ -125,13 +127,14 @@ function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
     const tNode = dataModel[modelId];
 
     let textData = null;
-    let txBodyNode = dspSpNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
+    let txBodyNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'txBody')[0];
     const useDataModelText = !txBodyNode || txBodyNode.textContent.trim() === '';
 
     if (useDataModelText && tNode) {
         txBodyNode = document.createElementNS(DML_NS, 'txBody');
-        for (const child of Array.from(tNode.children)) {
-            txBodyNode.appendChild(child.cloneNode(true));
+        const children = tNode.children;
+        for (let i = 0; i < children.length; i++) {
+            txBodyNode.appendChild(children[i].cloneNode(true));
         }
     }
 
@@ -252,77 +255,119 @@ function layoutDiagramParagraphs(paragraphs, pos, bodyPr, slideContext, fontRef)
     return { totalHeight: currentY, lines };
 }
 
-
 function getDataPoint(presOfNode, dataContext) {
     const axis = presOfNode.getAttribute('axis');
-    const ptType = presOfNode.getAttribute('ptType');
 
     if (axis === 'self') {
-        if (dataContext.localName === 'ptLst') {
-            return Array.from(dataContext.children).find(c => c.localName === 'pt' && c.getAttribute('type') === ptType);
-        } else if (dataContext.localName === 'pt') {
-            return dataContext;
+        return dataContext;
+    }
+
+    // TODO: Implement other axis types like 'ch', 'des', 'root' etc.
+    console.warn(`Unsupported axis type in getDataPoint: ${axis}`);
+    return dataContext; // Fallback to current context
+}
+
+function resolveShapeStylesFromLabel(shape, slideContext) {
+    const styleLbl = shape.shapeProps.styleLbl;
+    if (!styleLbl || !slideContext.diagram || !slideContext.theme.formatScheme) return;
+
+    const { styleMap } = slideContext.diagram;
+    const { theme } = slideContext;
+
+    const styleDef = styleMap[styleLbl];
+    if (!styleDef) return;
+
+    if (styleDef.fillRef) {
+        const fillIdx = parseInt(styleDef.fillRef.idx) - 1;
+        if (theme.formatScheme.fills && theme.formatScheme.fills[fillIdx]) {
+            const themeFill = theme.formatScheme.fills[fillIdx];
+            if (themeFill.type === 'solid') {
+                shape.shapeProps.fill = {
+                    type: 'solid',
+                    color: ColorParser.resolveColor(themeFill.color, slideContext)
+                };
+            }
         }
     }
-    return null;
+
+    if (styleDef.lnRef) {
+        const lineIdx = parseInt(styleDef.lnRef.idx) - 1;
+        if (theme.formatScheme.lines && theme.formatScheme.lines[lineIdx]) {
+            const themeLine = theme.formatScheme.lines[lineIdx];
+            shape.shapeProps.stroke = {
+                color: ColorParser.resolveColor(themeLine.color, slideContext),
+                width: themeLine.width / EMU_PER_PIXEL,
+                cap: themeLine.cap,
+                dash: 'solid'
+            };
+        }
+    }
+
+    if (styleDef.fontRef) {
+        shape.shapeProps.fontRef = styleDef.fontRef;
+    }
 }
 
 function handleSp(layoutNode, dataContext, slideContext) {
-    const presOfNode = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'presOf')[0];
-    if (!presOfNode) return [];
-    const dataPoint = getDataPoint(presOfNode, dataContext);
-    if (dataPoint) {
-        const tNode = dataPoint.getElementsByTagNameNS(DIAGRAM_NS, 't')[0];
-        const text = tNode ? tNode.textContent : '';
-        const modelId = dataPoint.getAttribute('modelId');
-        const shape = {
-            type: 'shape',
-            text: text,
-            modelId: modelId,
-            pos: { x: 0, y: 0, w: 0, h: 0 },
-            shapeProps: {},
-        };
-        const constrNodes = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'constr');
-        for (const constrNode of constrNodes) {
-            const type = constrNode.getAttribute('type');
-            const val = parseInt(constrNode.getAttribute('val'), 10);
-            if (type === 'w') shape.pos.w = val / EMU_PER_PIXEL;
-            if (type === 'h') shape.pos.h = val / EMU_PER_PIXEL;
+    const shape = {
+        type: 'shape',
+        pos: { x: 0, y: 0, w: 0, h: 0 },
+        shapeProps: {},
+        text: null,
+    };
+
+    let styleLblNode = null;
+    const constrNodes = [];
+    const allChildNodes = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, '*');
+
+    for (let i = 0; i < allChildNodes.length; i++) {
+        const child = allChildNodes[i];
+
+        switch (child.localName) {
+            case 'constr':
+                constrNodes.push(child);
+                break;
+            case 'styleLbl':
+                styleLblNode = child;
+                break;
         }
-        const styleLblNode = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'styleLbl')[0];
-        if (styleLblNode) {
-            const styleLbl = styleLblNode.getAttribute('name');
-            shape.styleLbl = styleLbl;
-            if (styleLbl && slideContext.diagram?.styleMap) {
-                const styleInfo = slideContext.diagram.styleMap[styleLbl];
-                if (styleInfo) {
-                    if (styleInfo.fillRef && slideContext.theme?.formatScheme?.fills) {
-                        const fillRefIdx = parseInt(styleInfo.fillRef.idx, 10);
-                        const themeFill = slideContext.theme.formatScheme.fills[fillRefIdx - 1];
-                        if (themeFill) {
-                            const color = ColorParser.resolveColor(styleInfo.fillRef.color, slideContext);
-                            shape.shapeProps.fill = { type: 'solid', color };
-                        }
-                    }
-                    if (styleInfo.lnRef && slideContext.theme?.formatScheme?.lines) {
-                        const lnRefIdx = parseInt(styleInfo.lnRef.idx, 10);
-                        const themeLine = slideContext.theme.formatScheme.lines[lnRefIdx - 1];
-                        if (themeLine) {
-                            const color = ColorParser.resolveColor(styleInfo.lnRef.color, slideContext);
-                            shape.shapeProps.stroke = {
-                                color: color,
-                                width: (themeLine.width || 9525) / EMU_PER_PIXEL,
-                                cap: themeLine.cap || 'flat',
-                                dash: themeLine.prstDash || 'solid',
-                            };
-                        }
-                    }
-                }
+    }
+
+    for (const constrNode of constrNodes) {
+        const type = constrNode.getAttribute('type');
+        const val = parseInt(constrNode.getAttribute('val'));
+        if (type === 'w') shape.pos.w = val / EMU_PER_PIXEL;
+        if (type === 'h') shape.pos.h = val / EMU_PER_PIXEL;
+    }
+
+    if (styleLblNode) {
+        shape.shapeProps.styleLbl = styleLblNode.getAttribute('name');
+    }
+
+    resolveShapeStylesFromLabel(shape, slideContext);
+
+    if (dataContext && dataContext.localName === 'pt') {
+        const tNode = dataContext.getElementsByTagNameNS(DIAGRAM_NS, 't')[0];
+        if (tNode) {
+            const txBodyNode = document.createElementNS(DML_NS, 'txBody');
+            const children = tNode.children;
+            for (let i = 0; i < children.length; i++) {
+                txBodyNode.appendChild(children[i].cloneNode(true));
+            }
+
+            const bodyPr = parseBodyProperties(txBodyNode);
+            const paragraphs = Array.from(txBodyNode.getElementsByTagNameNS(DML_NS, 'p'));
+
+            if (paragraphs.length > 0) {
+                const textPos = { x: 0, y: 0, width: shape.pos.w, height: shape.pos.h };
+                const fontRef = shape.shapeProps.fontRef;
+                const layout = layoutDiagramParagraphs(paragraphs, textPos, bodyPr, slideContext, fontRef);
+                shape.text = { layout, bodyPr, pos: textPos };
             }
         }
-        return [shape];
     }
-    return [];
+
+    return [shape];
 }
 
 function handleForEach(forEachNode, dataContext, slideContext) {
@@ -330,19 +375,32 @@ function handleForEach(forEachNode, dataContext, slideContext) {
     const axis = forEachNode.getAttribute('axis');
     const ptType = forEachNode.getAttribute('ptType');
 
+    let pointList = [];
     if (axis === 'ch') {
-        const childLayoutNode = forEachNode.getElementsByTagNameNS(DIAGRAM_NS, 'layoutNode')[0];
-        if (childLayoutNode) {
-            const allPtNodes = dataContext.getElementsByTagNameNS(DIAGRAM_NS, 'pt');
-            let i = 0;
-            let dataPointNode;
-            while ((dataPointNode = allPtNodes[i++])) {
-                if (dataPointNode.parentNode === dataContext && dataPointNode.getAttribute('type') === ptType) {
-                    childShapes.push(...processLayoutNode(childLayoutNode, dataPointNode, slideContext));
+        const listContext = dataContext.localName === 'pt'
+            ? dataContext.getElementsByTagNameNS(DIAGRAM_NS, 'ptLst')[0]
+            : dataContext;
+
+        if (listContext) {
+            const childNodes = listContext.children;
+            for (let i = 0; i < childNodes.length; i++) {
+                const node = childNodes[i];
+                if (node.localName === 'pt' && node.getAttribute('type') === ptType) {
+                    pointList.push(node);
                 }
             }
         }
+    } else {
+        console.warn(`Unsupported axis in handleForEach: ${axis}`);
     }
+
+    const childLayoutNode = forEachNode.getElementsByTagNameNS(DIAGRAM_NS, 'layoutNode')[0];
+    if (childLayoutNode) {
+        for (const dataPointNode of pointList) {
+            childShapes.push(...processLayoutNode(childLayoutNode, dataPointNode, slideContext));
+        }
+    }
+
     return childShapes;
 }
 
@@ -363,30 +421,32 @@ function handleLin(algNode, childShapes) {
 }
 
 function processLayoutNode(layoutNode, dataContext, slideContext) {
+    const presOfNode = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'presOf')[0];
+    const currentDataContext = presOfNode ? getDataPoint(presOfNode, dataContext) : dataContext;
+
+    if (!currentDataContext) {
+        return [];
+    }
+
     let childShapes = [];
-    let algType = null;
-    let algNode = null;
-
-    for (const child of Array.from(layoutNode.childNodes)) {
-        if (child.nodeType !== 1) continue;
-
-        switch (child.localName) {
-            case 'alg':
-                algNode = child;
-                algType = child.getAttribute('type');
-                break;
-            case 'forEach':
-                childShapes.push(...handleForEach(child, dataContext, slideContext));
-                break;
+    const childNodes = layoutNode.children;
+    for (let i = 0; i < childNodes.length; i++) {
+        const child = childNodes[i];
+        if (child.localName === 'forEach') {
+            childShapes.push(...handleForEach(child, currentDataContext, slideContext));
         }
     }
 
-    if (algType === 'sp') {
-        return handleSp(layoutNode, dataContext, slideContext);
-    }
-
-    if (algType === 'lin') {
-        return handleLin(algNode, childShapes);
+    const algNode = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'alg')[0];
+    if (algNode) {
+        const algType = algNode.getAttribute('type');
+        if (algType === 'sp') {
+            if (currentDataContext.localName === 'pt') {
+                return handleSp(layoutNode, currentDataContext, slideContext);
+            }
+        } else if (algType === 'lin') {
+            return handleLin(algNode, childShapes);
+        }
     }
 
     return childShapes;
@@ -399,8 +459,19 @@ function parseLayout(layoutDoc, dataDoc, slideContext) {
     const rootLayoutNode = layoutDef.getElementsByTagNameNS(DIAGRAM_NS, 'layoutNode')[0];
     if (!rootLayoutNode) return [];
 
-    const dataModelRoot = dataDoc.getElementsByTagNameNS(DIAGRAM_NS, 'ptLst')[0];
-    if (!dataModelRoot) return [];
+    const rootPtLst = dataDoc.getElementsByTagNameNS(DIAGRAM_NS, 'ptLst')[0];
+    if (!rootPtLst) return [];
+
+    // Find the actual root data node. If there's a single top-level point,
+    // that's the root. Otherwise, the list itself is the root context.
+    const topLevelPoints = [];
+    for(let i = 0; i < rootPtLst.children.length; i++) {
+        if (rootPtLst.children[i].localName === 'pt') {
+            topLevelPoints.push(rootPtLst.children[i]);
+        }
+    }
+
+    const dataModelRoot = topLevelPoints.length === 1 ? topLevelPoints[0] : rootPtLst;
 
     return processLayoutNode(rootLayoutNode, dataModelRoot, slideContext);
 }
