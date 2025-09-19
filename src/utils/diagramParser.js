@@ -87,52 +87,64 @@ function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
             preset: prstGeomNode.getAttribute('prst'),
             adjustments: adjustments,
         };
+        shapeProps.path = buildPathStringFromGeom(shapeProps.geometry, pos);
     }
 
-    const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-    if (solidFillNode) {
-        const colorObj = ColorParser.parseColor(solidFillNode);
-        if (colorObj) shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
+    const styleNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'style')[0];
+    if (styleNode) {
+        const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
+        if (fillRefNode) {
+            const color = ColorParser.parseColor(fillRefNode);
+            if (color) {
+                shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(color, slideContext) };
+            }
+        }
+
+        const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
+        if (lnRefNode) {
+            const color = ColorParser.parseColor(lnRefNode);
+            if (color) {
+                shapeProps.stroke = {
+                    color: ColorParser.resolveColor(color, slideContext),
+                    width: 1,
+                    dash: 'solid',
+                };
+            }
+        }
     }
 
-    const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
-    if (lnNode) {
-        shapeProps.stroke = parseLineProperties(lnNode, slideContext);
+    if (!shapeProps.fill) {
+        const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+        if (solidFillNode) {
+            const colorObj = ColorParser.parseColor(solidFillNode);
+            if (colorObj) shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
+        }
+    }
+
+    if (!shapeProps.stroke) {
+        const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
+        if (lnNode) {
+            shapeProps.stroke = parseLineProperties(lnNode, slideContext);
+        }
     }
 
     const modelId = dspSpNode.getAttribute('modelId');
     const tNode = dataModel[modelId];
 
     let textData = null;
-    let txBodyNode = dspSpNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
-    const useDataModelText = !txBodyNode || txBodyNode.textContent.trim() === '';
+    let txBodyToParse = dspSpNode.getElementsByTagNameNS(DSP_NS, 'txBody')[0];
+    const useDataModelText = !txBodyToParse || txBodyToParse.textContent.trim() === '';
 
     if (useDataModelText && tNode) {
-        txBodyNode = document.createElementNS(DML_NS, 'txBody');
-        for (const child of Array.from(tNode.children)) {
-            txBodyNode.appendChild(child.cloneNode(true));
-        }
+        txBodyToParse = tNode.cloneNode(true);
     }
 
-    if (txBodyNode) {
-        const bodyPr = parseBodyProperties(txBodyNode);
-        const listStyle = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
-        const paragraphs = Array.from(txBodyNode.getElementsByTagNameNS(DML_NS, 'p'));
+    if (txBodyToParse) {
+        const bodyPr = parseBodyProperties(txBodyToParse);
+        const paragraphs = Array.from(txBodyToParse.getElementsByTagNameNS(DML_NS, 'p'));
 
-        if (paragraphs.length > 0) {
+        if (paragraphs.length > 0 && paragraphs.some(p => p.textContent.trim() !== '')) {
             const textPos = { ...pos };
-            const txXfrmNode = dspSpNode.getElementsByTagNameNS(DML_NS, 'txXfrm')[0];
-            if (txXfrmNode) {
-                const txOffNode = txXfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
-                const txExtNode = txXfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
-                if (txOffNode && txExtNode) {
-                    textPos.x = parseInt(txOffNode.getAttribute("x")) / EMU_PER_PIXEL;
-                    textPos.y = parseInt(txOffNode.getAttribute("y")) / EMU_PER_PIXEL;
-                    textPos.width = parseInt(txExtNode.getAttribute("cx")) / EMU_PER_PIXEL;
-                    textPos.height = parseInt(txExtNode.getAttribute("cy")) / EMU_PER_PIXEL;
-                }
-            }
-            // Simplified text layout for diagrams
             const styleNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'style')[0];
             const fontRefNode = styleNode?.getElementsByTagNameNS(DML_NS, 'fontRef')[0];
             const fontRef = fontRefNode ? { idx: fontRefNode.getAttribute('idx'), color: ColorParser.parseColor(fontRefNode) } : null;
