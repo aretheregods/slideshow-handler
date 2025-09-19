@@ -32,15 +32,11 @@ import {
 /**
  * Parses a diagram shape from a `dsp:sp` node.
  * @param {Element} dspSpNode - The `dsp:sp` XML node.
- * @param {Object} dataModel - The parsed data model from the diagram data part.
  * @param {Object} slideContext - The context of the slide.
  * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
- * @param {Object} colorMap - A map of colors defined in the diagram's color part.
- * @param {Object} styleMap - A map of styles defined in the diagram's style part.
- * @param {Object} modelStyleMap - A map of model IDs to style labels.
  * @returns {Object|null} The parsed shape data, or null if invalid.
  */
-function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix, colorMap, styleMap, modelStyleMap) {
+function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
     const spPrNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'spPr')[0];
     if (!spPrNode) return null;
 
@@ -91,65 +87,52 @@ function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix, col
             preset: prstGeomNode.getAttribute('prst'),
             adjustments: adjustments,
         };
-        shapeProps.path = buildPathStringFromGeom(shapeProps.geometry, pos);
+    }
+
+    const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+    if (solidFillNode) {
+        const colorObj = ColorParser.parseColor(solidFillNode);
+        if (colorObj) shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
+    }
+
+    const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
+    if (lnNode) {
+        shapeProps.stroke = parseLineProperties(lnNode, slideContext);
     }
 
     const modelId = dspSpNode.getAttribute('modelId');
-    const styleLbl = modelStyleMap[modelId];
-    if (styleLbl && styleMap[styleLbl] && colorMap[styleLbl]) {
-        const style = styleMap[styleLbl];
-        const colors = colorMap[styleLbl];
-
-        if (style.fillRef && colors.fill.length > 0) {
-            const color = colors.fill[parseInt(style.fillRef.idx) - 1] || colors.fill[0];
-            if (color) {
-                shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(color, slideContext) };
-            }
-        }
-
-        if (style.lnRef && colors.line.length > 0) {
-            const color = colors.line[parseInt(style.lnRef.idx) - 1] || colors.line[0];
-            if (color) {
-                shapeProps.stroke = {
-                    color: ColorParser.resolveColor(color, slideContext),
-                    width: 1,
-                    dash: 'solid',
-                };
-            }
-        }
-    }
-
-    if (!shapeProps.fill) {
-        const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-        if (solidFillNode) {
-            const colorObj = ColorParser.parseColor(solidFillNode);
-            if (colorObj) shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
-        }
-    }
-
-    if (!shapeProps.stroke) {
-        const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
-        if (lnNode) {
-            shapeProps.stroke = parseLineProperties(lnNode, slideContext);
-        }
-    }
-
     const tNode = dataModel[modelId];
 
     let textData = null;
-    let txBodyToParse = dspSpNode.getElementsByTagNameNS(DSP_NS, 'txBody')[0];
-    const useDataModelText = !txBodyToParse || txBodyToParse.textContent.trim() === '';
+    let txBodyNode = dspSpNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
+    const useDataModelText = !txBodyNode || txBodyNode.textContent.trim() === '';
 
     if (useDataModelText && tNode) {
-        txBodyToParse = tNode.cloneNode(true);
+        txBodyNode = document.createElementNS(DML_NS, 'txBody');
+        for (const child of Array.from(tNode.children)) {
+            txBodyNode.appendChild(child.cloneNode(true));
+        }
     }
 
-    if (txBodyToParse) {
-        const bodyPr = parseBodyProperties(txBodyToParse);
-        const paragraphs = Array.from(txBodyToParse.getElementsByTagNameNS(DML_NS, 'p'));
+    if (txBodyNode) {
+        const bodyPr = parseBodyProperties(txBodyNode);
+        const listStyle = txBodyNode.getElementsByTagNameNS(DML_NS, 'lstStyle')[0];
+        const paragraphs = Array.from(txBodyNode.getElementsByTagNameNS(DML_NS, 'p'));
 
-        if (paragraphs.length > 0 && paragraphs.some(p => p.textContent.trim() !== '')) {
+        if (paragraphs.length > 0) {
             const textPos = { ...pos };
+            const txXfrmNode = dspSpNode.getElementsByTagNameNS(DML_NS, 'txXfrm')[0];
+            if (txXfrmNode) {
+                const txOffNode = txXfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                const txExtNode = txXfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+                if (txOffNode && txExtNode) {
+                    textPos.x = parseInt(txOffNode.getAttribute("x")) / EMU_PER_PIXEL;
+                    textPos.y = parseInt(txOffNode.getAttribute("y")) / EMU_PER_PIXEL;
+                    textPos.width = parseInt(txExtNode.getAttribute("cx")) / EMU_PER_PIXEL;
+                    textPos.height = parseInt(txExtNode.getAttribute("cy")) / EMU_PER_PIXEL;
+                }
+            }
+            // Simplified text layout for diagrams
             const styleNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'style')[0];
             const fontRefNode = styleNode?.getElementsByTagNameNS(DML_NS, 'fontRef')[0];
             const fontRef = fontRefNode ? { idx: fontRefNode.getAttribute('idx'), color: ColorParser.parseColor(fontRefNode) } : null;
@@ -252,6 +235,7 @@ function layoutDiagramParagraphs(paragraphs, pos, bodyPr, slideContext, fontRef)
 /**
  * Parses a diagram from a graphic frame.
  * @param {Element} frameNode - The graphic frame node containing the diagram.
+ * @param {Object} diagram - An object containing the diagram parts (data, layout, style, color).
  * @param {Object} slideRels - The slide relationships.
  * @param {Object} entriesMap - A map of all presentation entries.
  * @param {Object} slideContext - The context of the slide.
@@ -297,22 +281,8 @@ export async function parseDiagram(frameNode, slideRels, entriesMap, slideContex
     const colorMap = parseDiagramColors(colorXml);
     const styleMap = parseDiagramStyle(styleXml);
 
-    const modelStyleMap = {};
-    const ptNodes = dataDoc.getElementsByTagNameNS(DIAGRAM_NS, 'pt');
-    for (const ptNode of ptNodes) {
-        const modelId = ptNode.getAttribute('modelId');
-        if (modelId) {
-            const prSetNode = ptNode.getElementsByTagNameNS(DIAGRAM_NS, 'prSet')[0];
-            if (prSetNode) {
-                const styleLbl = prSetNode.getAttribute('presStyleLbl');
-                if (styleLbl) {
-                    modelStyleMap[modelId] = styleLbl;
-                }
-            }
-        }
-    }
-
     const dataModel = {};
+    const ptNodes = dataDoc.getElementsByTagNameNS(DIAGRAM_NS, 'pt');
     for (const ptNode of ptNodes) {
         const modelId = ptNode.getAttribute('modelId');
         if (modelId) {
@@ -325,7 +295,7 @@ export async function parseDiagram(frameNode, slideRels, entriesMap, slideContex
 
     const shapes = [];
     for (const dspSpNode of spTree.getElementsByTagNameNS('http://schemas.microsoft.com/office/drawing/2008/diagram', 'sp')) {
-        const shape = parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix, colorMap, styleMap, modelStyleMap);
+        const shape = parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix);
         if (shape) {
             shapes.push(shape);
         }
@@ -351,13 +321,25 @@ function parseDiagramColors(colorXml) {
             const txFillClrLstNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'txFillClrLst')[0];
             const txEffectClrLstNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'txEffectClrLst')[0];
 
+            const parseColors = (node) => {
+                if (!node) return [];
+                const colors = [];
+                for (let i = 0; i < node.children.length; i++) {
+                    const color = ColorParser.parseColor(node.children[i]);
+                    if (color) {
+                        colors.push(color);
+                    }
+                }
+                return colors;
+            };
+
             colorMap[name] = {
-                fill: fillClrLstNode ? Array.from(fillClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
-                line: linClrLstNode ? Array.from(linClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
-                effect: effectClrLstNode ? Array.from(effectClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
-                txLine: txLinClrLstNode ? Array.from(txLinClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
-                txFill: txFillClrLstNode ? Array.from(txFillClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
-                txEffect: txEffectClrLstNode ? Array.from(txEffectClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
+                fill: parseColors(fillClrLstNode),
+                line: parseColors(linClrLstNode),
+                effect: parseColors(effectClrLstNode),
+                txLine: parseColors(txLinClrLstNode),
+                txFill: parseColors(txFillClrLstNode),
+                txEffect: parseColors(txEffectClrLstNode),
             };
         }
     }
