@@ -321,13 +321,25 @@ function parseDiagramColors(colorXml) {
             const txFillClrLstNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'txFillClrLst')[0];
             const txEffectClrLstNode = styleLblNode.getElementsByTagNameNS(DIAGRAM_NS, 'txEffectClrLst')[0];
 
+            const parseColors = (node) => {
+                if (!node) return [];
+                const colors = [];
+                for (let i = 0; i < node.children.length; i++) {
+                    const color = ColorParser.parseColor(node.children[i]);
+                    if (color) {
+                        colors.push(color);
+                    }
+                }
+                return colors;
+            };
+
             colorMap[name] = {
-                fill: fillClrLstNode ? Array.from(fillClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
-                line: linClrLstNode ? Array.from(linClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
-                effect: effectClrLstNode ? Array.from(effectClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
-                txLine: txLinClrLstNode ? Array.from(txLinClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
-                txFill: txFillClrLstNode ? Array.from(txFillClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
-                txEffect: txEffectClrLstNode ? Array.from(txEffectClrLstNode.children).map(c => ColorParser.parseColor(c)) : [],
+                fill: parseColors(fillClrLstNode),
+                line: parseColors(linClrLstNode),
+                effect: parseColors(effectClrLstNode),
+                txLine: parseColors(txLinClrLstNode),
+                txFill: parseColors(txFillClrLstNode),
+                txEffect: parseColors(txEffectClrLstNode),
             };
         }
     }

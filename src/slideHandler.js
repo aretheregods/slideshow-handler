@@ -315,17 +315,7 @@ export class SlideHandler {
                         }
                     }
                 } else if (graphicData?.getAttribute('uri') === DIAGRAM_NS) {
-                    const diagramShapes = await parseDiagram(
-                        element,
-                        this.slideRels,
-                        this.entriesMap,
-                        this.slideContext,
-                        parentMatrix.clone()
-                    );
-
-                    if (diagramShapes) {
-                        shapes.push(...diagramShapes);
-                    }
+                    shapeData = await this.parseDiagram(element, parentMatrix.clone());
                 }
             } else if (tagName === 'pic') {
                 shapeData = await this.parsePicture(element, parentMatrix, slideLevelVisibility);
@@ -361,6 +351,9 @@ export class SlideHandler {
                     break;
                 case 'picture':
                     await this.renderPicture(shapeData, id);
+                    break;
+                case 'diagram':
+                    await this.renderDiagram(shapeData, id);
                     break;
             }
         };
@@ -490,9 +483,16 @@ export class SlideHandler {
         }
         this.renderer.setTransform(matrix, id);
 
-        const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
-        shapeData.pos.rotation = shapeData.rot;
-        shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
+        if (shapeData.shapeProps.path) {
+            this.renderer.drawPath(shapeData.shapeProps.path, {
+                fill: shapeData.shapeProps.fill,
+                stroke: shapeData.shapeProps.stroke,
+            });
+        } else {
+            const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
+            shapeData.pos.rotation = shapeData.rot;
+            shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
+        }
 
         if (shapeData.text) {
             await this.renderParagraphs(shapeData.text, `${id}.text`);
@@ -1206,4 +1206,50 @@ export class SlideHandler {
         });
     }
 
+    /**
+     * @description Parses a diagram from a graphic frame.
+     * @param {Element} frameNode - The graphic frame node containing the diagram.
+     * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
+     * @returns {Promise<Object|null>} A promise that resolves to the parsed diagram data, or null if invalid.
+     */
+    async parseDiagram(frameNode, parentMatrix) {
+        const shapes = await parseDiagram(
+            frameNode,
+            this.slideRels,
+            this.entriesMap,
+            this.slideContext,
+            parentMatrix
+        );
+
+        if (!shapes || shapes.length === 0) {
+            return null;
+        }
+
+        return {
+            type: 'diagram',
+            shapes,
+        };
+    }
+
+    /**
+     * Renders a diagram to the SVG container.
+     * @param {Object} diagramData - The parsed diagram data.
+     * @param {string} id - The unique ID for the diagram element.
+     * @returns {Promise<void>}
+     */
+    async renderDiagram(diagramData, id) {
+        const diagramGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        diagramGroup.setAttribute('id', id);
+        this.renderer.currentGroup.appendChild(diagramGroup);
+
+        const originalGroup = this.renderer.currentGroup;
+        this.renderer.currentGroup = diagramGroup;
+
+        for (const [index, shapeData] of diagramData.shapes.entries()) {
+            const shapeId = `${id}.shapes.${index}`;
+            await this.renderShape(shapeData, shapeId);
+        }
+
+        this.renderer.currentGroup = originalGroup;
+    }
 }
