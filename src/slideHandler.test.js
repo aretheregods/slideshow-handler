@@ -600,7 +600,11 @@ describe('SlideHandler', () => {
 
             // Assert
             expect(result.shapes.length).toBe(1);
-            const diagramShape = result.shapes[0];
+            const diagram = result.shapes[0];
+            expect(diagram.type).toBe('diagram');
+            expect(diagram.shapes.length).toBe(1);
+
+            const diagramShape = diagram.shapes[0];
             expect(diagramShape.type).toBe('shape');
             expect(diagramShape.text).toBeDefined();
             const fullText = diagramShape.text.layout.lines.map(l => l.runs.map(r => r.text).join('')).join('');
