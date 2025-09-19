@@ -483,9 +483,16 @@ export class SlideHandler {
         }
         this.renderer.setTransform(matrix, id);
 
-        const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
-        shapeData.pos.rotation = shapeData.rot;
-        shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
+        if (shapeData.shapeProps.path) {
+            this.renderer.drawPath(shapeData.shapeProps.path, {
+                fill: shapeData.shapeProps.fill,
+                stroke: shapeData.shapeProps.stroke,
+            });
+        } else {
+            const shapeBuilder = new ShapeBuilder(this.renderer, this.slideContext);
+            shapeData.pos.rotation = shapeData.rot;
+            shapeBuilder.renderShape(shapeData.pos, shapeData.shapeProps, matrix, shapeData.flipH, shapeData.flipV);
+        }
 
         if (shapeData.text) {
             await this.renderParagraphs(shapeData.text, `${id}.text`);
