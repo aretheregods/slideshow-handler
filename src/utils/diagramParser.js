@@ -89,15 +89,42 @@ function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
         };
     }
 
-    const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-    if (solidFillNode) {
-        const colorObj = ColorParser.parseColor(solidFillNode);
-        if (colorObj) shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
+    const styleNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'style')[0];
+    if (styleNode) {
+        const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
+        if (fillRefNode) {
+            const color = ColorParser.parseColor(fillRefNode);
+            if (color) {
+                shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(color, slideContext) };
+            }
+        }
+
+        const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
+        if (lnRefNode) {
+            const color = ColorParser.parseColor(lnRefNode);
+            if (color) {
+                shapeProps.stroke = {
+                    color: ColorParser.resolveColor(color, slideContext),
+                    width: 1,
+                    dash: 'solid',
+                };
+            }
+        }
     }
 
-    const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
-    if (lnNode) {
-        shapeProps.stroke = parseLineProperties(lnNode, slideContext);
+    if (!shapeProps.fill) {
+        const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+        if (solidFillNode) {
+            const colorObj = ColorParser.parseColor(solidFillNode);
+            if (colorObj) shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
+        }
+    }
+
+    if (!shapeProps.stroke) {
+        const lnNode = spPrNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
+        if (lnNode) {
+            shapeProps.stroke = parseLineProperties(lnNode, slideContext);
+        }
     }
 
     const modelId = dspSpNode.getAttribute('modelId');
