@@ -89,6 +89,27 @@ function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
         };
     }
 
+    const styleNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'style')[0];
+    if (styleNode) {
+        const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
+        if (fillRefNode) {
+            const colorObj = ColorParser.parseColor(fillRefNode);
+            if (colorObj) shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
+        }
+
+        const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
+        if (lnRefNode) {
+            const colorObj = ColorParser.parseColor(lnRefNode);
+            if (colorObj) {
+                shapeProps.stroke = {
+                    color: ColorParser.resolveColor(colorObj, slideContext),
+                    width: 1, // default
+                    dash: 'solid', // default
+                };
+            }
+        }
+    }
+
     const solidFillNode = spPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
     if (solidFillNode) {
         const colorObj = ColorParser.parseColor(solidFillNode);
@@ -232,49 +253,6 @@ function layoutDiagramParagraphs(paragraphs, pos, bodyPr, slideContext, fontRef)
 }
 
 
-/**
- * Parses a diagram from a graphic frame.
- * @param {Element} frameNode - The graphic frame node containing the diagram.
- * @param {Object} diagram - An object containing the diagram parts (data, layout, style, color).
- * @param {Object} slideRels - The slide relationships.
- * @param {Object} entriesMap - A map of all presentation entries.
- * @param {Object} slideContext - The context of the slide.
- * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
- * @returns {Promise<Array>} A promise that resolves to an array of shape objects.
- */
-
-
-
-function processLayoutNode(layoutNode, dataContext, slideContext) {
-    let childShapes = [];
-    let algType = null;
-    let algNode = null;
-
-    for (const child of Array.from(layoutNode.childNodes)) {
-        if (child.nodeType !== 1) continue;
-
-        switch (child.localName) {
-            case 'alg':
-                algNode = child;
-                algType = child.getAttribute('type');
-                break;
-            case 'forEach':
-                childShapes.push(...handleForEach(child, dataContext, slideContext));
-                break;
-        }
-    }
-
-    if (algType === 'sp') {
-        return handleSp(layoutNode, dataContext, slideContext);
-    }
-
-    if (algType === 'lin') {
-        return handleLin(algNode, childShapes);
-    }
-
-    return childShapes;
-}
-
 function getDataPoint(presOfNode, dataContext) {
     const axis = presOfNode.getAttribute('axis');
     const ptType = presOfNode.getAttribute('ptType');
@@ -384,6 +362,36 @@ function handleLin(algNode, childShapes) {
     return childShapes;
 }
 
+function processLayoutNode(layoutNode, dataContext, slideContext) {
+    let childShapes = [];
+    let algType = null;
+    let algNode = null;
+
+    for (const child of Array.from(layoutNode.childNodes)) {
+        if (child.nodeType !== 1) continue;
+
+        switch (child.localName) {
+            case 'alg':
+                algNode = child;
+                algType = child.getAttribute('type');
+                break;
+            case 'forEach':
+                childShapes.push(...handleForEach(child, dataContext, slideContext));
+                break;
+        }
+    }
+
+    if (algType === 'sp') {
+        return handleSp(layoutNode, dataContext, slideContext);
+    }
+
+    if (algType === 'lin') {
+        return handleLin(algNode, childShapes);
+    }
+
+    return childShapes;
+}
+
 function parseLayout(layoutDoc, dataDoc, slideContext) {
     const layoutDef = layoutDoc.getElementsByTagNameNS(DIAGRAM_NS, 'layoutDef')[0];
     if (!layoutDef) return [];
@@ -482,8 +490,6 @@ export async function parseDiagram(frameNode, slideRels, entriesMap, slideContex
         return parseLayout(layoutDoc, dataDoc, slideCtx);
     }
 }
-
-
 
 function parseDiagramColors(colorXml) {
     if (!colorXml) return {};
