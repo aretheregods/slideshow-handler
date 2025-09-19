@@ -32,11 +32,15 @@ import {
 /**
  * Parses a diagram shape from a `dsp:sp` node.
  * @param {Element} dspSpNode - The `dsp:sp` XML node.
+ * @param {Object} dataModel - The parsed data model from the diagram data part.
  * @param {Object} slideContext - The context of the slide.
  * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
+ * @param {Object} colorMap - A map of colors defined in the diagram's color part.
+ * @param {Object} styleMap - A map of styles defined in the diagram's style part.
+ * @param {Object} modelStyleMap - A map of model IDs to style labels.
  * @returns {Object|null} The parsed shape data, or null if invalid.
  */
-function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
+function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix, colorMap, styleMap, modelStyleMap) {
     const spPrNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'spPr')[0];
     if (!spPrNode) return null;
 
@@ -90,19 +94,21 @@ function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
         shapeProps.path = buildPathStringFromGeom(shapeProps.geometry, pos);
     }
 
-    const styleNode = dspSpNode.getElementsByTagNameNS(DSP_NS, 'style')[0];
-    if (styleNode) {
-        const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
-        if (fillRefNode) {
-            const color = ColorParser.parseColor(fillRefNode);
+    const modelId = dspSpNode.getAttribute('modelId');
+    const styleLbl = modelStyleMap[modelId];
+    if (styleLbl && styleMap[styleLbl] && colorMap[styleLbl]) {
+        const style = styleMap[styleLbl];
+        const colors = colorMap[styleLbl];
+
+        if (style.fillRef && colors.fill.length > 0) {
+            const color = colors.fill[parseInt(style.fillRef.idx) - 1] || colors.fill[0];
             if (color) {
                 shapeProps.fill = { type: 'solid', color: ColorParser.resolveColor(color, slideContext) };
             }
         }
 
-        const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
-        if (lnRefNode) {
-            const color = ColorParser.parseColor(lnRefNode);
+        if (style.lnRef && colors.line.length > 0) {
+            const color = colors.line[parseInt(style.lnRef.idx) - 1] || colors.line[0];
             if (color) {
                 shapeProps.stroke = {
                     color: ColorParser.resolveColor(color, slideContext),
@@ -128,7 +134,6 @@ function parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix) {
         }
     }
 
-    const modelId = dspSpNode.getAttribute('modelId');
     const tNode = dataModel[modelId];
 
     let textData = null;
@@ -247,7 +252,6 @@ function layoutDiagramParagraphs(paragraphs, pos, bodyPr, slideContext, fontRef)
 /**
  * Parses a diagram from a graphic frame.
  * @param {Element} frameNode - The graphic frame node containing the diagram.
- * @param {Object} diagram - An object containing the diagram parts (data, layout, style, color).
  * @param {Object} slideRels - The slide relationships.
  * @param {Object} entriesMap - A map of all presentation entries.
  * @param {Object} slideContext - The context of the slide.
@@ -293,8 +297,22 @@ export async function parseDiagram(frameNode, slideRels, entriesMap, slideContex
     const colorMap = parseDiagramColors(colorXml);
     const styleMap = parseDiagramStyle(styleXml);
 
-    const dataModel = {};
+    const modelStyleMap = {};
     const ptNodes = dataDoc.getElementsByTagNameNS(DIAGRAM_NS, 'pt');
+    for (const ptNode of ptNodes) {
+        const modelId = ptNode.getAttribute('modelId');
+        if (modelId) {
+            const prSetNode = ptNode.getElementsByTagNameNS(DIAGRAM_NS, 'prSet')[0];
+            if (prSetNode) {
+                const styleLbl = prSetNode.getAttribute('presStyleLbl');
+                if (styleLbl) {
+                    modelStyleMap[modelId] = styleLbl;
+                }
+            }
+        }
+    }
+
+    const dataModel = {};
     for (const ptNode of ptNodes) {
         const modelId = ptNode.getAttribute('modelId');
         if (modelId) {
@@ -307,7 +325,7 @@ export async function parseDiagram(frameNode, slideRels, entriesMap, slideContex
 
     const shapes = [];
     for (const dspSpNode of spTree.getElementsByTagNameNS('http://schemas.microsoft.com/office/drawing/2008/diagram', 'sp')) {
-        const shape = parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix);
+        const shape = parseDiagramShape(dspSpNode, dataModel, slideContext, parentMatrix, colorMap, styleMap, modelStyleMap);
         if (shape) {
             shapes.push(shape);
         }
