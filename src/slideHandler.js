@@ -20,7 +20,6 @@ import {
     getNormalizedXmlString,
     parseExtensions,
     DiagramBuilder,
-    getText,
 } from 'utils';
 import {
     EMU_PER_PIXEL,
@@ -1214,7 +1213,11 @@ export class SlideHandler {
      * @returns {Promise<Object|null>} A promise that resolves to the parsed diagram data, or null if invalid.
      */
     async parseDiagram(frameNode, parentMatrix) {
-        const diagramBuilder = new DiagramBuilder(new ShapeBuilder(this.renderer, this.slideContext), this.slideContext, this.slideRels);
+        const diagramBuilder = new DiagramBuilder({
+            shapeBuilder: new ShapeBuilder(this.renderer, this.slideContext),
+            slideRels: this.slideRels,
+            entriesMap: this.entriesMap,
+        });
         const shapes = await diagramBuilder.build(frameNode, parentMatrix);
 
         if (!shapes || shapes.length === 0) {

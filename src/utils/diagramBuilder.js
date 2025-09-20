@@ -1,29 +1,44 @@
-import { JSDOM } from 'jsdom';
 import { EMU_PER_PIXEL, DML_NS, DIAGRAM_NS, DSP_NS } from 'constants';
 import { ShapeBuilder } from './shapeBuilder.js';
-
-const { window } = new JSDOM('');
-const { DOMParser } = window;
+import { getNormalizedXmlString, parseXmlString, resolvePath } from 'utils';
 
 export class DiagramBuilder {
-    constructor({ slide, slideRels, presentation, shapeBuilder }) {
+    constructor({ slide, slideRels, presentation, shapeBuilder, entriesMap }) {
         this.slide = slide;
         this.slideRels = slideRels;
         this.presentation = presentation;
         this.shapeBuilder = shapeBuilder || new ShapeBuilder({ slide, slideRels, presentation });
+        this.entriesMap = entriesMap;
     }
 
-    async build(drawingXml, layoutXml, dataXml, colorsXml, styleXml) {
-        this.drawingDoc = drawingXml ? new DOMParser().parseFromString(drawingXml, 'text/xml') : null;
-        this.layoutDoc = new DOMParser().parseFromString(layoutXml, 'text/xml');
-        this.dataDoc = new DOMParser().parseFromString(dataXml, 'text/xml');
-        this.colorsDoc = colorsXml ? new DOMParser().parseFromString(colorsXml, 'text/xml') : null;
-        this.styleDoc = styleXml ? new DOMParser().parseFromString(styleXml, 'text/xml') : null;
+    async build(frameNode, parentMatrix) {
+        const graphicData = frameNode.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
+        const diagramRelIds = graphicData.getElementsByTagNameNS(DIAGRAM_NS, 'relIds')[0];
 
-        if (this.drawingDoc && this.drawingDoc.getElementsByTagNameNS(DSP_NS, 'spTree').length > 0) {
-             return this.#buildDrawingDiagram();
+        const dataRelId = diagramRelIds.getAttribute('r:dm');
+        const layoutRelId = diagramRelIds.getAttribute('r:lo');
+        const styleRelId = diagramRelIds.getAttribute('r:qs');
+        const colorRelId = diagramRelIds.getAttribute('r:cs');
+
+        const dataXml = await getNormalizedXmlString(this.entriesMap, resolvePath('ppt/slides', this.slideRels[dataRelId].target));
+        const layoutXml = await getNormalizedXmlString(this.entriesMap, resolvePath('ppt/slides', this.slideRels[layoutRelId].target));
+        const styleXml = styleRelId ? await getNormalizedXmlString(this.entriesMap, resolvePath('ppt/slides', this.slideRels[styleRelId].target)) : null;
+        const colorsXml = colorRelId ? await getNormalizedXmlString(this.entriesMap, resolvePath('ppt/slides', this.slideRels[colorRelId].target)) : null;
+
+        this.layoutDoc = parseXmlString(layoutXml);
+        this.dataDoc = parseXmlString(dataXml);
+        this.colorsDoc = colorsXml ? parseXmlString(colorsXml) : null;
+        this.styleDoc = styleXml ? parseXmlString(styleXml) : null;
+
+        const dataModelExt = this.dataDoc.getElementsByTagNameNS(DSP_NS, 'dataModelExt')[0];
+        const drawingRelId = dataModelExt?.getAttribute('relId');
+
+        if (drawingRelId && this.slideRels[drawingRelId]) {
+            const drawingXml = await getNormalizedXmlString(this.entriesMap, resolvePath('ppt/slides', this.slideRels[drawingRelId].target));
+            this.drawingDoc = parseXmlString(drawingXml);
+            return this.#buildDrawingDiagram();
         } else {
-             return this.#buildLayoutDiagram();
+            return this.#buildLayoutDiagram();
         }
     }
 
