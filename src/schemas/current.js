@@ -517,8 +517,20 @@ export const currentSchema = {
                 { "$ref": "#/definitions/table" },
                 { "$ref": "#/definitions/chart" },
                 { "$ref": "#/definitions/picture" },
-                { "$ref": "#/definitions/connector" }
+                { "$ref": "#/definitions/connector" },
+                { "$ref": "#/definitions/diagram" }
             ]
+        },
+        "diagram": {
+            "type": "object",
+            "properties": {
+                "type": { "enum": ["diagram"] },
+                "shapes": {
+                    "type": "array",
+                    "items": { "$ref": "#/definitions/anyShape" }
+                }
+            },
+            "required": ["type", "shapes"]
         },
         "shape": {
             "type": "object",

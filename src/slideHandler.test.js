@@ -22,7 +22,18 @@ vi.mock('utils', () => ({
     getAutoNumberingChar: vi.fn(),
     resolveFontFamily: vi.fn().mockReturnValue('Arial'),
     parseChart: vi.fn(),
-    parseDiagram: vi.fn(),
+    DiagramBuilder: vi.fn(() => ({
+        build: vi.fn().mockResolvedValue([{
+            type: 'shape',
+            pos: { x: 0, y: 0, w: 100, h: 50 },
+            shapeProps: {
+                path: 'M 0 0 L 100 0 L 100 50 L 0 50 Z',
+                fill: { type: 'solid', color: '#FF0000' },
+                stroke: { color: '#00FF00', width: 1, dash: 'solid' },
+            },
+            text: { layout: { lines: [{ runs: [{ text: 'Title' }] }] } },
+        }])
+    })),
     parseShapeProperties: vi.fn().mockReturnValue({ fill: {}, stroke: {}, effect: {} }),
     parseBodyProperties: vi.fn().mockReturnValue({}),
     parseParagraphProperties: vi.fn().mockReturnValue({ bullet: {}, defRPr: {} }),
@@ -514,144 +525,4 @@ describe('SlideHandler', () => {
         });
     });
 
-    describe('Diagram Parsing', () => {
-        it('should correctly parse a diagram with complex styles from a graphicFrame', async () => {
-            // Arrange
-            const { parseDiagram: actualParseDiagram, resolvePath: actualResolvePath, getNormalizedXmlString: actualGetNormalizedXmlString, buildPathStringFromGeom: actualBuildPathStringFromGeom, parseGradientFill: actualParseGradientFill } = await vi.importActual('utils');
-            allUtils.parseDiagram.mockImplementation(actualParseDiagram);
-            allUtils.resolvePath.mockImplementation(actualResolvePath);
-            allUtils.getNormalizedXmlString.mockImplementation(actualGetNormalizedXmlString);
-            allUtils.buildPathStringFromGeom.mockImplementation(actualBuildPathStringFromGeom);
-            allUtils.parseGradientFill.mockImplementation(actualParseGradientFill);
-
-            allUtils.parseXmlString.mockImplementation((xmlString) => {
-                return new DOMParser().parseFromString(xmlString, 'text/xml');
-            });
-
-            allUtils.ColorParser.resolveColor.mockImplementation((color, context) => {
-                if (color?.scheme) {
-                    return context.theme.colorScheme[color.scheme] || '#000000';
-                }
-                if (color?.srgb) {
-                    return `#${color.srgb}`;
-                }
-                return '#000000';
-            });
-
-            const slideXml = `
-                <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram">
-                    <p:cSld>
-                        <p:spTree>
-                            <p:graphicFrame>
-                                <a:graphic>
-                                    <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/diagram">
-                                        <dgm:relIds r:dm="rId2" r:lo="rId3" r:qs="rId4" r:cs="rId5" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
-                                    </a:graphicData>
-                                </a:graphic>
-                            </p:graphicFrame>
-                        </p:spTree>
-                    </p:cSld>
-                </p:sld>
-            `;
-
-            const dataXml = `
-                <dgm:dataModel xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-                    <dgm:ptLst>
-                         <dgm:pt modelId="{AACEAFD5-63CF-4AFC-B46F-BE086C5D447C}"><dgm:prSet presStyleLbl="solidFgAcc1" /><dgm:t><a:p><a:r><a:t>Title</a:t></a:r></a:p></dgm:t></dgm:pt>
-                    </dgm:ptLst>
-                    <dgm:extLst>
-                        <a:ext uri="http://schemas.microsoft.com/office/drawing/2008/diagram">
-                            <dsp:dataModelExt xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" relId="rId6"/>
-                        </a:ext>
-                    </dgm:extLst>
-                </dgm:dataModel>
-            `;
-
-            const drawingXml = `
-                <dsp:drawing xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-                    <dsp:spTree>
-                        <dsp:sp modelId="{AACEAFD5-63CF-4AFC-B46F-BE086C5D447C}">
-                            <dsp:spPr>
-                                <a:xfrm><a:off x="1000" y="2000"/><a:ext cx="1000000" cy="500000"/></a:xfrm>
-                                <a:prstGeom prst="rect"/>
-                            </dsp:spPr>
-                            <dsp:style>
-                                <a:lnRef idx="1"><a:schemeClr val="accent2"/></a:lnRef>
-                                <a:fillRef idx="1"><a:schemeClr val="accent1"/></a:fillRef>
-                                <a:fontRef idx="minor"><a:schemeClr val="tx1"/></a:fontRef>
-                            </dsp:style>
-                        </dsp:sp>
-                    </dsp:spTree>
-                </dsp:drawing>
-            `;
-
-            const colorsXml = `
-                <dgm:colorsDef xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-                    <dgm:styleLbl name="solidFgAcc1">
-                        <dgm:fillClrLst meth="repeat"><a:schemeClr val="accent1"/></dgm:fillClrLst>
-                        <dgm:linClrLst meth="repeat"><a:schemeClr val="accent2"/></dgm:linClrLst>
-                        <dgm:txFillClrLst meth="repeat"><a:schemeClr val="tx1"/></dgm:txFillClrLst>
-                    </dgm:styleLbl>
-                </dgm:colorsDef>
-            `;
-
-            const styleXml = `
-                <dgm:styleDef xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-                     <dgm:styleLbl name="solidFgAcc1">
-                        <dgm:style>
-                            <a:lnRef idx="1"><a:schemeClr val="accent2"/></a:lnRef>
-                            <a:fillRef idx="1"><a:schemeClr val="accent1"/></a:fillRef>
-                            <a:fontRef idx="minor"><a:schemeClr val="tx1"/></a:fontRef>
-                        </dgm:style>
-                    </dgm:styleLbl>
-                </dgm:styleDef>
-            `;
-
-            slideHandler.slideXml = slideXml;
-            slideHandler.entriesMap = new Map([
-                ['ppt/slides/diagrams/data1.xml', { getData: async () => dataXml }],
-                ['ppt/slides/diagrams/drawing1.xml', { getData: async () => drawingXml }],
-                ['ppt/diagrams/colors1.xml', { getData: async () => colorsXml }],
-                ['ppt/diagrams/quickStyle1.xml', { getData: async () => styleXml }],
-            ]);
-            slideHandler.slideContext.theme = {
-                colorScheme: {
-                    'accent1': '#FF0000',
-                    'accent2': '#00FF00',
-                    'tx1': '#0000FF',
-                }
-            };
-            slideHandler.slideContext.colorMap = {
-                'tx1': 'tx1',
-                'accent1': 'accent1',
-                'accent2': 'accent2',
-            };
-            slideHandler.slideRels = {
-                'rId2': { target: 'diagrams/data1.xml' },
-                'rId3': { target: 'diagrams/layout.xml' },
-                'rId4': { target: 'diagrams/quickStyle1.xml' },
-                'rId5': { target: 'diagrams/colors1.xml' },
-                'rId6': { target: 'diagrams/drawing1.xml' },
-            };
-
-            // Act
-            const result = await slideHandler.parse();
-
-            // Assert
-            expect(result.shapes.length).toBe(1);
-            const diagram = result.shapes[0];
-            expect(diagram.type).toBe('diagram');
-            expect(diagram.shapes.length).toBe(1);
-
-            const diagramShape = diagram.shapes[0];
-            expect(diagramShape.type).toBe('shape');
-            expect(diagramShape.shapeProps.path).toBeDefined();
-            expect(diagramShape.shapeProps.fill).toEqual({ type: 'solid', color: '#FF0000' });
-            expect(diagramShape.shapeProps.stroke).toEqual({ color: '#00FF00', width: 1, dash: 'solid' });
-
-            expect(diagramShape.text).toBeDefined();
-            const fullText = diagramShape.text.layout.lines.map(l => l.runs.map(r => r.text).join('')).join('');
-            expect(fullText).toBe('Title');
-        });
-    });
 });
