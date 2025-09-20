@@ -8,6 +8,13 @@ vi.mock('./shapeBuilder.js', () => {
     return {
         ShapeBuilder: vi.fn().mockImplementation(() => {
             return {
+                getShapeProperties: vi.fn().mockReturnValue({
+                    pos: { x: 0, y: 0, width: 100, height: 100 },
+                    transform: 'matrix(1 0 0 1 0 0)',
+                    flipH: false,
+                    flipV: false,
+                    rot: 0,
+                }),
                 build: vi.fn().mockImplementation((shapeNode) => {
                     const spPrNode = shapeNode.getElementsByTagName('dsp:spPr')[0];
                     const fill = spPrNode?.getElementsByTagName('a:solidFill')[0];
@@ -32,6 +39,9 @@ vi.mock('utils', async () => {
     return {
         ...actual,
         getNormalizedXmlString: vi.fn(),
+        parseShapeProperties: vi.fn().mockReturnValue({
+            fill: { type: 'solid', color: '#FF0000' },
+        }),
     };
 });
 
@@ -95,10 +105,9 @@ describe('DiagramBuilder', () => {
             'rId4': {target: 'colors1.xml'},
             'rId6': {target: 'drawing1.xml'}
         };
-        const builder = new DiagramBuilder({ shapeBuilder, slideRels, entriesMap: new Map() });
+        const builder = new DiagramBuilder({ shapeBuilder, slideRels, entriesMap: new Map(), slide: { slideContext: {}, slideNum: 1 } });
         const shapes = await builder.build(frameNode, null);
 
-        // Assert
         expect(shapes.length).toBe(1);
     });
 

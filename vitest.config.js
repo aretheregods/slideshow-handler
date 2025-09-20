@@ -1,5 +1,4 @@
-// This file was reviewed by Jules and the jsdom environment is correctly configured.
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vite';
 
 export default defineConfig({
   test: {
@@ -7,9 +6,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      'zipjs': '@zip.js/zip.js',
       'utils': '/src/utils/index.js',
       'constants': '/src/constants.js',
+      'zipjs': '@zip.js/zip.js',
     }
   }
 });

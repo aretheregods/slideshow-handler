@@ -1,6 +1,6 @@
 import { EMU_PER_PIXEL, DML_NS, DIAGRAM_NS, DSP_NS } from 'constants';
 import { ShapeBuilder } from './shapeBuilder.js';
-import { getNormalizedXmlString, parseXmlString, resolvePath } from 'utils';
+import { getNormalizedXmlString, parseXmlString, resolvePath, parseShapeProperties, Matrix } from 'utils';
 
 export class DiagramBuilder {
     constructor({ slide, slideRels, presentation, shapeBuilder, entriesMap }) {
@@ -11,7 +11,7 @@ export class DiagramBuilder {
         this.entriesMap = entriesMap;
     }
 
-    async build(frameNode, parentMatrix) {
+    async build(frameNode) {
         const graphicData = frameNode.getElementsByTagNameNS(DML_NS, 'graphicData')[0];
         const diagramRelIds = graphicData.getElementsByTagNameNS(DIAGRAM_NS, 'relIds')[0];
 
@@ -46,12 +46,24 @@ export class DiagramBuilder {
         const dspSpTree = this.drawingDoc.getElementsByTagNameNS(DSP_NS, 'spTree')[0];
         if (!dspSpTree) return [];
 
-        const dspShapes = Array.from(dspSpTree.childNodes).filter(node => node.nodeName === 'dsp:sp');
+        const dspShapes = Array.from(dspSpTree.getElementsByTagNameNS(DSP_NS, 'sp'));
 
         return dspShapes.map(dspShape => {
             const modelId = dspShape.getAttribute('modelId');
             const dataPt = this.dataDoc.querySelector(`[modelId="${modelId}"]`);
-            const shape = this.shapeBuilder.build(dspShape, this.slideRels);
+
+            const { pos, transform, flipH, flipV, rot } = this.shapeBuilder.getShapeProperties(dspShape, new Matrix());
+            const shapeProps = parseShapeProperties(dspShape, this.slide.slideContext, this.slide.slideNum);
+
+            const shape = {
+                type: 'shape',
+                transform,
+                pos,
+                shapeProps,
+                flipH,
+                flipV,
+                rot,
+            };
 
             if (dataPt) {
                 const text = this.#getText(dataPt);
@@ -78,8 +90,8 @@ export class DiagramBuilder {
     #processLayoutNode(layoutNode, dataContext) {
         let shapes = [];
 
-        const shapeNode = Array.from(layoutNode.childNodes).find(n => n.nodeName === 'dgm:shape');
-        const presOf = Array.from(layoutNode.childNodes).find(n => n.nodeName === 'dgm:presOf');
+        const shapeNode = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'shape')[0];
+        const presOf = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'presOf')[0] || layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'choose')[0]?.getElementsByTagNameNS(DIAGRAM_NS, 'if')[0]?.getElementsByTagNameNS(DIAGRAM_NS, 'presOf')[0];
 
         if (shapeNode && presOf) {
             shapes = this.#createShapeFromLayout(layoutNode, dataContext);
@@ -96,7 +108,7 @@ export class DiagramBuilder {
             }
         }
 
-        const algNode = Array.from(layoutNode.childNodes).find(n => n.nodeName === 'dgm:alg');
+        const algNode = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'alg')[0];
         if (algNode) {
             const algType = algNode.getAttribute('type');
             this.#applyAlgorithm(algType, layoutNode, shapes);
@@ -126,8 +138,8 @@ export class DiagramBuilder {
     }
 
     #handleChoose(chooseNode, dataContext) {
-        const ifNodes = Array.from(chooseNode.childNodes).filter(n => n.nodeName === 'dgm:if');
-        const elseNode = Array.from(chooseNode.childNodes).find(n => n.nodeName === 'dgm:else');
+        const ifNodes = Array.from(chooseNode.getElementsByTagNameNS(DIAGRAM_NS, 'if'));
+        const elseNode = chooseNode.getElementsByTagNameNS(DIAGRAM_NS, 'else')[0];
 
         for (const ifNode of ifNodes) {
             if (this.#evaluateIf(ifNode, dataContext)) {
@@ -176,7 +188,8 @@ export class DiagramBuilder {
     }
 
     #createShapeFromLayout(layoutNode, dataContext) {
-        const presOf = Array.from(layoutNode.childNodes).find(n => n.nodeName === 'dgm:presOf');
+        const presOf = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'presOf')[0] || layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'choose')[0]?.getElementsByTagNameNS(DIAGRAM_NS, 'if')[0]?.getElementsByTagNameNS(DIAGRAM_NS, 'presOf')[0];
+
         if (!presOf) {
             return [];
         }
@@ -190,20 +203,13 @@ export class DiagramBuilder {
             return [];
         }
 
-        const shapeNode = Array.from(layoutNode.childNodes).find(n => n.nodeName === 'dgm:shape');
+        const shapeNode = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'shape')[0];
         const type = shapeNode.getAttribute('type');
 
         const shapes = [];
         for (const point of dataPoints) {
             const modelId = point.getAttribute('modelId');
             let shape;
-
-            if (this.drawingDoc) {
-                const drawingSp = this.drawingDoc.querySelector(`[modelId="{${modelId}}"]`);
-                if (drawingSp) {
-                    shape = this.shapeBuilder.build(drawingSp, this.slideRels);
-                }
-            }
 
             if (!shape) {
                 shape = {
@@ -238,26 +244,26 @@ export class DiagramBuilder {
         let yOffset = 0; // in EMUs
         for (const shape of shapes) {
             shape.pos.y = yOffset / EMU_PER_PIXEL;
-            const height = shape.ext.cy || (1000 * EMU_PER_PIXEL);
+            const height = shape.ext.cy;
             yOffset += height;
         }
     }
 
     #applyConstraints(layoutNode, shape) {
-        const constrLst = Array.from(layoutNode.childNodes).find(n => n.nodeName === 'dgm:constrLst');
+        const constrLst = layoutNode.getElementsByTagNameNS(DIAGRAM_NS, 'constrLst')[0];
         if (!constrLst) {
             return;
         }
 
-        const constrNodes = Array.from(constrLst.childNodes).filter(n => n.nodeName === 'dgm:constr');
+        const constrNodes = Array.from(constrLst.getElementsByTagNameNS(DIAGRAM_NS, 'constr'));
         for (const constr of constrNodes) {
             const type = constr.getAttribute('type');
             const val = parseFloat(constr.getAttribute('val'));
 
             if (type === 'w') {
-                shape.ext.cx = val * EMU_PER_PIXEL;
+                shape.ext.cx = val;
             } else if (type === 'h') {
-                shape.ext.cy = val * EMU_PER_PIXEL;
+                shape.ext.cy = val;
             }
         }
     }
@@ -268,13 +274,7 @@ export class DiagramBuilder {
         }
 
         if (axis === 'ch') {
-            let ptLstNode;
-            if (context.nodeName === 'dgm:dataModel') {
-                ptLstNode = context.getElementsByTagNameNS(DIAGRAM_NS, 'ptLst')[0];
-            } else {
-                ptLstNode = Array.from(context.childNodes).find(n => n.nodeName === 'dgm:ptLst');
-            }
-
+            const ptLstNode = context.getElementsByTagNameNS(DIAGRAM_NS, 'ptLst')[0];
             if (ptLstNode) {
                 const children = Array.from(ptLstNode.childNodes).filter(n => n.nodeName === 'dgm:pt');
                 if (ptType) {
@@ -286,11 +286,10 @@ export class DiagramBuilder {
         }
 
         if (axis === 'self') {
-            if(context.nodeName === 'dgm:dataModel') {
+            if (context.nodeName === 'dgm:dataModel') {
                 const ptLst = context.getElementsByTagNameNS(DIAGRAM_NS, 'ptLst')[0];
-                if(ptLst) {
-                    const firstPt = Array.from(ptLst.childNodes).find(n => n.nodeName === 'dgm:pt');
-                    return firstPt ? [firstPt] : [];
+                if (ptLst) {
+                    return Array.from(ptLst.childNodes).filter(n => n.nodeName === 'dgm:pt');
                 }
                 return [];
             }

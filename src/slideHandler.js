@@ -30,64 +30,7 @@ import {
     PML_NS, DML_NS, CHART_NS, TABLE_NS, DIAGRAM_NS,
 } from 'constants';
 
-/**
- * @typedef {Object} Pos
- * @property {number} x
- * @property {number} y
- * @property {number} width
- * @property {number} height
- */
-
-/**
- * @typedef {Object} Geometry
- * @property {string} type
- * @property {string} preset
- * @property {Object} adjustments
- * @property {number} [adjustments.name]
- */
-
-
-/**
- * @typedef {Object} ShapeProps
- * @property {Geometry} geometry
- */
-
-/**
- * @typedef {Object} Shape
- * @property {string} type
- * @property {string|null} transform
- * @property {Pos} pos
- * @property {ShapeProps} shapeProps
- * @property {number} rot
- */
-
-/**
- * @class SlideHandler
- * @description Handles the parsing and rendering of a single slide
- */
 export class SlideHandler {
-    /**
-     * @description Creates an instance of SlideHandler.
-     * @param {Object} options - The options for the SlideHandler.
-     * @param {string} options.slideXml - The XML content of the slide.
-     * @param {string} options.slideContainer - The ID of the container element for the slide.
-     * @param {Object} options.masterPlaceholders - Placeholders from the slide master.
-     * @param {Object} options.layoutPlaceholders - Placeholders from the slide layout.
-     * @param {string} options.slideId - The unique ID for the slide.
-     * @param {number} options.slideNum - The slide number.
-     * @param {Object} options.slideSize - The dimensions of the slide.
-     * @param {Object} options.defaultTextStyles - The default text styles.
-     * @param {Object} options.tableStyles - The table styles.
-     * @param {string} options.defaultTableStyleId - The ID of the default table style.
-     * @param {Object} options.imageMap - A map of image relationship IDs to image data.
-     * @param {Object} options.slideContext - The context of the slide.
-     * @param {Object} options.finalBg - The final background of the slide.
-     * @param {boolean} options.showMasterShapes - Whether to show shapes from the master slide.
-     * @param {Element[]} options.masterStaticShapes - Static shapes from the master slide.
-     * @param {Element[]} options.layoutStaticShapes - Static shapes from the slide layout.
-     * @param {Object} options.slideRels - The slide relationships.
-     * @param {Object} options.entriesMap - A map of all presentation entries.
-     */
     constructor( {
         slideXml,
         slideContainer,
@@ -129,13 +72,19 @@ export class SlideHandler {
 
         this.svg = this.createSvg();
         this.renderer = new SvgRenderer( this.svg, this.slideContext );
+        this.shapeBuilder = new ShapeBuilder({
+            slide: this,
+            slideRels: this.slideRels,
+            presentation: this.presentation,
+        });
+        this.diagramBuilder = new DiagramBuilder({
+            shapeBuilder: this.shapeBuilder,
+            slideRels: this.slideRels,
+            entriesMap: this.entriesMap,
+        });
     }
 
-	/**
-	 * @description Creates the initial SVG container for slide rendering
-	 * @returns {SVGElement} The SVG container into which to render the slide's shapes
-	 */
-    createSvg() {
+	createSvg() {
         const SVG_NS = "http://www.w3.org/2000/svg";
         const svg = document.createElementNS(SVG_NS, 'svg');
         svg.setAttribute('viewBox', `0 0 ${this.slideSize.width} ${this.slideSize.height}`);
@@ -145,11 +94,6 @@ export class SlideHandler {
         return svg;
 	}
 
-	/**
-	 * @description Renders a new slide in the main slide container, replacing the previous slide.
-	 * @param {string} containerId - The DOM id of the element in which to place the new slide. The slide container must have an id.
-	 * @returns {SlideHandler} The current instance of the SlideHandler class.
-	 */
 	newSlideContainer( containerId ) {
 		this.slideContainer = containerId;
 		this.svg = this.createSvg();
@@ -157,11 +101,6 @@ export class SlideHandler {
 		return this;
 	}
 
-	/**
-	 * @description Receives an OOXML document containing PowerPoint slide definitions and parses its data into JavaScript data objects
-	 * @param {string} slideXml - The alternative OOXML slide if parsing is repeated done after the initial parsing step 
-	 * @returns {Promise<{ background: Object; shapes: Object[]; }>} The JavaScript object data of the parsed OOXML shapes and text
-	 */
     async parse( slideXml ) {
         const xmlDoc = parseXmlString( slideXml || this.slideXml, `slide number ${this.slideNum}`);
         const spTreeNode = xmlDoc.getElementsByTagNameNS(PML_NS, 'spTree')[0];
@@ -232,13 +171,6 @@ export class SlideHandler {
         };
     }
 
-	/**
-	 * @description Receives the slide data from the parsing step and renders it to the created SVG container.
-	 * @param {Object} slideData - The JavaScript object containing the OOXML shapes to be rendered to the SVG container
-	 * @param {Object} [slideData.background] - The slides background color definition -- can be a solid fill color, a gradient or none
-	 * @param {Object[]} [slideData.shapes] - An array of shapes to be rendered in hierarchical order from master, layout and the slide itself
-	 * @returns {Promise<void>}
-	 */
     async render(slideData) {
         const SVG_NS = "http://www.w3.org/2000/svg";
         const defs = document.createElementNS(SVG_NS, 'defs');
@@ -277,13 +209,6 @@ export class SlideHandler {
         await this.renderShapeTree(slideData.shapes);
     }
 
-	/**
-	 * @description Parses the data from the top-level tree of shapes to be rendered.
-	 * @param {Element[]} elements - The full list of elements to be parsed from the slide's shape tree.
-	 * @param {Matrix} parentMatrix - The matrix positioning data for the shape tree's SVG rendering logic.
-	 * @param {Object} slideLevelVisibility - An object indicating whether a shape is visible on this slide.
-	 * @returns {Promise<Object[]>} The list of shapes parsed from this tree.
-	 */
     async parseShapeTree(elements, parentMatrix, slideLevelVisibility) {
         const shapes = [];
         const listCounters = {}; // Reset for each shape tree (master, layout, slide)
@@ -315,7 +240,7 @@ export class SlideHandler {
                         }
                     }
                 } else if (graphicData?.getAttribute('uri') === DIAGRAM_NS) {
-                    shapeData = await this.parseDiagram(element, parentMatrix.clone());
+                    shapeData = await this.parseDiagram(element);
                 }
             } else if (tagName === 'pic') {
                 shapeData = await this.parsePicture(element, parentMatrix, slideLevelVisibility);
@@ -328,11 +253,6 @@ export class SlideHandler {
         return shapes;
     }
 
-	/**
-	 * @description Renders to the SVG container the list of shapes parsed in the shape tree parsing step
-	 * @param {Object[]} [shapes=[]] - A list of shape objects and their positioning matrix data parsed from the shape tree
-	 * @returns {Promise<void>}
-	 */
     async renderShapeTree(shapes = []) {
         for (const [index, shapeData] of shapes.entries()) {
             const id = `${this.slideId}.shapes.${index}`;
@@ -359,14 +279,6 @@ export class SlideHandler {
         };
     }
 
-	/**
-	 * @description Parses the data for a particular shape in the shape tree.
-	 * @param {Element} shapeNode - The shape's node from the OOXML document.
-	 * @param {Object} listCounters - The counters for determining the position of an element within a list of elements.
-	 * @param {Matrix} parentMatrix - Matrix data for the positioning of the shape's parent in the shape tree.
-	 * @param {Object} slideLevelVisibility - Whether a shape is visible on this particular slide, as distinct from its declaration in the layout or master.
-	 * @returns {Promise<Object|null>} A promise that resolves to the parsed shape data, or null if the shape is not visible.
-	 */
     async parseShape(shapeNode, listCounters, parentMatrix, slideLevelVisibility) {
         const nvSpPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'nvSpPr')[0];
         const cNvPrNode = nvSpPrNode?.getElementsByTagNameNS(PML_NS, 'cNvPr')[0];
@@ -468,12 +380,6 @@ export class SlideHandler {
         };
     }
 
-	/**
-	 * @description Renders a shape to the SVG container based on the parsed shape data.
-	 * @param {Object} shapeData - The parsed shape data.
-	 * @param {string} id - The unique ID for the shape element.
-	 * @returns {Promise<void>}
-	 */
     async renderShape(shapeData, id) {
         const matrix = new Matrix();
         if (shapeData.transform) {
@@ -499,14 +405,6 @@ export class SlideHandler {
         }
     }
 
-    /**
-     * @description Parses a group shape and its child shapes.
-     * @param {Element} groupNode - The group shape's node from the OOXML document.
-     * @param {Object} listCounters - The counters for list elements.
-     * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
-     * @param {Object} slideLevelVisibility - An object indicating shape visibility.
-     * @returns {Promise<Object|null>} A promise that resolves to the parsed group shape data, or null if the group is not visible.
-     */
     async parseGroupShape(groupNode, listCounters, parentMatrix, slideLevelVisibility) {
         if (slideLevelVisibility) {
             const placeholders = Array.from(groupNode.getElementsByTagNameNS(PML_NS, 'ph'));
@@ -564,24 +462,12 @@ export class SlideHandler {
         };
     }
 
-    /**
-     * @description Renders a group shape by rendering its child shapes.
-     * @param {Object} groupData - The parsed group shape data.
-     * @returns {Promise<void>}
-     */
     async renderGroupShape(groupData) {
         // In a flat rendering model, the group itself doesn't have a transform.
         // We just need to render its children, which have their own absolute transforms.
         await this.renderShapeTree(groupData.shapes);
     }
 
-    /**
-     * @description Parses a picture element.
-     * @param {Element} picNode - The picture element's node from the OOXML document.
-     * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
-     * @param {Object} slideLevelVisibility - An object indicating shape visibility.
-     * @returns {Promise<Object|null>} A promise that resolves to the parsed picture data, or null if the picture is not visible.
-     */
     async parsePicture(picNode, parentMatrix, slideLevelVisibility) {
         let localMatrix = new Matrix();
         let pos;
@@ -681,12 +567,6 @@ export class SlideHandler {
         };
     }
 
-    /**
-     * @description Renders a picture to the SVG container.
-     * @param {Object} picData - The parsed picture data.
-     * @param {string} id - The unique ID for the picture element.
-     * @returns {Promise<void>}
-     */
     async renderPicture(picData, id) {
         const matrix = new Matrix();
         if (picData.transform) {
@@ -763,12 +643,6 @@ export class SlideHandler {
         }
     }
 
-    /**
-     * @description Parses a table element.
-     * @param {Element} frameNode - The graphic frame node containing the table.
-     * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
-     * @returns {Promise<Object|null>} A promise that resolves to the parsed table data, or null if the table is invalid.
-     */
     async parseTable(frameNode, parentMatrix) {
         const xfrmNode = frameNode.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
         let pos = { x: 0, y: 0, width: 0, height: 0 };
@@ -835,12 +709,6 @@ export class SlideHandler {
         return { type: 'table', transform, pos, cells };
     }
 
-    /**
-     * @description Renders a table to the SVG container.
-     * @param {Object} tableData - The parsed table data.
-     * @param {string} id - The unique ID for the table element.
-     * @returns {Promise<void>}
-     */
     async renderTable(tableData, id) {
         const matrix = new Matrix();
         if (tableData.transform) {
@@ -884,13 +752,6 @@ export class SlideHandler {
         }
     }
 
-    /**
-     * @description Parses the text content of a table cell.
-     * @param {Element} cellNode - The table cell's node from the OOXML document.
-     * @param {Object} pos - The position and dimensions of the cell.
-     * @param {Object} tableTextStyle - The text style inherited from the table.
-     * @returns {Object|null} The parsed text data for the cell, or null if there is no text.
-     */
     parseCellText(cellNode, pos, tableTextStyle) {
         const txBodyNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
         if (!txBodyNode) return null;
@@ -919,20 +780,6 @@ export class SlideHandler {
         return this.parseParagraphs(txBodyNode, pos, null, 'body', listCounters, finalBodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders);
     }
 
-    /**
-     * @description Parses the paragraphs within a text body.
-     * @param {Element} txBody - The text body element.
-     * @param {Object} pos - The position and dimensions of the text box.
-     * @param {string} phKey - The placeholder key.
-     * @param {string} phType - The placeholder type.
-     * @param {Object} listCounters - The counters for list elements.
-     * @param {Object} bodyPr - The body properties.
-     * @param {Object} tableTextStyle - The text style inherited from a table.
-     * @param {Object} defaultTextStyles - The default text styles for the slide.
-     * @param {Object} masterPlaceholders - The placeholders from the slide master.
-     * @param {Object} layoutPlaceholders - The placeholders from the slide layout.
-     * @returns {Object|null} The parsed paragraph data, or null if there are no paragraphs.
-     */
     parseParagraphs(txBody, pos, phKey, phType, listCounters, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders) {
         const paragraphs = Array.from(txBody.getElementsByTagNameNS(DML_NS, 'p'));
         if (paragraphs.length === 0) return null;
@@ -945,12 +792,6 @@ export class SlideHandler {
         return { layout, bodyPr, pos };
     }
 
-    /**
-     * @description Renders the parsed paragraph data to the SVG container.
-     * @param {Object} textData - The parsed paragraph data.
-     * @param {string} id - The unique ID for the text group element.
-     * @returns {void}
-     */
     renderParagraphs(textData, id) {
         const { layout, bodyPr, pos } = textData;
         const paddedPos = {
@@ -1016,20 +857,6 @@ export class SlideHandler {
         this.renderer.currentGroup.appendChild(textGroup);
     }
 
-    /**
-     * @description Lays out paragraphs, calculating line breaks and positioning.
-     * @param {Element[]} paragraphs - The paragraph elements to lay out.
-     * @param {Object} pos - The position and dimensions of the text box.
-     * @param {string} phKey - The placeholder key.
-     * @param {string} phType - The placeholder type.
-     * @param {Object} bodyPr - The body properties.
-     * @param {Object} tableTextStyle - The text style inherited from a table.
-     * @param {Object} defaultTextStyles - The default text styles for the slide.
-     * @param {Object} masterPlaceholders - The placeholders from the slide master.
-     * @param {Object} layoutPlaceholders - The placeholders from the slide layout.
-     * @param {Object} listCounters - The counters for list elements.
-     * @returns {{totalHeight: number, lines: Array<Object>}} An object containing the total height and the laid-out lines.
-     */
     layoutParagraphs(paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters) {
         const paddedPos = {
             x: pos.x + (bodyPr.lIns || 0), y: pos.y + (bodyPr.tIns || 0),
@@ -1137,13 +964,6 @@ export class SlideHandler {
         return { totalHeight: currentY, lines };
     }
 
-    /**
-     * @description Parses a chart element.
-     * @param {Element} frameNode - The graphic frame node containing the chart.
-     * @param {string} chartXml - The XML content of the chart.
-     * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
-     * @returns {Promise<Object|null>} A promise that resolves to the parsed chart data, or null if the chart is invalid.
-     */
     async parseChart(frameNode, chartXml, parentMatrix) {
         const xfrmNode = frameNode.getElementsByTagNameNS(PML_NS, 'xfrm')[0];
         if (!xfrmNode) return null;
@@ -1165,12 +985,6 @@ export class SlideHandler {
         };
     }
 
-    /**
-     * @description Renders a chart to the SVG container using a canvas.
-     * @param {Object} chartData - The parsed chart data.
-     * @param {string} id - The unique ID for the chart element.
-     * @returns {Promise<void>}
-     */
     async renderChart(chartData, id) {
         const { pos, chartData: data } = chartData;
         const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
@@ -1206,19 +1020,8 @@ export class SlideHandler {
         });
     }
 
-    /**
-     * @description Parses a diagram from a graphic frame.
-     * @param {Element} frameNode - The graphic frame node containing the diagram.
-     * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
-     * @returns {Promise<Object|null>} A promise that resolves to the parsed diagram data, or null if invalid.
-     */
     async parseDiagram(frameNode, parentMatrix) {
-        const diagramBuilder = new DiagramBuilder({
-            shapeBuilder: new ShapeBuilder(this.renderer, this.slideContext),
-            slideRels: this.slideRels,
-            entriesMap: this.entriesMap,
-        });
-        const shapes = await diagramBuilder.build(frameNode, parentMatrix);
+        const shapes = await this.diagramBuilder.build(frameNode, parentMatrix);
 
         if (!shapes || shapes.length === 0) {
             return null;
@@ -1230,12 +1033,6 @@ export class SlideHandler {
         };
     }
 
-    /**
-     * Renders a diagram to the SVG container.
-     * @param {Object} diagramData - The parsed diagram data.
-     * @param {string} id - The unique ID for the diagram element.
-     * @returns {Promise<void>}
-     */
     async renderDiagram(diagramData, id) {
         const diagramGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         diagramGroup.setAttribute('id', id);
