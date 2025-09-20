@@ -20,6 +20,7 @@ import {
     getNormalizedXmlString,
     parseExtensions,
     DiagramBuilder,
+    getText,
 } from 'utils';
 import {
     EMU_PER_PIXEL,
@@ -1092,10 +1093,10 @@ export class SlideHandler {
                     if (rPr.getAttribute('sz')) runProps.size = (parseInt(rPr.getAttribute('sz')) / 100) * PT_TO_PX;
                     if (rPr.getAttribute('b') === '1') runProps.bold = true; else if (rPr.getAttribute('b') === '0') runProps.bold = false;
                     if (rPr.getAttribute('i') === '1') runProps.italic = true; else if (rPr.getAttribute('i') === '0') runProps.italic = false;
-                    const solidFill = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                    if (solidFill) runProps.color = ColorParser.parseColor(solidFill);
-                    const latinFont = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
-                    if (latinFont?.getAttribute('typeface')) runProps.font = latinFont.getAttribute('typeface');
+                    const solidFillNode = rPr.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                    if (solidFillNode) runProps.color = ColorParser.parseColor(solidFillNode);
+                    const latinFontNode = rPr.getElementsByTagNameNS(DML_NS, 'latin')[0];
+                    if (latinFontNode?.getAttribute('typeface')) runProps.font = latinFontNode.getAttribute('typeface');
                 }
 
                 let fontSize = runProps.size || (18 * PT_TO_PX);
@@ -1213,7 +1214,7 @@ export class SlideHandler {
      * @returns {Promise<Object|null>} A promise that resolves to the parsed diagram data, or null if invalid.
      */
     async parseDiagram(frameNode, parentMatrix) {
-        const diagramBuilder = new DiagramBuilder(new ShapeBuilder(this.renderer, this.slideContext), this.slideContext);
+        const diagramBuilder = new DiagramBuilder(new ShapeBuilder(this.renderer, this.slideContext), this.slideContext, this.slideRels);
         const shapes = await diagramBuilder.build(frameNode, parentMatrix);
 
         if (!shapes || shapes.length === 0) {
