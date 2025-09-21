@@ -12,7 +12,7 @@ export class DiagramBuilder {
         this.entriesMap = entriesMap;
     }
 
-    async build( frameNode ) {
+    async build( frameNode, parentMatrix ) {
         const graphicData = frameNode.getElementsByTagNameNS( DML_NS, 'graphicData' )[ 0 ];
         const diagramRelIds = graphicData.getElementsByTagNameNS( DIAGRAM_NS, 'relIds' )[ 0 ];
 
@@ -26,6 +26,29 @@ export class DiagramBuilder {
         const styleXml = styleRelId ? await getNormalizedXmlString( this.entriesMap, resolvePath( 'ppt/slides', this.slideRels[ styleRelId ].target ) ) : null;
         const colorsXml = colorRelId ? await getNormalizedXmlString( this.entriesMap, resolvePath( 'ppt/slides', this.slideRels[ colorRelId ].target ) ) : null;
 
+        const xfrmNode = frameNode.getElementsByTagNameNS( PML_NS, 'xfrm' )[ 0 ];
+        const localMatrix = new Matrix();
+        if ( xfrmNode ) {
+            const offNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
+            const extNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
+            if ( offNode && extNode ) {
+                const x = parseInt( offNode.getAttribute( "x" ) ) / EMU_PER_PIXEL;
+                const y = parseInt( offNode.getAttribute( "y" ) ) / EMU_PER_PIXEL;
+                const w = parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL;
+                const h = parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL;
+                const rot = parseInt( xfrmNode.getAttribute( 'rot' ) || '0' ) / 60000;
+                const flipH = xfrmNode.getAttribute( 'flipH' ) === '1';
+                const flipV = xfrmNode.getAttribute( 'flipV' ) === '1';
+
+                localMatrix.translate( x, y );
+                localMatrix.translate( w / 2, h / 2 );
+                localMatrix.rotate( rot * Math.PI / 180 );
+                localMatrix.scale( flipH ? -1 : 1, flipV ? -1 : 1 );
+                localMatrix.translate( -w / 2, -h / 2 );
+            }
+        }
+        const diagramMatrix = parentMatrix.clone().multiply( localMatrix );
+
         this.layoutDoc = parseXmlString( layoutXml );
         this.dataDoc = parseXmlString( dataXml );
         this.colorsDoc = colorsXml ? parseXmlString( colorsXml ) : null;
@@ -37,13 +60,13 @@ export class DiagramBuilder {
         if ( drawingRelId && this.slideRels[ drawingRelId ] ) {
             const drawingXml = await getNormalizedXmlString( this.entriesMap, resolvePath( 'ppt/slides', this.slideRels[ drawingRelId ].target ) );
             this.drawingDoc = parseXmlString( drawingXml );
-            return this.#buildDrawingDiagram();
+            return this.#buildDrawingDiagram( diagramMatrix );
         } else {
             return this.#buildLayoutDiagram();
         }
     }
 
-    #buildDrawingDiagram() {
+    #buildDrawingDiagram( parentMatrix ) {
         const dspSpTree = this.drawingDoc.getElementsByTagNameNS( DSP_NS, 'spTree' )[ 0 ];
         if ( !dspSpTree ) return [];
 
@@ -55,7 +78,8 @@ export class DiagramBuilder {
             const shapePt = allDataPts.find( pt => pt.getAttribute( 'modelId' ) === modelId );
             const dataPt = this.#findDataPoint( modelId, allDataPts );
 
-            const { pos, transform, flipH, flipV, rot } = this.shapeBuilder.getShapeProperties( dspShape, new Matrix(), DSP_NS );
+            const localMatrix = new Matrix();
+            const { pos, transform, flipH, flipV, rot } = this.shapeBuilder.getShapeProperties( dspShape, parentMatrix.clone().multiply( localMatrix ), DSP_NS );
             const shapeProps = parseShapeProperties( dspShape, this.slide.slideContext, this.slide.slideNum, DSP_NS );
 
             const shape = {
@@ -63,16 +87,36 @@ export class DiagramBuilder {
                 transform,
                 pos,
                 shapeProps,
-                flipH,
-                flipV,
-                rot,
+                flipH, flipV, rot
             };
 
+            const txXfrmNode = dspShape.getElementsByTagNameNS( DSP_NS, 'txXfrm' )[ 0 ];
+            let textPos = pos;
+
+            // if ( txXfrmNode ) {
+            //     const offNode = txXfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
+            //     const extNode = txXfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
+
+            //     if ( offNode && extNode ) {
+            //         const textMatrix = new Matrix();
+            //         textMatrix.translate( parseInt( offNode.getAttribute( "x" ) ), parseInt( offNode.getAttribute( "y" ) ) );
+
+            //         textPos = {
+            //             x: textMatrix.m[ 4 ] / EMU_PER_PIXEL,
+            //             y: textMatrix.m[ 5 ] / EMU_PER_PIXEL,
+            //             width: parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL,
+            //             height: parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL,
+            //         };
+            //     }
+            // }
+
             if ( dataPt ) {
-                const text = this.#getText( dataPt, pos );
+                const text = this.#getText( dataPt, textPos );
                 if ( text ) {
                     console.log( { text, dataPt } );
                     shape.text = text;
+
+
                 }
             }
 
