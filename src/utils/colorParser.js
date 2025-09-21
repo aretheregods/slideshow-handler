@@ -178,7 +178,20 @@ export class ColorParser {
     static parseColor(colorNode) {
         if (!colorNode) return null;
 
-        const srgbClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+        let srgbClrNode, schemeClrNode, prstClrNode;
+
+        if (colorNode.localName === 'srgbClr') {
+            srgbClrNode = colorNode;
+        } else if (colorNode.localName === 'schemeClr') {
+            schemeClrNode = colorNode;
+        } else if (colorNode.localName === 'prstClr') {
+            prstClrNode = colorNode;
+        } else {
+            srgbClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'srgbClr')[0];
+            schemeClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+            prstClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'prstClr')[0];
+        }
+
         if (srgbClrNode) {
             const color = { srgb: `#${srgbClrNode.getAttribute('val')}` };
             const alphaNode = srgbClrNode.getElementsByTagNameNS(DML_NS, 'alpha')[0];
@@ -186,7 +199,6 @@ export class ColorParser {
             return color;
         }
 
-        const schemeClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
         if (schemeClrNode) {
             const color = { scheme: schemeClrNode.getAttribute('val') };
             const tintNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'tint')[0];
@@ -210,7 +222,6 @@ export class ColorParser {
             return color;
         }
 
-        const prstClrNode = colorNode.getElementsByTagNameNS(DML_NS, 'prstClr')[0];
         if (prstClrNode) {
             const color = { prst: prstClrNode.getAttribute('val') };
             // Preset colors can also have transformations, although it's less common.

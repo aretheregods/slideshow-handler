@@ -1,4 +1,4 @@
-import { DML_NS, PML_NS } from 'constants';
+import { DML_NS, DSP_NS, EMU_PER_PIXEL, PML_NS } from 'constants';
 import { findPlaceholder, Matrix } from 'utils';
 
 /**
@@ -16,14 +16,15 @@ export class ShapeBuilder {
      * @param {number} emuPerPixel - The conversion factor from EMUs to pixels.
      * @param {Object} slideSize - The dimensions of the slide.
      */
-    constructor(renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, emuPerPixel, slideSize) {
+    constructor( renderer, slideContext, imageMap, masterPlaceholders, layoutPlaceholders, emuPerPixel, slideSize ) {
         this.renderer = renderer;
         this.slideContext = slideContext;
         this.imageMap = imageMap;
         this.masterPlaceholders = masterPlaceholders;
         this.layoutPlaceholders = layoutPlaceholders;
-        this.emuPerPixel = emuPerPixel;
+        this.emuPerPixel = emuPerPixel || EMU_PER_PIXEL;
         this.slideSize = slideSize;
+        this.namespace = PML_NS;
     }
 
     /**
@@ -32,13 +33,13 @@ export class ShapeBuilder {
      * @param {Matrix} parentMatrix - The transformation matrix of the parent element.
      * @returns {{pos: Object, transform: string, flipH: boolean, flipV: boolean}} The shape's properties.
      */
-    getShapeProperties(shapeNode, parentMatrix) {
-        const { phKey, phType } = this.#shapeAttr(shapeNode);
-        const { pos, localMatrix, flipH, flipV, rot } = this.#localMatrix(phKey, phType, shapeNode);
-        if (!pos) return { pos: null, transform: null };
+    getShapeProperties( shapeNode, parentMatrix, ns = PML_NS ) {
+        const { phKey, phType } = this.shapeAttr( shapeNode, ns );
+        const { pos, localMatrix, flipH, flipV, rot } = this.localMatrix( phKey, phType, shapeNode );
+        if ( !pos ) return { pos: null, transform: null };
 
-        const finalMatrix = parentMatrix.clone().multiply(localMatrix);
-        const transform = `matrix(${finalMatrix.m.join(' ')})`;
+        const finalMatrix = parentMatrix.clone().multiply( localMatrix );
+        const transform = `matrix(${ finalMatrix.m.join( ' ' ) })`;
 
         return { pos, transform, flipH, flipV, rot };
     }
@@ -51,36 +52,36 @@ export class ShapeBuilder {
      * @param {boolean} flipH - A flag indicating if the shape is flipped horizontally.
      * @param {boolean} flipV - A flag indicating if the shape is flipped vertically.
      */
-    renderShape(pos, shapeProps, matrix, flipH, flipV) {
+    renderShape( pos, shapeProps, matrix, flipH, flipV ) {
         const txBody = shapeProps.txBody; // Assuming txBody is passed in shapeProps if needed
 
-        if (shapeProps && shapeProps.geometry) {
-             const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
-             switch (geomType) {
+        if ( shapeProps && shapeProps.geometry ) {
+            const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
+            switch ( geomType ) {
                 case 'rect':
-                    this.renderer.drawRect(0, 0, pos.width, pos.height, {
+                    this.renderer.drawRect( 0, 0, pos.width, pos.height, {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                    });
+                    } );
                     break;
                 case 'ellipse':
-                    this.renderer.drawEllipse(pos.width / 2, pos.height / 2, pos.width / 2, pos.height / 2, {
+                    this.renderer.drawEllipse( pos.width / 2, pos.height / 2, pos.width / 2, pos.height / 2, {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                    });
+                    } );
                     break;
                 case 'line':
                     const m = matrix.m;
-                    const sx = Math.sqrt(m[0] * m[0] + m[1] * m[1]);
-                    const sy = Math.sqrt(m[2] * m[2] + m[3] * m[3]);
+                    const sx = Math.sqrt( m[ 0 ] * m[ 0 ] + m[ 1 ] * m[ 1 ] );
+                    const sy = Math.sqrt( m[ 2 ] * m[ 2 ] + m[ 3 ] * m[ 3 ] );
 
                     const noScaleMatrix = matrix.clone();
-                    if (sx !== 0 && sy !== 0) {
-                        noScaleMatrix.scale(1 / sx, 1 / sy);
+                    if ( sx !== 0 && sy !== 0 ) {
+                        noScaleMatrix.scale( 1 / sx, 1 / sy );
                     }
 
                     const scaledWidth = pos.width * sx;
@@ -89,11 +90,11 @@ export class ShapeBuilder {
                     const originalGroup = this.renderer.currentGroup;
                     this.renderer.currentGroup = this.renderer.svg;
 
-                    this.renderer.setTransform(noScaleMatrix);
-                    this.renderer.drawLine(0, 0, scaledWidth, scaledHeight, {
+                    this.renderer.setTransform( noScaleMatrix );
+                    this.renderer.drawLine( 0, 0, scaledWidth, scaledHeight, {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
-                    });
+                    } );
 
                     this.renderer.currentGroup = originalGroup;
                     break;
@@ -101,10 +102,10 @@ export class ShapeBuilder {
                     const arcAdj = shapeProps.geometry.adjustments;
                     let arcStartAngle, arcSweepAngle;
 
-                    if (arcAdj?.adj1 !== undefined && arcAdj?.adj2 !== undefined) {
+                    if ( arcAdj?.adj1 !== undefined && arcAdj?.adj2 !== undefined ) {
                         const startAngleFromXml = arcAdj.adj1 / 60000;
                         const endAngleFromXml = arcAdj.adj2 / 60000;
-                        arcSweepAngle = (endAngleFromXml - startAngleFromXml) / 2;
+                        arcSweepAngle = ( endAngleFromXml - startAngleFromXml ) / 2;
                         arcStartAngle = startAngleFromXml - 60;
                     } else {
                         arcStartAngle = 90;
@@ -117,56 +118,56 @@ export class ShapeBuilder {
                     const arcRadiusX = pos.width / 2;
                     const arcRadiusY = pos.height / 2;
 
-                    const arcStart = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
-                    const arcEnd = this.polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+                    const arcStart = this.polarToCartesian( arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle );
+                    const arcEnd = this.polarToCartesian( arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle );
 
-                    const arcLargeArcFlag = Math.abs(arcSweepAngle) <= 180 ? "0" : "1";
+                    const arcLargeArcFlag = Math.abs( arcSweepAngle ) <= 180 ? "0" : "1";
                     let arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
-                    if (flipH ^ flipV) {
+                    if ( flipH ^ flipV ) {
                         arcSweepFlag = arcSweepFlag === "0" ? "0" : "1";
                     }
 
                     const arcPath = [
                         "M", arcStart.x, arcStart.y,
                         "A", arcRadiusX, arcRadiusY, 0, arcLargeArcFlag, arcSweepFlag, arcEnd.x, arcEnd.y,
-                    ].join(" ");
+                    ].join( " " );
 
-                    this.renderer.drawPath(arcPath, {
+                    this.renderer.drawPath( arcPath, {
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                    });
+                    } );
                     break;
                 case 'custom':
-                    if (shapeProps.geometry.path) {
+                    if ( shapeProps.geometry.path ) {
                         const pathData = shapeProps.geometry.path;
                         const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
                         const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
 
                         let pathString = '';
-                        pathData.commands.forEach(command => {
-                            switch (command.cmd) {
+                        pathData.commands.forEach( command => {
+                            switch ( command.cmd ) {
                                 case 'moveTo': {
-                                    const p = command.points[0];
-                                    pathString += `M ${p.x * scaleX} ${p.y * scaleY} `;
+                                    const p = command.points[ 0 ];
+                                    pathString += `M ${ p.x * scaleX } ${ p.y * scaleY } `;
                                     break;
                                 }
                                 case 'lnTo': {
-                                    const p = command.points[0];
-                                    pathString += `L ${p.x * scaleX} ${p.y * scaleY} `;
+                                    const p = command.points[ 0 ];
+                                    pathString += `L ${ p.x * scaleX } ${ p.y * scaleY } `;
                                     break;
                                 }
                                 case 'cubicBezTo': {
-                                    const p1 = command.points[0];
-                                    const p2 = command.points[1];
-                                    const p3 = command.points[2];
-                                    pathString += `C ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} ${p3.x * scaleX} ${p3.y * scaleY} `;
+                                    const p1 = command.points[ 0 ];
+                                    const p2 = command.points[ 1 ];
+                                    const p3 = command.points[ 2 ];
+                                    pathString += `C ${ p1.x * scaleX } ${ p1.y * scaleY } ${ p2.x * scaleX } ${ p2.y * scaleY } ${ p3.x * scaleX } ${ p3.y * scaleY } `;
                                     break;
                                 }
                                 case 'quadBezTo': {
-                                    const p1 = command.points[0];
-                                    const p2 = command.points[1];
-                                    pathString += `Q ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} `;
+                                    const p1 = command.points[ 0 ];
+                                    const p2 = command.points[ 1 ];
+                                    pathString += `Q ${ p1.x * scaleX } ${ p1.y * scaleY } ${ p2.x * scaleX } ${ p2.y * scaleY } `;
                                     break;
                                 }
                                 case 'close': {
@@ -174,13 +175,13 @@ export class ShapeBuilder {
                                     break;
                                 }
                             }
-                        });
-                        this.renderer.drawPath(pathString, {
+                        } );
+                        this.renderer.drawPath( pathString, {
                             fill: shapeProps.fill,
                             stroke: shapeProps.stroke,
                             effect: shapeProps.effect,
                             pos,
-                        });
+                        } );
                     }
                     break;
                 case 'blockArc':
@@ -199,13 +200,13 @@ export class ShapeBuilder {
                     const outerRadiusY = pos.height / 2;
 
                     const innerRadiusRatio = adj3 / 100000;
-                    const innerRadiusX = outerRadiusX * (1 - innerRadiusRatio);
-                    const innerRadiusY = outerRadiusY * (1 - innerRadiusRatio);
+                    const innerRadiusX = outerRadiusX * ( 1 - innerRadiusRatio );
+                    const innerRadiusY = outerRadiusY * ( 1 - innerRadiusRatio );
 
-                    const outerStart = this.polarToCartesian(centerX, centerY, outerRadiusX, outerRadiusY, startAngle);
-                    const outerEnd = this.polarToCartesian(centerX, centerY, outerRadiusX, outerRadiusY, endAngle);
-                    const innerStart = this.polarToCartesian(centerX, centerY, innerRadiusX, innerRadiusY, startAngle);
-                    const innerEnd = this.polarToCartesian(centerX, centerY, innerRadiusX, innerRadiusY, endAngle);
+                    const outerStart = this.polarToCartesian( centerX, centerY, outerRadiusX, outerRadiusY, startAngle );
+                    const outerEnd = this.polarToCartesian( centerX, centerY, outerRadiusX, outerRadiusY, endAngle );
+                    const innerStart = this.polarToCartesian( centerX, centerY, innerRadiusX, innerRadiusY, startAngle );
+                    const innerEnd = this.polarToCartesian( centerX, centerY, innerRadiusX, innerRadiusY, endAngle );
 
                     const largeArcFlag = sweepAngle <= 180 ? "0" : "1";
 
@@ -215,19 +216,19 @@ export class ShapeBuilder {
                         "L", innerEnd.x, innerEnd.y,
                         "A", innerRadiusX, innerRadiusY, 0, largeArcFlag, 0, innerStart.x, innerStart.y,
                         "Z"
-                    ].join(" ");
+                    ].join( " " );
 
-                    this.renderer.drawPath(path, {
+                    this.renderer.drawPath( path, {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                    });
+                    } );
                     break;
                 case 'roundRect':
                     const adj_roundRect = shapeProps.geometry.adjustments?.adj !== undefined ? shapeProps.geometry.adjustments.adj : 16667;
                     const cornerRadiusRatio = adj_roundRect / 100000;
-                    const cornerRadius = ((pos.width + pos.height) / 2) * cornerRadiusRatio;
+                    const cornerRadius = ( ( pos.width + pos.height ) / 2 ) * cornerRadiusRatio;
 
                     const path_roundRect = [
                         "M", cornerRadius, 0,
@@ -240,14 +241,46 @@ export class ShapeBuilder {
                         "L", 0, cornerRadius,
                         "A", cornerRadius, cornerRadius, 0, 0, 1, cornerRadius, 0,
                         "Z"
-                    ].join(" ");
+                    ].join( " " );
 
-                    this.renderer.drawPath(path_roundRect, {
+                    this.renderer.drawPath( path_roundRect, {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                    });
+                    } );
+                    break;
+                case 'corner':
+                    const adj1_corner = shapeProps.geometry.adjustments?.adj1 !== undefined ? shapeProps.geometry.adjustments.adj1 : 50000;
+                    const adj2_corner = shapeProps.geometry.adjustments?.adj2 !== undefined ? shapeProps.geometry.adjustments.adj2 : 50000;
+                    const adj1Ratio = adj1_corner / 100000;
+                    const adj2Ratio = adj2_corner / 100000;
+                    this.renderer.drawCorner( 0, 0, pos.width, pos.height, adj1Ratio, adj2Ratio, {
+                        fill: shapeProps.fill,
+                        stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
+                        pos,
+                    } );
+                    break;
+                case 'chevron':
+                    const adj_chevron = shapeProps.geometry.adjustments?.adj !== undefined ? shapeProps.geometry.adjustments.adj : 50000;
+                    var adjRatio = adj_chevron / 100000;
+                    this.renderer.drawChevron( 0, 0, pos.width, pos.height, adjRatio, {
+                        fill: shapeProps.fill,
+                        stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
+                        pos,
+                    } );
+                    break;
+                case 'homePlate':
+                    const adj_homePlate = shapeProps.geometry.adjustments?.adj !== undefined ? shapeProps.geometry.adjustments.adj : 50000;
+                    var adjRatio = adj_homePlate / 100000;
+                    this.renderer.drawHomePlate( 0, 0, pos.width, pos.height, adjRatio, {
+                        fill: shapeProps.fill,
+                        stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
+                        pos,
+                    } );
                     break;
                 case 'round1Rect':
                 case 'round2SameRect':
@@ -258,45 +291,45 @@ export class ShapeBuilder {
                 case 'snipRoundRect':
                     const adj1_multi = shapeProps.geometry.adjustments?.adj1 !== undefined ? shapeProps.geometry.adjustments.adj1 : 16667;
                     const adj2_multi = shapeProps.geometry.adjustments?.adj2 !== undefined ? shapeProps.geometry.adjustments.adj2 : 16667;
-                    const cornerRadius1 = Math.min(pos.width, pos.height) * (adj1_multi / 100000);
-                    const cornerRadius2 = Math.min(pos.width, pos.height) * (adj2_multi / 100000);
+                    const cornerRadius1 = Math.min( pos.width, pos.height ) * ( adj1_multi / 100000 );
+                    const cornerRadius2 = Math.min( pos.width, pos.height ) * ( adj2_multi / 100000 );
 
                     let path_multi;
-                    switch(geomType) {
+                    switch ( geomType ) {
                         case 'round1Rect':
-                            path_multi = `M 0 ${cornerRadius1} A ${cornerRadius1} ${cornerRadius1} 0 0 1 ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L 0 ${pos.height} Z`;
+                            path_multi = `M 0 ${ cornerRadius1 } A ${ cornerRadius1 } ${ cornerRadius1 } 0 0 1 ${ cornerRadius1 } 0 L ${ pos.width } 0 L ${ pos.width } ${ pos.height } L 0 ${ pos.height } Z`;
                             break;
                         case 'round2SameRect':
-                            path_multi = `M 0 ${cornerRadius1} A ${cornerRadius1} ${cornerRadius1} 0 0 1 ${cornerRadius1} 0 L ${pos.width - cornerRadius2} 0 A ${cornerRadius2} ${cornerRadius2} 0 0 1 ${pos.width} ${cornerRadius2} L ${pos.width} ${pos.height} L 0 ${pos.height} Z`;
+                            path_multi = `M 0 ${ cornerRadius1 } A ${ cornerRadius1 } ${ cornerRadius1 } 0 0 1 ${ cornerRadius1 } 0 L ${ pos.width - cornerRadius2 } 0 A ${ cornerRadius2 } ${ cornerRadius2 } 0 0 1 ${ pos.width } ${ cornerRadius2 } L ${ pos.width } ${ pos.height } L 0 ${ pos.height } Z`;
                             break;
                         case 'round2DiagRect':
-                            path_multi = `M 0 ${cornerRadius1} A ${cornerRadius1} ${cornerRadius1} 0 0 1 ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height - cornerRadius2} A ${cornerRadius2} ${cornerRadius2} 0 0 1 ${pos.width - cornerRadius2} ${pos.height} L 0 ${pos.height} Z`;
+                            path_multi = `M 0 ${ cornerRadius1 } A ${ cornerRadius1 } ${ cornerRadius1 } 0 0 1 ${ cornerRadius1 } 0 L ${ pos.width } 0 L ${ pos.width } ${ pos.height - cornerRadius2 } A ${ cornerRadius2 } ${ cornerRadius2 } 0 0 1 ${ pos.width - cornerRadius2 } ${ pos.height } L 0 ${ pos.height } Z`;
                             break;
                         case 'snip1Rect':
-                            path_multi = `M ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L 0 ${pos.height} L 0 ${cornerRadius1} Z`;
+                            path_multi = `M ${ cornerRadius1 } 0 L ${ pos.width } 0 L ${ pos.width } ${ pos.height } L 0 ${ pos.height } L 0 ${ cornerRadius1 } Z`;
                             break;
                         case 'snip2SameRect':
-                            path_multi = `M ${cornerRadius1} 0 L ${pos.width - cornerRadius2} 0 L ${pos.width} ${cornerRadius2} L ${pos.width} ${pos.height} L 0 ${pos.height} L 0 ${cornerRadius1} Z`;
+                            path_multi = `M ${ cornerRadius1 } 0 L ${ pos.width - cornerRadius2 } 0 L ${ pos.width } ${ cornerRadius2 } L ${ pos.width } ${ pos.height } L 0 ${ pos.height } L 0 ${ cornerRadius1 } Z`;
                             break;
                         case 'snip2DiagRect':
-                            path_multi = `M ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height - cornerRadius2} L ${pos.width - cornerRadius2} ${pos.height} L 0 ${pos.height} L 0 ${cornerRadius1} Z`;
+                            path_multi = `M ${ cornerRadius1 } 0 L ${ pos.width } 0 L ${ pos.width } ${ pos.height - cornerRadius2 } L ${ pos.width - cornerRadius2 } ${ pos.height } L 0 ${ pos.height } L 0 ${ cornerRadius1 } Z`;
                             break;
                         case 'snipRoundRect':
-                            path_multi = `M ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L ${cornerRadius2} ${pos.height} A ${cornerRadius2} ${cornerRadius2} 0 0 1 0 ${pos.height - cornerRadius2} L 0 ${cornerRadius1} Z`;
+                            path_multi = `M ${ cornerRadius1 } 0 L ${ pos.width } 0 L ${ pos.width } ${ pos.height } L ${ cornerRadius2 } ${ pos.height } A ${ cornerRadius2 } ${ cornerRadius2 } 0 0 1 0 ${ pos.height - cornerRadius2 } L 0 ${ cornerRadius1 } Z`;
                             break;
                     }
 
-                    this.renderer.drawPath(path_multi, {
+                    this.renderer.drawPath( path_multi, {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
-                    });
+                    } );
                     break;
-             }
-        } else if (txBody) {
+            }
+        } else if ( txBody ) {
             // This is a shapeless textbox. Create a transparent rectangle to host the text.
-            this.renderer.drawRect(0, 0, pos.width, pos.height, { fill: 'transparent', effect: shapeProps.effect });
+            this.renderer.drawRect( 0, 0, pos.width, pos.height, { fill: 'transparent', effect: shapeProps.effect } );
         }
     }
 
@@ -307,18 +340,18 @@ export class ShapeBuilder {
      * @returns {{phKey: string, phType: string, shapeName: string}} The extracted attributes.
      * @private
      */
-    #shapeAttr( shapeNode ) {
-        const nvSpPrNode = shapeNode.getElementsByTagNameNS( PML_NS, 'nvSpPr' )[ 0 ];
+    shapeAttr( shapeNode, ns ) {
+        const nvSpPrNode = shapeNode.getElementsByTagNameNS( ns, 'nvSpPr' )[ 0 ];
         let phKey = null, phType = null, shapeName = 'Unknown';
         if ( nvSpPrNode ) {
-            const cNvPrNode = nvSpPrNode.getElementsByTagNameNS( PML_NS, 'cNvPr' )[ 0 ];
+            const cNvPrNode = nvSpPrNode.getElementsByTagNameNS( ns, 'cNvPr' )[ 0 ];
             if ( cNvPrNode ) {
                 shapeName = cNvPrNode.getAttribute( 'name' );
             }
 
-            const nvPrNode = nvSpPrNode.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ];
+            const nvPrNode = nvSpPrNode.getElementsByTagNameNS( ns, 'nvPr' )[ 0 ];
             if ( nvPrNode ) {
-                const placeholder = nvPrNode.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ];
+                const placeholder = nvPrNode.getElementsByTagNameNS( ns, 'ph' )[ 0 ];
                 if ( placeholder ) {
                     phType = placeholder.getAttribute( 'type' );
                     const phIdx = placeholder.getAttribute( 'idx' );
@@ -341,7 +374,7 @@ export class ShapeBuilder {
      * @returns {{pos: Object, localMatrix: Matrix, flipH: boolean, flipV: boolean}} The local matrix and related properties.
      * @private
      */
-    #localMatrix( phKey, phType, shapeNode ) {
+    localMatrix( phKey, phType, shapeNode ) {
         let localMatrix = new Matrix();
         let pos;
         let flipH = false, flipV = false, rot = 0;
@@ -410,11 +443,11 @@ export class ShapeBuilder {
      * @param {number} angleInDegrees - The angle in degrees.
      * @returns {{x: number, y: number}} The Cartesian coordinates.
      */
-    polarToCartesian(centerX, centerY, radiusX, radiusY, angleInDegrees) {
-        const angleInRadians = (angleInDegrees - 180) * Math.PI / 180.0;
+    polarToCartesian( centerX, centerY, radiusX, radiusY, angleInDegrees ) {
+        const angleInRadians = ( angleInDegrees - 180 ) * Math.PI / 180.0;
         return {
-            x: centerX + (radiusX * Math.cos(angleInRadians)),
-            y: centerY + (radiusY * Math.sin(angleInRadians))
+            x: centerX + ( radiusX * Math.cos( angleInRadians ) ),
+            y: centerY + ( radiusY * Math.sin( angleInRadians ) )
         };
     }
 
@@ -427,11 +460,11 @@ export class ShapeBuilder {
      * @param {number} angleInDegrees - The angle in degrees.
      * @returns {{x: number, y: number}} The Cartesian coordinates.
      */
-    polarToCartesianForArc(centerX, centerY, radiusX, radiusY, angleInDegrees) {
+    polarToCartesianForArc( centerX, centerY, radiusX, radiusY, angleInDegrees ) {
         const angleInRadians = angleInDegrees * Math.PI / 180.0;
         return {
-            x: centerX - (radiusX * Math.cos(angleInRadians)),
-            y: centerY - (radiusY * Math.sin(angleInRadians))
+            x: centerX - ( radiusX * Math.cos( angleInRadians ) ),
+            y: centerY - ( radiusY * Math.sin( angleInRadians ) )
         };
     }
 
