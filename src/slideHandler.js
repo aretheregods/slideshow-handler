@@ -242,7 +242,7 @@ export class SlideHandler {
                         }
                     }
                 } else if ( graphicData?.getAttribute( 'uri' ) === DIAGRAM_NS ) {
-                    shapeData = await this.parseDiagram( element );
+                    shapeData = await this.parseDiagram( element, parentMatrix );
                 }
             } else if ( tagName === 'pic' ) {
                 shapeData = await this.parsePicture( element, parentMatrix, slideLevelVisibility );
