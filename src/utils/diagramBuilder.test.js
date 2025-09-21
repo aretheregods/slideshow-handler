@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DiagramBuilder } from './diagramBuilder.js';
 import { ShapeBuilder } from './shapeBuilder.js';
 import { EMU_PER_PIXEL } from '../constants.js';
-import { parseXmlString, getNormalizedXmlString } from 'utils';
+import { parseXmlString, getNormalizedXmlString, Matrix } from 'utils';
 
 vi.mock('./shapeBuilder.js', () => {
     return {
@@ -46,10 +46,15 @@ vi.mock('utils', async () => {
 });
 
 describe('DiagramBuilder', () => {
-    let shapeBuilder;
+    let shapeBuilder, slideHandler;
 
     beforeEach(() => {
         shapeBuilder = new ShapeBuilder({});
+        slideHandler = {
+            parseParagraphs: vi.fn().mockReturnValue({
+                layout: { lines: ['mock line'] },
+            }),
+        };
     });
 
     const createFrameNode = (relIds) => {
@@ -105,8 +110,8 @@ describe('DiagramBuilder', () => {
             'rId4': {target: 'colors1.xml'},
             'rId6': {target: 'drawing1.xml'}
         };
-        const builder = new DiagramBuilder({ shapeBuilder, slideRels, entriesMap: new Map(), slide: { slideContext: {}, slideNum: 1 } });
-        const shapes = await builder.build(frameNode, null);
+        const builder = new DiagramBuilder({ slideHandler, shapeBuilder, slideRels, entriesMap: new Map(), slide: { slideContext: {}, slideNum: 1 } });
+        const shapes = await builder.build(frameNode, new Matrix());
 
         expect(shapes.length).toBe(1);
     });
@@ -136,8 +141,8 @@ describe('DiagramBuilder', () => {
         });
 
         const slideRels = { 'rId1': {target: 'data1.xml'}, 'rId2': {target: 'layout1.xml'} };
-        const builder = new DiagramBuilder({ shapeBuilder, slideRels, entriesMap: new Map() });
-        const shapes = await builder.build(frameNode, null);
+        const builder = new DiagramBuilder({ slideHandler, shapeBuilder, slideRels, entriesMap: new Map(), slide: { slideContext: {}, slideNum: 1 } });
+        const shapes = await builder.build(frameNode, new Matrix());
 
         expect(shapes.length).toBe(1);
         expect(shapes[0].shape).toBe('rect');
