@@ -386,16 +386,17 @@ export class SlideHandler {
                     finalBodyPr.anchor = 't';
                 }
 
-                // Resize container to fit text.
-                if (
-                    ( finalBodyPr.anchor !== 'b' && textData?.bodyPr?.tIns === 0 && textData?.bodyPr?.bIns === 0 && textData?.layout?.totalHeight && textData?.layout?.lines?.length > 1 ) ||
-                    // This textData pos height implies that the element is the approximate full height of the slide, meaning it is not a child of another shape
-                    ( finalBodyPr.anchor === 'ctr' && finalBodyPr.autofitType === 'norm' && textData?.layout?.lines?.length > 1 && ( textData?.pos.height / this.slideSize.height ) < 0.83 )
-                ) {
+                // Position the text box based on the anchor, and then align the text to the top of the text box
+                if ( textData?.layout?.totalHeight ) {
                     const textHeight = textData.layout.totalHeight;
-                    const topMargin = finalBodyPr.tIns || 0;
-                    const bottomMargin = finalBodyPr.bIns || 0;
-                    pos.height = textHeight + topMargin + bottomMargin;
+                    const textBoxHeight = pos.height;
+                    const anchor = finalBodyPr.anchor || 't';
+
+                    if ( anchor === 'ctr' ) {
+                        pos.y += ( textBoxHeight - textHeight ) / 2;
+                    } else if ( anchor === 'b' ) {
+                        pos.y += textBoxHeight - textHeight;
+                    }
                 }
             }
         }
@@ -834,9 +835,7 @@ export class SlideHandler {
             height: pos.height - ( bodyPr.tIns || 0 ) - ( bodyPr.bIns || 0 ),
         };
 
-        let startY = paddedPos.y;
-        if ( bodyPr.anchor === 'ctr' ) startY += ( paddedPos.height - layout.totalHeight ) / 2;
-        else if ( bodyPr.anchor === 'b' ) startY += paddedPos.height - layout.totalHeight;
+        const startY = paddedPos.y;
 
         const textGroup = document.createElementNS( 'http://www.w3.org/2000/svg', 'g' );
         if ( id ) {
