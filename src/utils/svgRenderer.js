@@ -679,18 +679,12 @@ export class SvgRenderer {
      * @param {number} adj2Ratio - The adjustment ratio for the second coordinate.
      * @param {object} [options] - The rendering options.
      */
-    drawCorner( x, y, width, height, adj1Ratio, adj2Ratio, options = {} ) {
-        const x1 = width * adj1Ratio;
-        const y2 = height * adj2Ratio;
+    drawCorner( x, y, width, height, options = {} ) {
 
         const pathData = [
             "M", x, y,
-            "L", x1, y,
-            "L", x1, y2,
-            "L", width, y2,
-            "L", width, height,
-            "L", x, height,
-            "Z"
+            "L", x, y + height,
+            "L", x + width, y + height,
         ].join( " " );
 
         this.drawPath( pathData, options );
