@@ -1,6 +1,6 @@
 import { EMU_PER_PIXEL, DML_NS, DIAGRAM_NS, DSP_NS, PML_NS } from 'constants';
 import { ShapeBuilder } from './shapeBuilder.js';
-import { getNormalizedXmlString, parseXmlString, resolvePath, parseShapeProperties, Matrix, parseBodyProperties } from 'utils';
+import { getNormalizedXmlString, parseXmlString, resolvePath, parseShapeProperties, Matrix, parseBodyProperties, ColorParser } from 'utils';
 
 export class DiagramBuilder {
     constructor( { slide, slideHandler, slideRels, presentation, shapeBuilder, entriesMap } ) {
@@ -75,7 +75,6 @@ export class DiagramBuilder {
 
         return dspShapes.map( dspShape => {
             const modelId = dspShape.getAttribute( 'modelId' );
-            const shapePt = allDataPts.find( pt => pt.getAttribute( 'modelId' ) === modelId );
             const dataPt = this.#findDataPoint( modelId, allDataPts );
 
             const localMatrix = new Matrix();
@@ -90,33 +89,44 @@ export class DiagramBuilder {
                 flipH, flipV, rot
             };
 
-            const txXfrmNode = dspShape.getElementsByTagNameNS( DSP_NS, 'txXfrm' )[ 0 ];
-            let textPos = pos;
+            const spPrXfrm = dspShape.getElementsByTagNameNS(DML_NS, 'xfrm')[0];
+            const spPrOff = spPrXfrm?.getElementsByTagNameNS(DML_NS, 'off')[0];
+            const shapeX = spPrOff ? parseInt(spPrOff.getAttribute('x')) : 0;
+            const shapeY = spPrOff ? parseInt(spPrOff.getAttribute('y')) : 0;
 
-            // if ( txXfrmNode ) {
-            //     const offNode = txXfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
-            //     const extNode = txXfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
+            const txBodyNode = dspShape.getElementsByTagNameNS(DSP_NS, 'txBody')[0];
 
-            //     if ( offNode && extNode ) {
-            //         const textMatrix = new Matrix();
-            //         textMatrix.translate( parseInt( offNode.getAttribute( "x" ) ), parseInt( offNode.getAttribute( "y" ) ) );
+            if (txBodyNode) {
+                const txXfrmNode = dspShape.getElementsByTagNameNS(DSP_NS, 'txXfrm')[0];
+                let textPos;
 
-            //         textPos = {
-            //             x: textMatrix.m[ 4 ] / EMU_PER_PIXEL,
-            //             y: textMatrix.m[ 5 ] / EMU_PER_PIXEL,
-            //             width: parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL,
-            //             height: parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL,
-            //         };
-            //     }
-            // }
+                if (txXfrmNode) {
+                    const txOff = txXfrmNode.getElementsByTagNameNS(DML_NS, 'off')[0];
+                    const txExt = txXfrmNode.getElementsByTagNameNS(DML_NS, 'ext')[0];
+                    if (txOff && txExt) {
+                        textPos = {
+                            x: (parseInt(txOff.getAttribute('x')) - shapeX) / EMU_PER_PIXEL,
+                            y: (parseInt(txOff.getAttribute('y')) - shapeY) / EMU_PER_PIXEL,
+                            width: parseInt(txExt.getAttribute('cx')) / EMU_PER_PIXEL,
+                            height: parseInt(txExt.getAttribute('cy')) / EMU_PER_PIXEL,
+                        };
+                    } else {
+                        textPos = pos;
+                    }
+                } else {
+                    textPos = pos;
+                }
 
-            if ( dataPt ) {
-                const text = this.#getText( dataPt, textPos );
-                if ( text ) {
-                    console.log( { text, dataPt } );
+                const styleNode = dspShape.getElementsByTagNameNS(DSP_NS, 'style')[0];
+                const text = this.#getText(txBodyNode, textPos, styleNode);
+
+                if (text) {
                     shape.text = text;
-
-
+                }
+            } else if (dataPt) {
+                const text = this.#getTextFromDataPt(dataPt, pos);
+                if (text) {
+                    shape.text = text;
                 }
             }
 
@@ -323,19 +333,25 @@ export class DiagramBuilder {
     }
 
     #getDataPoint( context, axis, ptType ) {
+        console.log(`getDataPoint called with axis: ${axis}, ptType: ${ptType}`);
         if ( !context ) {
+            console.log('Context is null, returning empty array.');
             return [];
         }
 
         if ( axis === 'ch' ) {
-            const ptLstNode = context.getElementsByTagNameNS( DIAGRAM_NS, 'ptLst' )[ 0 ];
+            const ptLstNode = Array.from(context.childNodes).find(node => node.nodeName === 'dgm:ptLst');
             if ( ptLstNode ) {
                 const children = Array.from( ptLstNode.childNodes ).filter( n => n.nodeName === 'dgm:pt' );
                 if ( ptType ) {
-                    return children.filter( c => c.getAttribute( 'type' ) === ptType );
+                    const filteredChildren = children.filter( c => c.getAttribute( 'type' ) === ptType );
+                    console.log(`Found ${filteredChildren.length} children for ptType ${ptType}`);
+                    return filteredChildren;
                 }
+                console.log(`Found ${children.length} children`);
                 return children;
             }
+            console.log('No ptLstNode found.');
             return [];
         }
 
@@ -403,8 +419,27 @@ export class DiagramBuilder {
         return null;
     }
 
-    #getText( dataPt, pos ) {
+    #getTextPosition( txXfrmNode ) {
+        const offNode = txXfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
+        const extNode = txXfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
+
+        if ( offNode && extNode ) {
+            return {
+                x: parseInt( offNode.getAttribute( "x" ) ) / EMU_PER_PIXEL,
+                y: parseInt( offNode.getAttribute( "y" ) ) / EMU_PER_PIXEL,
+                width: parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL,
+                height: parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL,
+            };
+        }
+        return null;
+    }
+
+    #getTextFromDataPt( dataPt, pos ) {
         const textBodyNode = dataPt.getElementsByTagNameNS( DIAGRAM_NS, 't' )[ 0 ];
+        return this.#getText( textBodyNode, pos, null );
+    }
+
+    #getText( textBodyNode, pos, styleNode ) {
         if ( !textBodyNode ) {
             return null;
         }
@@ -414,6 +449,20 @@ export class DiagramBuilder {
         const phKey = null;
         const phType = 'body';
 
+        const tableTextStyle = {};
+        if ( styleNode ) {
+            const fontRef = styleNode.getElementsByTagNameNS( DML_NS, 'fontRef' )[ 0 ];
+            if ( fontRef ) {
+                const schemeClrNode = fontRef.getElementsByTagNameNS( DML_NS, 'schemeClr' )[ 0 ];
+                if ( schemeClrNode ) {
+                    const color = ColorParser.parseColor( schemeClrNode );
+                    if ( color ) {
+                        tableTextStyle.color = color;
+                    }
+                }
+            }
+        }
+
         const textData = this.slideHandler.parseParagraphs(
             textBodyNode,
             pos,
@@ -421,7 +470,7 @@ export class DiagramBuilder {
             phType,
             listCounters,
             bodyPr,
-            {}, // tableTextStyle
+            tableTextStyle,
         );
 
         if ( !textData?.layout?.lines?.length ) {
