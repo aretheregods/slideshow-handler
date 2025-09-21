@@ -42,7 +42,9 @@ export class SlideHandler {
         defaultTextStyles,
         tableStyles,
         defaultTableStyleId,
-        imageMap,
+        slideImageMap,
+        layoutImageMap,
+        masterImageMap,
         slideContext,
         finalBg,
         showMasterShapes,
@@ -61,7 +63,9 @@ export class SlideHandler {
         this.defaultTextStyles = defaultTextStyles;
         this.tableStyles = tableStyles;
         this.defaultTableStyleId = defaultTableStyleId;
-        this.imageMap = imageMap;
+        this.slideImageMap = slideImageMap;
+        this.layoutImageMap = layoutImageMap;
+        this.masterImageMap = masterImageMap;
         this.slideContext = slideContext;
         this.finalBg = finalBg;
         this.showMasterShapes = showMasterShapes;
@@ -157,14 +161,14 @@ export class SlideHandler {
 
         const initialMatrix = new Matrix();
         const masterShapes = this.showMasterShapes && this.masterStaticShapes
-            ? await this.parseShapeTree( filteredMasterShapes, initialMatrix.clone(), slideLevelVisibility )
+            ? await this.parseShapeTree( filteredMasterShapes, initialMatrix.clone(), slideLevelVisibility, this.masterImageMap )
             : [];
         const layoutShapes = this.showMasterShapes && this.layoutStaticShapes
-            ? await this.parseShapeTree( filteredLayoutShapes, initialMatrix.clone(), slideLevelVisibility )
+            ? await this.parseShapeTree( filteredLayoutShapes, initialMatrix.clone(), slideLevelVisibility, this.layoutImageMap )
             : [];
 
         const slideShapes = spTreeNode
-            ? await this.parseShapeTree( spTreeNode.children, initialMatrix.clone(), slideLevelVisibility )
+            ? await this.parseShapeTree( spTreeNode.children, initialMatrix.clone(), slideLevelVisibility, this.slideImageMap )
             : [];
 
         return {
@@ -197,21 +201,29 @@ export class SlideHandler {
                 const gradientUrl = this.renderer._createGradient( slideData.background );
                 bgRect.setAttribute( 'fill', gradientUrl );
                 this.svg.insertBefore( bgRect, this.svg.firstChild );
-            } else if ( slideData.background.type === 'image' && slideData.background.relId && this.imageMap[ slideData.background.relId ] ) {
-                const bgImage = document.createElementNS( SVG_NS, 'image' );
-                bgImage.setAttribute( 'id', id );
-                bgImage.setAttribute( 'href', this.imageMap[ slideData.background.relId ] );
-                bgImage.setAttribute( 'width', this.slideSize.width );
-                bgImage.setAttribute( 'height', this.slideSize.height );
-                bgImage.setAttribute( 'preserveAspectRatio', 'xMidYMid slice' );
-                this.svg.insertBefore( bgImage, this.svg.firstChild );
+            } else if ( slideData.background.type === 'image' && slideData.background.relId ) {
+                const background = slideData.background;
+                let imageMap;
+                if ( background.source === 'slide' ) imageMap = this.slideImageMap;
+                else if ( background.source === 'layout' ) imageMap = this.layoutImageMap;
+                else if ( background.source === 'master' ) imageMap = this.masterImageMap;
+
+                if ( imageMap && imageMap[ background.relId ] ) {
+                    const bgImage = document.createElementNS( SVG_NS, 'image' );
+                    bgImage.setAttribute( 'id', id );
+                    bgImage.setAttribute( 'href', imageMap[ background.relId ] );
+                    bgImage.setAttribute( 'width', this.slideSize.width );
+                    bgImage.setAttribute( 'height', this.slideSize.height );
+                    bgImage.setAttribute( 'preserveAspectRatio', 'xMidYMid slice' );
+                    this.svg.insertBefore( bgImage, this.svg.firstChild );
+                }
             }
         }
 
         await this.renderShapeTree( slideData.shapes );
     }
 
-    async parseShapeTree( elements, parentMatrix, slideLevelVisibility ) {
+    async parseShapeTree( elements, parentMatrix, slideLevelVisibility, imageMap ) {
         const shapes = [];
         const listCounters = {}; // Reset for each shape tree (master, layout, slide)
 
@@ -222,7 +234,7 @@ export class SlideHandler {
             if ( tagName === 'sp' || tagName === 'cxnSp' ) {
                 shapeData = await this.parseShape( element, listCounters, parentMatrix, slideLevelVisibility );
             } else if ( tagName === 'grpSp' ) {
-                shapeData = await this.parseGroupShape( element, listCounters, parentMatrix, slideLevelVisibility );
+                shapeData = await this.parseGroupShape( element, listCounters, parentMatrix, slideLevelVisibility, imageMap );
                 // For groups, we get an array of shapes, so we need to flatten it
                 if ( shapeData ) {
                     shapes.push( ...shapeData.shapes );
@@ -245,7 +257,7 @@ export class SlideHandler {
                     shapeData = await this.parseDiagram( element, parentMatrix );
                 }
             } else if ( tagName === 'pic' ) {
-                shapeData = await this.parsePicture( element, parentMatrix, slideLevelVisibility );
+                shapeData = await this.parsePicture( element, parentMatrix, slideLevelVisibility, imageMap );
             }
 
             if ( shapeData ) {
@@ -306,7 +318,19 @@ export class SlideHandler {
         const masterShapeProps = masterPh?.shapeProps || {};
         const layoutShapeProps = layoutPh?.shapeProps || {};
         const slideShapeProps = parseShapeProperties( shapeNode, this.slideContext, this.slideNum );
-        let finalFill = slideShapeProps.fill ?? layoutShapeProps.fill ?? masterShapeProps.fill;
+
+        let finalFill, fillSource;
+        if ( slideShapeProps.fill ) {
+            finalFill = slideShapeProps.fill;
+            fillSource = 'slide';
+        } else if ( layoutShapeProps.fill ) {
+            finalFill = layoutShapeProps.fill;
+            fillSource = 'layout';
+        } else if ( masterShapeProps.fill ) {
+            finalFill = masterShapeProps.fill;
+            fillSource = 'master';
+        }
+
         const finalStroke = slideShapeProps.stroke ?? layoutShapeProps.stroke ?? masterShapeProps.stroke;
         const finalEffect = slideShapeProps.effect ?? layoutShapeProps.effect ?? masterShapeProps.effect;
 
@@ -318,8 +342,15 @@ export class SlideHandler {
             }
         }
 
-        if ( finalFill?.type === 'image' && finalFill.relId && this.imageMap[ finalFill.relId ] ) {
-            finalFill.href = this.imageMap[ finalFill.relId ];
+        if ( finalFill?.type === 'image' && finalFill.relId ) {
+            let imageMap;
+            if ( fillSource === 'slide' ) imageMap = this.slideImageMap;
+            else if ( fillSource === 'layout' ) imageMap = this.layoutImageMap;
+            else if ( fillSource === 'master' ) imageMap = this.masterImageMap;
+
+            if ( imageMap && imageMap[ finalFill.relId ] ) {
+                finalFill.href = imageMap[ finalFill.relId ];
+            }
         }
 
         const shapeProps = {
@@ -329,7 +360,7 @@ export class SlideHandler {
             effect: finalEffect,
         };
 
-        const shapeBuilder = new ShapeBuilder( null, this.slideContext, this.imageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize );
+        const shapeBuilder = new ShapeBuilder( null, this.slideContext, this.slideImageMap, this.masterPlaceholders, this.layoutPlaceholders, EMU_PER_PIXEL, this.slideSize );
         const { pos, transform, flipH, flipV, rot } = shapeBuilder.getShapeProperties( shapeNode, parentMatrix );
 
         let textData = null;
@@ -407,7 +438,7 @@ export class SlideHandler {
         }
     }
 
-    async parseGroupShape( groupNode, listCounters, parentMatrix, slideLevelVisibility ) {
+    async parseGroupShape( groupNode, listCounters, parentMatrix, slideLevelVisibility, imageMap ) {
         if ( slideLevelVisibility ) {
             const placeholders = Array.from( groupNode.getElementsByTagNameNS( PML_NS, 'ph' ) );
             if ( placeholders.length > 0 ) {
@@ -455,7 +486,7 @@ export class SlideHandler {
             }
         }
 
-        const childShapes = await this.parseShapeTree( groupNode.children, finalMatrixForChildren, slideLevelVisibility );
+        const childShapes = await this.parseShapeTree( groupNode.children, finalMatrixForChildren, slideLevelVisibility, imageMap );
 
         return {
             type: 'group',
@@ -470,7 +501,7 @@ export class SlideHandler {
         await this.renderShapeTree( groupData.shapes );
     }
 
-    async parsePicture( picNode, parentMatrix, slideLevelVisibility ) {
+    async parsePicture( picNode, parentMatrix, slideLevelVisibility, imageMap ) {
         let localMatrix = new Matrix();
         let pos;
 
@@ -536,9 +567,9 @@ export class SlideHandler {
             }
 
             const relId = blipNode?.getAttribute( 'r:embed' );
-            if ( relId && this.imageMap[ relId ] ) {
+            if ( relId && imageMap[ relId ] ) {
                 imageInfo = {
-                    href: this.imageMap[ relId ],
+                    href: imageMap[ relId ],
                     srcRect: parseSourceRectangle( blipFillNode ),
                 };
 
@@ -824,8 +855,8 @@ export class SlideHandler {
                     this.renderer.drawText( finalProps.bullet.char, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${ finalProps.defRPr.size || 18 * PT_TO_PX }px`, fontFamily: finalProps.bullet.font || 'Arial' } );
                 } else if ( finalProps.bullet.type === 'auto' ) {
                     this.renderer.drawText( line.bulletChar, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${ finalProps.defRPr.size || 18 * PT_TO_PX }px`, fontFamily: finalProps.bullet.font || 'Arial' } );
-                } else if ( finalProps.bullet.type === 'image' && finalProps.bullet.relId && this.imageMap[ finalProps.bullet.relId ] ) {
-                    this.renderer.drawImage( this.imageMap[ finalProps.bullet.relId ], bulletX, bulletBaselineY - 8, 16, 16, {} );
+                } else if ( finalProps.bullet.type === 'image' && finalProps.bullet.relId && this.slideImageMap[ finalProps.bullet.relId ] ) {
+                    this.renderer.drawImage( this.slideImageMap[ finalProps.bullet.relId ], bulletX, bulletBaselineY - 8, 16, 16, {} );
                 }
             }
 

@@ -84,11 +84,6 @@ export function createImage(url) {
 export async function populateImageMap(imageMap, rels, baseDir, entriesMap) {
     const imageRels = Object.values(rels).filter(rel => rel.type.endsWith('/image'));
     for (const rel of imageRels) {
-        // Do not overwrite an image that has already been loaded from a more specific source (e.g., slide vs layout)
-        if (imageMap[rel.id]) {
-            continue;
-        }
-
         const imagePath = resolvePath(baseDir, rel.target);
         const imageEntry = entriesMap.get(imagePath);
         if (imageEntry) {

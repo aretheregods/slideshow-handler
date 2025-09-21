@@ -95,9 +95,8 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
             const slideRels = await getRelationships( entriesMap, slideRelsPath );
             const sortedSlideRels = Object.values( slideRels ).sort( ( a, b ) => a.id.localeCompare( b.id, undefined, { numeric: true } ) );
 
-            const imageMap = {};
-            await populateImageMap( imageMap, slideRels, 'ppt/slides', entriesMap );
-
+            const slideImageMap = {};
+            await populateImageMap( slideImageMap, slideRels, 'ppt/slides', entriesMap );
 
             const slideContext = {
                 theme: theme,
@@ -110,13 +109,14 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
             let layoutPlaceholders = {};
             let defaultTextStyles = {};
             let masterXml, layoutXml;
+            let masterImageMap = {}, layoutImageMap = {};
 
             let masterStaticShapes = [], layoutStaticShapes = [];
             if ( layoutRel ) {
                 const layoutPath = resolvePath( 'ppt/slides', layoutRel.target );
                 const layoutRelsPath = `ppt/slideLayouts/_rels/${ layoutPath.split( '/' ).pop() }.rels`;
                 const layoutRels = await getRelationships( entriesMap, layoutRelsPath );
-                await populateImageMap( imageMap, layoutRels, 'ppt/slideLayouts', entriesMap );
+                await populateImageMap( layoutImageMap, layoutRels, 'ppt/slideLayouts', entriesMap );
                 const sortedLayoutRels = Object.values( layoutRels ).sort( ( a, b ) => a.id.localeCompare( b.id, undefined, { numeric: true } ) );
                 const masterRel = sortedLayoutRels.find( r => r.type.endsWith( '/slideMaster' ) );
 
@@ -125,7 +125,7 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
                     const masterPath = resolvePath( 'ppt/slideLayouts', masterRel.target );
                     const masterRelsPath = `ppt/slideMasters/_rels/${ masterPath.split( '/' ).pop() }.rels`;
                     const masterRels = await getRelationships( entriesMap, masterRelsPath );
-                    await populateImageMap( imageMap, masterRels, 'ppt/slideMasters', entriesMap );
+                    await populateImageMap( masterImageMap, masterRels, 'ppt/slideMasters', entriesMap );
 
                     masterXml = await getNormalizedXmlString( entriesMap, masterPath );
                     if ( masterXml ) {
@@ -158,10 +158,18 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
             const sldNode = slideXmlDoc.getElementsByTagNameNS( PML_NS, 'sld' )[ 0 ];
             const showMasterShapes = !sldNode || sldNode.getAttribute( 'showMasterSp' ) !== '0';
 
+            let finalBg;
             const slideBg = parseBackground( slideXmlDoc, slideContext );
             const layoutBg = layoutXmlDoc ? parseBackground( layoutXmlDoc, slideContext ) : null;
             const masterBg = masterXmlDoc ? parseBackground( masterXmlDoc, slideContext ) : null;
-            const finalBg = slideBg || layoutBg || masterBg;
+
+            if ( slideBg ) {
+                finalBg = { ...slideBg, source: 'slide' };
+            } else if ( layoutBg ) {
+                finalBg = { ...layoutBg, source: 'layout' };
+            } else if ( masterBg ) {
+                finalBg = { ...masterBg, source: 'master' };
+            }
 
             const slideContainer = document.createElement( 'div' );
             slideContainer.className = 'slide-selector';
@@ -184,7 +192,9 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
                 slideNum,
                 slideSize,
                 defaultTextStyles,
-                imageMap,
+                slideImageMap,
+                layoutImageMap,
+                masterImageMap,
                 slideContext,
                 finalBg,
                 showMasterShapes,
