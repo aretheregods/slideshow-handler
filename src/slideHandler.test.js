@@ -112,7 +112,9 @@ describe('SlideHandler', () => {
                 defaultTextStyles: { default: 'style' },
                 tableStyles: { table: 'style' },
                 defaultTableStyleId: 'def-tbl',
-                imageMap: { img: 'map' },
+                slideImageMap: { img: 'map' },
+                layoutImageMap: { img: 'map' },
+                masterImageMap: { img: 'map' },
                 slideContext: { theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } } } },
                 finalBg: { bg: 'final' },
                 showMasterShapes: false,
@@ -132,7 +134,9 @@ describe('SlideHandler', () => {
             expect(handler.defaultTextStyles).toEqual({ default: 'style' });
             expect(handler.tableStyles).toEqual({ table: 'style' });
             expect(handler.defaultTableStyleId).toBe('def-tbl');
-            expect(handler.imageMap).toEqual({ img: 'map' });
+            expect(handler.slideImageMap).toEqual({ img: 'map' });
+            expect(handler.layoutImageMap).toEqual({ img: 'map' });
+            expect(handler.masterImageMap).toEqual({ img: 'map' });
             expect(handler.slideContext).toEqual({ theme: { fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } } } });
             expect(handler.finalBg).toEqual({ bg: 'final' });
             expect(handler.showMasterShapes).toBe(false);
@@ -249,9 +253,9 @@ describe('SlideHandler', () => {
         });
 
         it('should render an image background', async () => {
-            slideHandler.imageMap = { 'rId1': 'image.png' };
+            slideHandler.slideImageMap = { 'rId1': 'image.png' };
             const slideData = {
-                background: { type: 'image', relId: 'rId1' },
+                background: { type: 'image', relId: 'rId1', source: 'slide' },
                 shapes: [],
             };
             await slideHandler.render(slideData);
