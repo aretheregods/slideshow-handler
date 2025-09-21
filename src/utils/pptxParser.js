@@ -823,7 +823,8 @@ export function parseBodyProperties(txBodyNode) {
     if (!bodyPrNode) return {};
 
     const props = {};
-    props.anchor = bodyPrNode.getAttribute('anchor');
+    const anchor = bodyPrNode.getAttribute('anchor');
+    if (anchor) props.anchor = anchor;
 
     const lIns = bodyPrNode.getAttribute('lIns');
     if (lIns) props.lIns = parseInt(lIns) / EMU_PER_PIXEL;

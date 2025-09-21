@@ -378,7 +378,18 @@ export class SlideHandler {
                 const slideBodyPr = parseBodyProperties( slideTxBody );
                 const masterBodyPr = masterPh?.bodyPr || {};
                 const layoutBodyPr = layoutPh?.bodyPr || {};
-                const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
+
+                const { anchor: masterAnchor, ...masterRest } = masterBodyPr;
+                const { anchor: layoutAnchor, ...layoutRest } = layoutBodyPr;
+                const { anchor: slideAnchor, ...slideRest } = slideBodyPr;
+
+                const finalBodyPr = { ...masterRest, ...layoutRest, ...slideRest };
+
+                if (slideAnchor) {
+                    finalBodyPr.anchor = slideAnchor;
+                } else if (layoutAnchor) {
+                    finalBodyPr.anchor = layoutAnchor;
+                }
 
                 textData = this.parseParagraphs( txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {} );
 
