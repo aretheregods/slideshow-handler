@@ -251,11 +251,7 @@ export class ShapeBuilder {
                     } );
                     break;
                 case 'corner':
-                    const adj1_corner = shapeProps.geometry.adjustments?.adj1 !== undefined ? shapeProps.geometry.adjustments.adj1 : 50000;
-                    const adj2_corner = shapeProps.geometry.adjustments?.adj2 !== undefined ? shapeProps.geometry.adjustments.adj2 : 50000;
-                    const adj1Ratio = adj1_corner / 100000;
-                    const adj2Ratio = adj2_corner / 100000;
-                    this.renderer.drawCorner( 0, 0, pos.width, pos.height, adj1Ratio, adj2Ratio, {
+                    this.renderer.drawCorner( 0, 0, pos.width, pos.height, {
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,

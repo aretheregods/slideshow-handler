@@ -652,7 +652,7 @@ export class SvgRenderer {
     drawChevron( x, y, width, height, adjRatio, options = {} ) {
         // The adjRatio corresponds to the OOXML 'adj' value divided by 100000.
         // It controls the indentation of the chevron point.
-        const x1 = width * adjRatio;
+        const x1 = width * adjRatio * ( 3 / 10 );
         const x2 = width - x1;
         const midY = y + height / 2;
 
@@ -675,12 +675,9 @@ export class SvgRenderer {
      * @param {number} y - The y-coordinate of the corner's bounding box.
      * @param {number} width - The width of the corner shape.
      * @param {number} height - The height of the corner shape.
-     * @param {number} adj1Ratio - The adjustment ratio for the first coordinate.
-     * @param {number} adj2Ratio - The adjustment ratio for the second coordinate.
      * @param {object} [options] - The rendering options.
      */
     drawCorner( x, y, width, height, options = {} ) {
-
         const pathData = [
             "M", x, y,
             "L", x, y + height,
@@ -700,7 +697,7 @@ export class SvgRenderer {
      * @param {object} [options] - The rendering options.
      */
     drawHomePlate( x, y, width, height, adjRatio, options = {} ) {
-        const shoulderX = width * adjRatio;
+        const shoulderX = width * adjRatio * ( 3 / 10 );
         const x2 = width - shoulderX;
 
         const pathData = [
