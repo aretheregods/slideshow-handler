@@ -625,8 +625,8 @@ export function parseLineProperties(lnNode, slideContext) {
  * @param {number|string} slideNum - The slide number, used for context in error messages.
  * @returns {Object} The parsed shape properties.
  */
-export function parseShapeProperties(shapeNode, slideContext, slideNum) {
-    const spPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
+export function parseShapeProperties(shapeNode, slideContext, slideNum, ns = PML_NS) {
+    const spPrNode = shapeNode.getElementsByTagNameNS( ns, 'spPr')[0];
     if (!spPrNode) return { fill: null, stroke: null, geometry: null, rawFillNode: null, rawStrokeNode: null, effect: null };
 
     const properties = { fill: null, stroke: null, geometry: null, rawFillNode: null, rawStrokeNode: null, effect: null };
@@ -695,7 +695,7 @@ export function parseShapeProperties(shapeNode, slideContext, slideNum) {
             properties.fill = { type: 'group' };
         }
     } else {
-        const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
+        const styleNode = shapeNode.getElementsByTagNameNS( ns, 'style')[0];
         if (styleNode) {
             const fillRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
             if (fillRefNode) {
@@ -721,7 +721,7 @@ export function parseShapeProperties(shapeNode, slideContext, slideNum) {
         properties.rawStrokeNode = lnNode.outerHTML;
         properties.stroke = parseLineProperties(lnNode, slideContext);
     } else {
-        const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
+        const styleNode = shapeNode.getElementsByTagNameNS( ns, 'style')[0];
         if (styleNode) {
             const lnRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
             if (lnRefNode) {
@@ -762,7 +762,7 @@ export function parseShapeProperties(shapeNode, slideContext, slideNum) {
             };
         }
     } else {
-        const styleNode = shapeNode.getElementsByTagNameNS(PML_NS, 'style')[0];
+        const styleNode = shapeNode.getElementsByTagNameNS( ns, 'style')[0];
         if (styleNode) {
             const effectRefNode = styleNode.getElementsByTagNameNS(DML_NS, 'effectRef')[0];
             if (effectRefNode) {

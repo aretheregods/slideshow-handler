@@ -200,7 +200,6 @@ export class ColorParser {
         }
 
         if (schemeClrNode) {
-            console.log("Parsing schemeClrNode");
             const color = { scheme: schemeClrNode.getAttribute('val') };
             const tintNode = schemeClrNode.getElementsByTagNameNS(DML_NS, 'tint')[0];
             if (tintNode) color.tint = parseInt(tintNode.getAttribute('val'));
