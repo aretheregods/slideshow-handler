@@ -1042,6 +1042,7 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
                 const placeholderData = {
                     pos: null,
                     type: type,
+                    idx: idx,
                     listStyle: null,
                     shapeProps: {},
                     bodyPr: {}

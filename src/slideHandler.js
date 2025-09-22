@@ -299,12 +299,12 @@ export class SlideHandler {
         const extensions = cNvPrNode ? parseExtensions( cNvPrNode ) : null;
 
         const nvPr = shapeNode.getElementsByTagNameNS( PML_NS, 'nvPr' )[ 0 ];
-        let phKey = null, phType = null;
+        let phKey = null, phType = null, phIdx = null;
         if ( nvPr ) {
             const placeholder = nvPr.getElementsByTagNameNS( PML_NS, 'ph' )[ 0 ];
             if ( placeholder ) {
                 phType = placeholder.getAttribute( 'type' );
-                const phIdx = placeholder.getAttribute( 'idx' );
+                phIdx = placeholder.getAttribute( 'idx' );
                 phKey = phIdx ? `idx_${ phIdx }` : phType;
                 if ( !phType && phIdx ) phType = 'body';
             }
@@ -312,8 +312,27 @@ export class SlideHandler {
 
         if ( slideLevelVisibility?.[ phType ] === false ) return null;
 
-        const masterPh = this.masterPlaceholders?.[ phKey ] || Object.values( this.masterPlaceholders || {} ).find( p => p.type === phType );
         const layoutPh = this.layoutPlaceholders?.[ phKey ];
+
+        let masterPh = this.masterPlaceholders?.[ phKey ];
+
+        // If a master placeholder was found by key, validate its type.
+        if ( masterPh ) {
+            const specialTypes = [ 'dt', 'ftr', 'sldNum' ];
+            const masterPhType = masterPh.type || ( masterPh.idx ? 'body' : null );
+            const slidePhType = phType || ( phIdx ? 'body' : null );
+
+            // If the slide placeholder is a standard type (title/body) but it matched a special
+            // master placeholder by index, it's not a valid inheritance link for content.
+            if ( !specialTypes.includes( slidePhType ) && specialTypes.includes( masterPhType ) ) {
+                masterPh = null; // Invalidate the match
+            }
+        }
+
+        // If no valid master placeholder was found by key, fall back to finding by type.
+        if ( !masterPh ) {
+            masterPh = Object.values( this.masterPlaceholders || {} ).find( p => p.type === phType );
+        }
 
         const masterShapeProps = masterPh?.shapeProps || {};
         const layoutShapeProps = layoutPh?.shapeProps || {};
@@ -378,25 +397,23 @@ export class SlideHandler {
                 const slideBodyPr = parseBodyProperties( slideTxBody );
                 const masterBodyPr = masterPh?.bodyPr || {};
                 const layoutBodyPr = layoutPh?.bodyPr || {};
+
                 const finalBodyPr = { ...masterBodyPr, ...layoutBodyPr, ...slideBodyPr };
+                finalBodyPr.anchor = slideBodyPr.anchor ?? layoutBodyPr.anchor ?? masterBodyPr.anchor ?? 't';
 
                 textData = this.parseParagraphs( txBodyToParse, pos, phKey, phType, listCounters, finalBodyPr, {} );
 
-                if ( !finalBodyPr.anchor && textData?.layout?.lines?.length > 0 ) {
-                    finalBodyPr.anchor = 't';
-                }
-
                 // Resize container to fit text.
-                if (
-                    ( finalBodyPr.anchor !== 'b' && textData?.bodyPr?.tIns === 0 && textData?.bodyPr?.bIns === 0 && textData?.layout?.totalHeight && textData?.layout?.lines?.length > 1 ) ||
-                    // This textData pos height implies that the element is the approximate full height of the slide, meaning it is not a child of another shape
-                    ( finalBodyPr.anchor === 'ctr' && finalBodyPr.autofitType === 'norm' && textData?.layout?.lines?.length > 1 && ( textData?.pos.height / this.slideSize.height ) < 0.83 )
-                ) {
-                    const textHeight = textData.layout.totalHeight;
-                    const topMargin = finalBodyPr.tIns || 0;
-                    const bottomMargin = finalBodyPr.bIns || 0;
-                    pos.height = textHeight + topMargin + bottomMargin;
-                }
+                // if (
+                //     ( finalBodyPr.anchor !== 'b' && textData?.bodyPr?.tIns === 0 && textData?.bodyPr?.bIns === 0 && textData?.layout?.totalHeight && textData?.layout?.lines?.length > 1 ) ||
+                //     // This textData pos height implies that the element is the approximate full height of the slide, meaning it is not a child of another shape
+                //     ( finalBodyPr.anchor === 'ctr' && finalBodyPr.autofitType === 'norm' && textData?.layout?.lines?.length > 1 && ( textData?.pos.height / this.slideSize.height ) < 0.83 )
+                // ) {
+                //     const textHeight = textData.layout.totalHeight;
+                //     const topMargin = finalBodyPr.tIns || 0;
+                //     const bottomMargin = finalBodyPr.bIns || 0;
+                //     pos.height = textHeight + topMargin + bottomMargin;
+                // }
             }
         }
 
