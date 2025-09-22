@@ -1,4 +1,3 @@
-import { BlobWriter } from "zipjs";
 import { ColorParser, resolvePath, integerToRoman, parseGradientFill } from 'utils';
 import { DML_NS, EMU_PER_PIXEL } from "constants";
 
@@ -85,17 +84,10 @@ export async function populateImageMap(imageMap, rels, baseDir, entriesMap) {
     const imageRels = Object.values(rels).filter(rel => rel.type.endsWith('/image'));
     for (const rel of imageRels) {
         const imagePath = resolvePath(baseDir, rel.target);
-        const imageEntry = entriesMap.get(imagePath);
+        const imageEntry = entriesMap[imagePath];
         if (imageEntry) {
             try {
-                const writer = new BlobWriter();
-                const imageBlob = await imageEntry.getData(writer);
-                const reader = new FileReader();
-                const imageData = await new Promise((resolve, reject) => {
-                    reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(imageBlob);
-                });
+                const imageData = await imageEntry.async("base64");
                 imageMap[rel.id] = `data:image/png;base64,${imageData}`;
             } catch (e) {
                 console.error(`Failed to load image data for relId ${rel.id} at path ${imagePath}`, e);

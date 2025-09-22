@@ -1,4 +1,4 @@
-import { BlobReader, ZipReader } from "zipjs";
+import JSZip from "jszip";
 import {
     parseXmlString,
     resolvePath,
@@ -33,10 +33,9 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
 	slideStores.clear();
     presentationStore.dispatch( { type: actions.start.parsing } );
 
-    const zipReader = new ZipReader( new BlobReader( file ) );
     try {
-        const entries = await zipReader.getEntries();
-        const entriesMap = new Map( entries.map( entry => [ entry.filename, entry ] ) );
+        const zip = await JSZip.loadAsync(file);
+        const entriesMap = zip.files;
 
         const presRels = await getRelationships( entriesMap, "ppt/_rels/presentation.xml.rels" );
         const sortedPresRels = Object.values( presRels ).sort( ( a, b ) => a.id.localeCompare( b.id, undefined, { numeric: true } ) );
@@ -264,7 +263,5 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
     } catch ( error ) {
         console.error( 'Error parsing the presentation:', error );
         if ( error instanceof Error ) throw new Error(`Error: Could not parse presentation. ${ error.message }`);
-    } finally {
-        await zipReader.close();
     }
 }
