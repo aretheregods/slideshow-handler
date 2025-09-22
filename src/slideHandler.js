@@ -1025,28 +1025,51 @@ export class SlideHandler {
         const ext = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
         if ( !off || !ext ) return null;
 
+        const x = parseInt( off.getAttribute( "x" ) ) / EMU_PER_PIXEL;
+        const y = parseInt( off.getAttribute( "y" ) ) / EMU_PER_PIXEL;
+        const w = parseInt( ext.getAttribute( "cx" ) ) / EMU_PER_PIXEL;
+        const h = parseInt( ext.getAttribute( "cy" ) ) / EMU_PER_PIXEL;
+        const rot = parseInt( xfrmNode.getAttribute( 'rot' ) || '0' );
+        const flipH = xfrmNode.getAttribute( 'flipH' ) === '1';
+        const flipV = xfrmNode.getAttribute( 'flipV' ) === '1';
+
+        const localMatrix = new Matrix();
+        localMatrix.translate( x, y )
+            .translate( w / 2, h / 2 )
+            .rotate( rot / 60000 * Math.PI / 180 )
+            .scale( flipH ? -1 : 1, flipV ? -1 : 1 )
+            .translate( -w / 2, -h / 2 );
+
+        const finalMatrix = parentMatrix.clone().multiply( localMatrix );
+        const transform = `matrix(${ finalMatrix.m.join( ' ' ) })`;
+
         const pos = {
-            x: parseInt( off.getAttribute( "x" ) ) / EMU_PER_PIXEL,
-            y: parseInt( off.getAttribute( "y" ) ) / EMU_PER_PIXEL,
-            width: parseInt( ext.getAttribute( "cx" ) ) / EMU_PER_PIXEL,
-            height: parseInt( ext.getAttribute( "cy" ) ) / EMU_PER_PIXEL,
+            width: w,
+            height: h,
         };
 
         return {
             type: 'chart',
             pos,
+            transform,
             chartData: parseChart( chartXml ),
         };
     }
 
     async renderChart( chartData, id ) {
+        const matrix = new Matrix();
+        if ( chartData.transform ) {
+            const transformString = chartData.transform.replace( 'matrix(', '' ).replace( ')', '' );
+            const transformValues = transformString.split( ' ' ).map( Number );
+            matrix.m = transformValues;
+        }
+        this.renderer.setTransform( matrix, id );
+
         const { pos, chartData: data } = chartData;
         const foreignObject = document.createElementNS( 'http://www.w3.org/2000/svg', 'foreignObject' );
-        if ( id ) {
-            foreignObject.setAttribute( 'id', id );
-        }
-        foreignObject.setAttribute( 'x', pos.x );
-        foreignObject.setAttribute( 'y', pos.y );
+
+        foreignObject.setAttribute( 'x', 0 );
+        foreignObject.setAttribute( 'y', 0 );
         foreignObject.setAttribute( 'width', pos.width );
         foreignObject.setAttribute( 'height', pos.height );
 

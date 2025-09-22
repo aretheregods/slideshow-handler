@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { slideshowHandler } from './slideshowHandler.js';
 import * as utils from 'utils';
-import { ZipReader } from '@zip.js/zip.js';
+import JSZip from 'jszip';
 import { SlideHandler } from './slideHandler.js';
 import { presentationStore, slideStores, createSlideStore } from './slideshowDataStore.js';
 import { slideshowProcessingActions as actions } from './constants.js';
 
 // Mock dependencies
-const mockGetEntries = vi.fn().mockResolvedValue([]);
-vi.mock('@zip.js/zip.js', () => ({
-    ZipReader: vi.fn().mockImplementation(() => ({
-        getEntries: mockGetEntries,
-        close: vi.fn().mockResolvedValue(undefined),
-    })),
-    BlobReader: vi.fn(),
+const mockFiles = new Map();
+vi.mock('jszip', () => ({
+    default: {
+        loadAsync: vi.fn().mockImplementation(() => Promise.resolve({
+            files: mockFiles,
+        })),
+    },
 }));
 
 vi.mock('utils', async (importOriginal) => {
@@ -121,7 +121,7 @@ describe('slideshowHandler', () => {
         presentationStore.clear();
         slideStores.clear();
         vi.clearAllMocks();
-        mockGetEntries.mockClear();
+        mockFiles.clear();
     });
 
     afterEach(() => {
@@ -145,7 +145,9 @@ describe('slideshowHandler', () => {
                 ['ppt/slides/_rels/slide2.xml.rels', {}],
                 ['ppt/theme/theme1.xml', {}],
             ]);
-            mockGetEntries.mockResolvedValue(Array.from(mockEntries.entries()).map(([filename, data]) => ({ filename, data })));
+            for (const [filename, data] of mockEntries.entries()) {
+                mockFiles.set(filename, data);
+            }
 
             vi.mocked(utils.getRelationships).mockImplementation(async (entries, path) => {
                 if (path === 'ppt/_rels/presentation.xml.rels') {
@@ -173,7 +175,7 @@ describe('slideshowHandler', () => {
             // Assert: Verify the overall process
             expect(result.slideshowLength).toBe(2);
             expect(result.activeSlide).toBe('rId1');
-            expect(mockGetEntries).toHaveBeenCalled();
+            expect(JSZip.loadAsync).toHaveBeenCalled();
             expect(utils.getSlideOrder).toHaveBeenCalled();
             expect(presentationStore.dispatch).toHaveBeenCalledWith({ type: 'START_PARSING' });
             expect(presentationStore.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_PRESENTATION_DATA', payload: { theme: { name: 'mockTheme' } } }));
