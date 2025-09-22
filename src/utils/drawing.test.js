@@ -4,6 +4,11 @@ import * as drawing from './drawing';
 // Mock dependencies
 vi.mock('/src/utils/index.js', async (importOriginal) => {
     const original = await importOriginal();
+    const TableStyleResolver = vi.fn();
+    TableStyleResolver.prototype.getBorders = vi.fn();
+    TableStyleResolver.prototype.getFill = vi.fn();
+    TableStyleResolver.prototype.getTextStyle = vi.fn();
+
     return {
         ...original,
         ColorParser: {
@@ -13,6 +18,7 @@ vi.mock('/src/utils/index.js', async (importOriginal) => {
         resolvePath: vi.fn((base, target) => `${base}/${target}`),
         integerToRoman: vi.fn(num => 'I'.repeat(num)), // Simplified mock
         parseGradientFill: vi.fn(),
+        TableStyleResolver: TableStyleResolver,
     };
 });
 
@@ -231,304 +237,81 @@ describe('drawing.js', () => {
     });
 
     describe('getCellBorders', () => {
-        let ColorParser;
+        let TableStyleResolver;
         const mockSlideContext = { theme: {} };
 
         beforeAll(async () => {
             const utils = await import('utils');
-            ColorParser = utils.ColorParser;
+            TableStyleResolver = utils.TableStyleResolver;
         });
 
         beforeEach(() => {
-            vi.mocked(ColorParser.parseColor).mockClear();
-            vi.mocked(ColorParser.resolveColor).mockClear();
-            ColorParser.resolveColor.mockImplementation(colorObj => colorObj ? (colorObj.val || 'resolved-color') : 'fallback-color');
-            ColorParser.parseColor.mockImplementation(solidFillNode => {
-                if (!solidFillNode) return undefined;
-                const srgbClrArr = solidFillNode.getElementsByTagNameNS(null, 'srgbClr');
-                if (srgbClrArr.length > 0) {
-                    const srgbClr = srgbClrArr[0];
-                    const val = srgbClr.getAttribute('val');
-                    if (val) return { val };
-                }
-                return undefined;
-            });
+            TableStyleResolver.mockClear();
+            TableStyleResolver.prototype.getBorders.mockClear();
         });
 
-        // Helper to create a mock XML element with children and attributes
-        const createMockElement = (config = {}) => {
-            const { name = '', attributes = {}, children = {} } = config;
-            return {
-                localName: name,
-                getAttribute: (attr) => attributes[attr],
-                getElementsByTagNameNS: (ns, tagName) => {
-                    return children[tagName] ? children[tagName].map(createMockElement) : [];
-                },
-                children: Object.values(children).flat().map(c => createMockElement(c)),
-            };
-        };
+        it('should instantiate TableStyleResolver and call getBorders', () => {
+            const cellNode = {};
+            const tblPrNode = {};
+            const tableStyle = {};
 
-        it.skip('should parse borders from direct cell formatting', () => { // TODO: Un-skip when mocking issue is resolved
-            const cellNode = createMockElement({
-                name: 'tc',
-                children: {
-                    'tcPr': [{
-                        name: 'tcPr',
-                        children: {
-                            'lnL': [{
-                                name: 'lnL',
-                                attributes: { w: '12700' },
-                                children: { 'solidFill': [{ name: 'solidFill', children: { 'srgbClr': [{ name: 'srgbClr', attributes: { val: 'FF0000' } }] } }] }
-                            }],
-                            'lnT': [{
-                                name: 'lnT',
-                                children: { 'noFill': [{ name: 'noFill' }] }
-                            }]
-                        }
-                    }]
-                }
-            });
-            const tblPrNode = createMockElement();
-            const borders = drawing.getCellBorders(cellNode, tblPrNode, 0, 0, 1, 1, {}, mockSlideContext);
+            drawing.getCellBorders(cellNode, tblPrNode, 0, 0, 1, 1, tableStyle, mockSlideContext);
 
-            expect(borders.left).toEqual({ color: 'FF0000', width: 1.336157894736842 });
-            expect(borders.top).toBe('none');
-            expect(borders.right).toBeUndefined();
-        });
-
-        it('should apply base borders from table style if no direct formatting exists', () => {
-            const cellNode = createMockElement({ name: 'tc', children: { 'tcPr': [{}] } });
-            const tblPrNode = createMockElement();
-            const tableStyle = {
-                wholeTbl: {
-                    tcStyle: {
-                        borders: {
-                            left: { color: { val: '00FF00' }, width: 2 },
-                            right: { color: { val: '0000FF' }, width: 3 },
-                        }
-                    }
-                }
-            };
-
-            const borders = drawing.getCellBorders(cellNode, tblPrNode, 0, 0, 2, 2, tableStyle, mockSlideContext);
-            expect(borders.left).toEqual({ color: '00FF00', width: 2 });
-            expect(borders.right).toEqual({ color: '0000FF', width: 3 });
-        });
-
-        it('should apply conditional formatting for the first row', () => {
-            const cellNode = createMockElement({ name: 'tc', children: { 'tcPr': [{}] } });
-            const tblPrNode = createMockElement({ attributes: { firstRow: '1' } });
-            const tableStyle = {
-                firstRow: {
-                    tcStyle: {
-                        borders: { top: { color: { val: 'FFFF00' }, width: 5 } }
-                    }
-                }
-            };
-
-            const borders = drawing.getCellBorders(cellNode, tblPrNode, 0, 0, 2, 2, tableStyle, mockSlideContext);
-            expect(borders.top).toEqual({ color: 'FFFF00', width: 5 });
-        });
-
-        it('should apply banded row formatting', () => {
-            const cellNode = createMockElement({ name: 'tc', children: { 'tcPr': [{}] } });
-            const tblPrNode = createMockElement({ attributes: { bandRow: '1' } });
-            const tableStyle = {
-                band1H: {
-                    tcStyle: {
-                        borders: { bottom: { color: { val: 'FF00FF' }, width: 1 } }
-                    }
-                }
-            };
-
-            // r=0 is an even data row (band1H)
-            const borders = drawing.getCellBorders(cellNode, tblPrNode, 0, 1, 3, 3, tableStyle, mockSlideContext);
-            expect(borders.bottom).toEqual({ color: 'FF00FF', width: 1 });
-        });
-
-        it.skip('should prioritize direct formatting over table styles', () => { // TODO: Un-skip when mocking issue is resolved
-            const cellNode = createMockElement({
-                name: 'tc',
-                children: {
-                    'tcPr': [{
-                        name: 'tcPr',
-                        children: {
-                            'lnL': [{
-                                name: 'lnL',
-                                attributes: { w: '12700' },
-                                children: { 'solidFill': [{ name: 'solidFill', children: { 'srgbClr': [{ name: 'srgbClr', attributes: { val: 'FF0000' } }] } }] }
-                            }]
-                        }
-                    }]
-                }
-            });
-            const tblPrNode = createMockElement();
-            const tableStyle = {
-                wholeTbl: { tcStyle: { borders: { left: { color: { val: '00FF00' }, width: 10 } } } }
-            };
-
-            const borders = drawing.getCellBorders(cellNode, tblPrNode, 0, 0, 1, 1, tableStyle, mockSlideContext);
-            expect(borders.left.color).toBe('FF0000');
+            expect(TableStyleResolver).toHaveBeenCalledWith(tblPrNode, tableStyle, 1, 1, mockSlideContext);
+            const resolverInstance = TableStyleResolver.mock.instances[0];
+            expect(resolverInstance.getBorders).toHaveBeenCalledWith(cellNode, 0, 0);
         });
     });
 
     describe('getCellFillColor', () => {
-        let ColorParser;
-        let parseGradientFill;
+        let TableStyleResolver;
         const mockSlideContext = { theme: {} };
 
         beforeAll(async () => {
             const utils = await import('utils');
-            ColorParser = utils.ColorParser;
-            parseGradientFill = utils.parseGradientFill;
+            TableStyleResolver = utils.TableStyleResolver;
         });
 
         beforeEach(() => {
-            vi.mocked(ColorParser.parseColor).mockClear();
-            vi.mocked(ColorParser.resolveColor).mockClear();
-            vi.mocked(parseGradientFill).mockClear();
-
-            ColorParser.resolveColor.mockImplementation(colorObj => colorObj ? (colorObj.val || 'resolved-color') : 'fallback-color');
-            ColorParser.parseColor.mockImplementation(solidFillNode => {
-                if (!solidFillNode) return undefined;
-                const srgbClrArr = solidFillNode.getElementsByTagNameNS(null, 'srgbClr');
-                if (srgbClrArr.length > 0) {
-                    const srgbClr = srgbClrArr[0];
-                    const val = srgbClr.getAttribute('val');
-                    if (val) return { val };
-                }
-                return undefined;
-            });
-            vi.mocked(parseGradientFill).mockReturnValue({ type: 'gradient', val: 'gradient-fill' });
+            TableStyleResolver.mockClear();
+            TableStyleResolver.prototype.getFill.mockClear();
         });
 
-        const createMockElement = (config = {}) => {
-            const { name = '', attributes = {}, children = {} } = config;
-            return {
-                localName: name,
-                getAttribute: (attr) => attributes[attr],
-                getElementsByTagNameNS: (ns, tagName) => {
-                    return children[tagName] ? children[tagName].map(createMockElement) : [];
-                },
-                children: Object.values(children).flat().map(c => createMockElement(c)),
-            };
-        };
+        it('should instantiate TableStyleResolver and call getFill', () => {
+            const cellNode = {};
+            const tblPrNode = {};
+            const tableStyle = {};
 
-        it('should parse solid fill from direct cell formatting', () => {
-            const cellNode = createMockElement({
-                name: 'tc',
-                children: {
-                    'tcPr': [{
-                        name: 'tcPr',
-                        children: {
-                            'solidFill': [{ name: 'solidFill', children: { 'srgbClr': [{ name: 'srgbClr', attributes: { val: '00FF00' } }] } }]
-                        }
-                    }]
-                }
-            });
-            const tblPrNode = createMockElement();
-            const fill = drawing.getCellFillColor(cellNode, tblPrNode, 0, 0, 1, 1, {}, mockSlideContext);
+            drawing.getCellFillColor(cellNode, tblPrNode, 0, 0, 1, 1, tableStyle, mockSlideContext);
 
-            expect(fill).toEqual({ type: 'solid', color: '00FF00' });
-        });
-
-        it('should parse noFill as "none"', () => {
-            const cellNode = createMockElement({
-                name: 'tc',
-                children: {
-                    'tcPr': [{
-                        name: 'tcPr',
-                        children: {
-                            'noFill': [{ name: 'noFill' }]
-                        }
-                    }]
-                }
-            });
-            const tblPrNode = createMockElement();
-            const fill = drawing.getCellFillColor(cellNode, tblPrNode, 0, 0, 1, 1, {}, mockSlideContext);
-
-            expect(fill).toBe('none');
-        });
-
-        it('should parse gradient fill using parseGradientFill', () => {
-            const gradFillNode = { name: 'gradFill' };
-            const cellNode = createMockElement({
-                name: 'tc',
-                children: {
-                    'tcPr': [{
-                        name: 'tcPr',
-                        children: {
-                            'gradFill': [gradFillNode]
-                        }
-                    }]
-                }
-            });
-            const tblPrNode = createMockElement();
-            const fill = drawing.getCellFillColor(cellNode, tblPrNode, 0, 0, 1, 1, {}, mockSlideContext);
-
-            expect(parseGradientFill).toHaveBeenCalledWith(expect.any(Object), mockSlideContext);
-            expect(fill).toEqual({ type: 'gradient', val: 'gradient-fill' });
-        });
-
-        it('should fall back to table style fill', () => {
-            const cellNode = createMockElement({ name: 'tc' });
-            const tblPrNode = createMockElement();
-            const tableStyle = {
-                wholeTbl: {
-                    tcStyle: {
-                        fill: { type: 'solid', color: { val: 'TABLE_STYLE_COLOR' } }
-                    }
-                }
-            };
-            const fill = drawing.getCellFillColor(cellNode, tblPrNode, 0, 0, 2, 2, tableStyle, mockSlideContext);
-            expect(fill).toEqual({ type: 'solid', color: 'TABLE_STYLE_COLOR' });
+            expect(TableStyleResolver).toHaveBeenCalledWith(tblPrNode, tableStyle, 1, 1, mockSlideContext);
+            const resolverInstance = TableStyleResolver.mock.instances[0];
+            expect(resolverInstance.getFill).toHaveBeenCalledWith(cellNode, 0, 0);
         });
     });
 
     describe('getCellTextStyle', () => {
-        const createMockElement = (config = {}) => {
-            const { name = '', attributes = {}, children = {} } = config;
-            return {
-                getAttribute: (attr) => attributes[attr],
-            };
-        };
+        let TableStyleResolver;
 
-        it('should return an empty object if no table style is provided', () => {
-            const tblPrNode = createMockElement();
-            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 1, 1, null);
-            expect(style).toEqual({});
+        beforeAll(async () => {
+            const utils = await import('utils');
+            TableStyleResolver = utils.TableStyleResolver;
         });
 
-        it('should return the base text style from wholeTbl', () => {
-            const tblPrNode = createMockElement();
-            const tableStyle = {
-                wholeTbl: { tcTxStyle: { color: 'red', bold: true } }
-            };
-            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 2, 2, tableStyle);
-            expect(style).toEqual({ color: 'red', bold: true });
+        beforeEach(() => {
+            TableStyleResolver.mockClear();
+            TableStyleResolver.prototype.getTextStyle.mockClear();
         });
 
-        it('should merge conditional styles over the base style', () => {
-            const tblPrNode = createMockElement({ attributes: { firstRow: '1' } });
-            const tableStyle = {
-                wholeTbl: { tcTxStyle: { color: 'red', bold: true } },
-                firstRow: { tcTxStyle: { color: 'blue', italic: true } }
-            };
-            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 2, 2, tableStyle);
-            expect(style).toEqual({ color: 'blue', bold: true, italic: true });
-        });
+        it('should instantiate TableStyleResolver and call getTextStyle', () => {
+            const tblPrNode = {};
+            const tableStyle = {};
 
-        it('should apply multiple conditional styles with correct precedence', () => {
-            // nwCell should override firstRow and firstCol
-            const tblPrNode = createMockElement({ attributes: { firstRow: '1', firstCol: '1' } });
-            const tableStyle = {
-                wholeTbl: { tcTxStyle: { fontSize: 12 } },
-                firstRow: { tcTxStyle: { bold: true } },
-                firstCol: { tcTxStyle: { italic: true } },
-                nwCell: { tcTxStyle: { color: 'green' } }
-            };
-            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 3, 3, tableStyle);
-            expect(style).toEqual({ fontSize: 12, bold: true, italic: true, color: 'green' });
+            drawing.getCellTextStyle(tblPrNode, 0, 0, 1, 1, tableStyle);
+
+            expect(TableStyleResolver).toHaveBeenCalledWith(tblPrNode, tableStyle, 1, 1, null);
+            const resolverInstance = TableStyleResolver.mock.instances[0];
+            expect(resolverInstance.getTextStyle).toHaveBeenCalledWith(0, 0);
         });
     });
 
