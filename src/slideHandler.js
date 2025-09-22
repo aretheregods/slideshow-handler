@@ -721,7 +721,7 @@ export class SlideHandler {
         if ( !tblNode ) return null;
 
         const tblPrNode = tblNode.getElementsByTagNameNS( DML_NS, 'tblPr' )[ 0 ];
-        const styleId = tblPrNode?.getElementsByTagNameNS( DML_NS, 'tableStyleId' )[ 0 ]?.textContent || `{${ this.defaultTableStyleId }}`;
+        const styleId = tblPrNode?.getElementsByTagNameNS( DML_NS, 'tableStyleId' )[ 0 ]?.textContent || this.defaultTableStyleId;
         const tableStyle = this.tableStyles[ styleId ];
 
         const colWidths = Array.from( tblNode.getElementsByTagNameNS( DML_NS, 'gridCol' ) ).map( n => parseInt( n.getAttribute( 'w' ) ) / EMU_PER_PIXEL );
