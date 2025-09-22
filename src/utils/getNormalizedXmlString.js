@@ -5,7 +5,7 @@
  * @returns {Promise<string|null>} A promise that resolves to the normalized XML string, or null if the entry is not found.
  */
 export async function getNormalizedXmlString( entriesMap, path ) {
-    const entry = entriesMap[path];
+    const entry = entriesMap.get(path);
     if ( !entry ) return null;
 
     let xmlString = await entry.async("string");

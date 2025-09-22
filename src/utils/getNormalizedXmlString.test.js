@@ -3,7 +3,7 @@ import { getNormalizedXmlString } from './getNormalizedXmlString';
 
 describe('getNormalizedXmlString', () => {
   const createMockEntry = (content) => ({
-    getData: () => Promise.resolve(content),
+    async: () => Promise.resolve(content),
   });
 
   it('should return null if the entry is not found', async () => {
