@@ -446,7 +446,7 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) 
  * @param {Object} pos - The position and dimensions of the shape.
  * @returns {string|null} The SVG path string, or null if the geometry is invalid.
  */
-export function buildPathStringFromGeom(geometry, pos) {
+export function buildPathStringFromGeom(geometry, pos, flipH, flipV) {
     if (!geometry || !pos) return null;
 
     function polarToCartesian(centerX, centerY, radiusX, radiusY, angleInDegrees) {
@@ -488,7 +488,10 @@ export function buildPathStringFromGeom(geometry, pos) {
             const arcEnd = polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
 
             const arcLargeArcFlag = Math.abs(arcSweepAngle) <= 180 ? "0" : "1";
-            const arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
+            let arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
+            if (flipH ^ flipV) {
+                arcSweepFlag = arcSweepFlag === "0" ? "1" : "0";
+            }
 
             return `M ${arcStart.x} ${arcStart.y} A ${arcRadiusX} ${arcRadiusY} 0 ${arcLargeArcFlag} ${arcSweepFlag} ${arcEnd.x} ${arcEnd.y}`;
         }

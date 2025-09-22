@@ -536,6 +536,7 @@ export class SlideHandler {
         const xfrmNode = spPrNode?.getElementsByTagNameNS( DML_NS, 'xfrm' )[ 0 ];
 
         let rot = 0;
+        let flipH = false, flipV = false;
         if ( xfrmNode ) {
             const offNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
             const extNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
@@ -545,8 +546,8 @@ export class SlideHandler {
                 const w = parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL;
                 const h = parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL;
                 rot = parseInt( xfrmNode.getAttribute( 'rot' ) || '0' );
-                const flipH = xfrmNode.getAttribute( 'flipH' ) === '1';
-                const flipV = xfrmNode.getAttribute( 'flipV' ) === '1';
+                flipH = xfrmNode.getAttribute( 'flipH' ) === '1';
+                flipV = xfrmNode.getAttribute( 'flipV' ) === '1';
                 pos = { width: w, height: h };
                 localMatrix.translate( x, y ).translate( w / 2, h / 2 ).rotate( rot / 60000 * Math.PI / 180 ).scale( flipH ? -1 : 1, flipV ? -1 : 1 ).translate( -w / 2, -h / 2 );
             }
@@ -572,7 +573,7 @@ export class SlideHandler {
             placeholderProps = { ...( masterPh?.shapeProps || {} ), ...( layoutPh?.shapeProps || {} ) };
         }
 
-        const pathString = placeholderProps?.geometry ? buildPathStringFromGeom( placeholderProps.geometry, pos ) : null;
+        const pathString = placeholderProps?.geometry ? buildPathStringFromGeom( placeholderProps.geometry, pos, flipH, flipV ) : null;
 
         let imageInfo = null;
         const blipFillNode = picNode.getElementsByTagNameNS( PML_NS, 'blipFill' )[ 0 ];

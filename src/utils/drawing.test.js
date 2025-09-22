@@ -563,6 +563,21 @@ describe('drawing.js', () => {
             expect(drawing.buildPathStringFromGeom(geometry, pos)).toBe(expectedPath);
         });
 
+        it('should handle flipped arcs correctly', () => {
+            const geometry = {
+                type: 'preset',
+                preset: 'arc',
+                adjustments: { adj1: 0, adj2: 5400000 } // 90 degrees sweep
+            };
+            const pos = { width: 100, height: 100 };
+            const pathNoFlip = drawing.buildPathStringFromGeom(geometry, pos, false, false);
+            const pathFlipped = drawing.buildPathStringFromGeom(geometry, pos, true, false);
+
+            // Check that the sweep flag changes
+            expect(pathNoFlip).toContain('A 50 50 0 0 1');
+            expect(pathFlipped).toContain('A 50 50 0 0 0');
+        });
+
         it('should build a path string for custom geometry', () => {
             const geometry = {
                 type: 'custom',

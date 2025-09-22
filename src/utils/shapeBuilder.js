@@ -58,7 +58,7 @@ export class ShapeBuilder {
         if ( shapeProps && shapeProps.geometry ) {
             const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
 
-            const path = buildPathStringFromGeom(shapeProps.geometry, pos);
+            const path = buildPathStringFromGeom(shapeProps.geometry, pos, flipH, flipV);
             if (path) {
                 this.renderer.drawPath( path, {
                     fill: shapeProps.fill,
