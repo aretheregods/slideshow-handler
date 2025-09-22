@@ -572,8 +572,6 @@ export class SlideHandler {
             placeholderProps = { ...( masterPh?.shapeProps || {} ), ...( layoutPh?.shapeProps || {} ) };
         }
 
-        const pathString = placeholderProps?.geometry ? buildPathStringFromGeom( placeholderProps.geometry, pos ) : null;
-
         let imageInfo = null;
         const blipFillNode = picNode.getElementsByTagNameNS( PML_NS, 'blipFill' )[ 0 ];
         if ( blipFillNode ) {
@@ -610,7 +608,6 @@ export class SlideHandler {
             transform,
             pos,
             placeholderProps,
-            pathString,
             image: imageInfo,
             rot,
             extensions,
@@ -657,6 +654,21 @@ export class SlideHandler {
                 imageOptions.filter = filters.join( ' ' );
             }
 
+            const geom = picData.placeholderProps?.geometry;
+            let pathString = null;
+            if ( geom ) {
+                if ( geom.type === 'preset' && geom.preset === 'ellipse' ) {
+                    const { width: w, height: h } = picData.pos;
+                    const cx = w / 2;
+                    const cy = h / 2;
+                    pathString = `M ${ cx - w / 2 },${ cy } a ${ w / 2 },${ h / 2 } 0 1,0 ${ w },0 a ${ w / 2 },${ h / 2 } 0 1,0 -${ w },0`;
+                } else if ( geom.type === 'custom' ) {
+                    pathString = buildPathStringFromGeom( geom, picData.pos );
+                }
+                // TODO: Add support for other preset shapes here
+            }
+
+
             if ( picData.image.srcRect ) {
                 const img = await createImage( picData.image.href );
                 const crop = picData.image.srcRect;
@@ -665,12 +677,12 @@ export class SlideHandler {
                 imageOptions.preserveAspectRatio = 'none';
             }
 
-            if ( picData.pathString ) {
+            if ( pathString ) {
                 const clipId = `clip-${ Math.random().toString( 36 ).slice( 2, 11 ) }`;
                 const clipPath = document.createElementNS( 'http://www.w3.org/2000/svg', 'clipPath' );
                 clipPath.id = clipId;
                 const path = document.createElementNS( 'http://www.w3.org/2000/svg', 'path' );
-                path.setAttribute( 'd', picData.pathString );
+                path.setAttribute( 'd', pathString );
                 clipPath.appendChild( path );
                 this.renderer.defs.appendChild( clipPath );
                 imageOptions.clipPath = `url(#${ clipId })`;
@@ -688,7 +700,7 @@ export class SlideHandler {
 
         if ( picData.placeholderProps?.stroke ) {
             const strokeOpts = { stroke: picData.placeholderProps.stroke };
-            if ( picData.pathString ) this.renderer.drawPath( picData.pathString, strokeOpts );
+            if ( pathString ) this.renderer.drawPath( pathString, strokeOpts );
             else this.renderer.drawRect( 0, 0, picData.pos.width, picData.pos.height, strokeOpts );
         }
     }
