@@ -78,8 +78,9 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
         }
 
         const staticParsingData = {
+            theme,
             tableStyles,
-            defaultTableStyleId,
+            defaultTableStyle: tableStylesResult.defaultStyle,
             entriesMap
         }
 

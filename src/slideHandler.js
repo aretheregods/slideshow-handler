@@ -40,8 +40,9 @@ export class SlideHandler {
         slideNum,
         slideSize,
         defaultTextStyles,
+        theme,
         tableStyles,
-        defaultTableStyleId,
+        defaultTableStyle,
         slideImageMap,
         layoutImageMap,
         masterImageMap,
@@ -61,8 +62,9 @@ export class SlideHandler {
         this.slideNum = slideNum;
         this.slideSize = slideSize;
         this.defaultTextStyles = defaultTextStyles;
+        this.theme = theme;
         this.tableStyles = tableStyles;
-        this.defaultTableStyleId = defaultTableStyleId;
+        this.defaultTableStyle = defaultTableStyle;
         this.slideImageMap = slideImageMap;
         this.layoutImageMap = layoutImageMap;
         this.masterImageMap = masterImageMap;
@@ -732,7 +734,7 @@ export class SlideHandler {
         if ( !tblNode ) return null;
 
         const tblPrNode = tblNode.getElementsByTagNameNS( DML_NS, 'tblPr' )[ 0 ];
-        const styleId = tblPrNode?.getElementsByTagNameNS( DML_NS, 'tableStyleId' )[ 0 ]?.textContent || this.defaultTableStyleId;
+        const styleId = tblPrNode?.getElementsByTagNameNS( DML_NS, 'tableStyleId' )[ 0 ]?.textContent;
         const tableStyle = this.tableStyles[ styleId ];
 
         const colWidths = Array.from( tblNode.getElementsByTagNameNS( DML_NS, 'gridCol' ) ).map( n => parseInt( n.getAttribute( 'w' ) ) / EMU_PER_PIXEL );
@@ -765,9 +767,9 @@ export class SlideHandler {
 
                 cells.push( {
                     pos: { x: cellX, y: cellY, width: cellWidth, height: cellHeight },
-                    fill: getCellFillColor( cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext ),
-                    borders: getCellBorders( cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext ),
-                    text: this.parseCellText( cellNode, { x: cellX, y: cellY, width: cellWidth, height: cellHeight }, getCellTextStyle( tblPrNode, r, c, numRows, numCols, tableStyle ) ),
+                    fill: getCellFillColor( cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.defaultTableStyle, this.slideContext ),
+                    borders: getCellBorders( cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.defaultTableStyle, this.slideContext ),
+                    text: this.parseCellText( cellNode, { x: cellX, y: cellY, width: cellWidth, height: cellHeight }, getCellTextStyle( tblPrNode, r, c, numRows, numCols, tableStyle, this.defaultTableStyle, this.slideContext ) ),
                 } );
             }
         }
