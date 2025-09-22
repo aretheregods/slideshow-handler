@@ -536,6 +536,7 @@ export class SlideHandler {
         const xfrmNode = spPrNode?.getElementsByTagNameNS( DML_NS, 'xfrm' )[ 0 ];
 
         let rot = 0;
+        let flipH = false, flipV = false;
         if ( xfrmNode ) {
             const offNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
             const extNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
@@ -545,8 +546,8 @@ export class SlideHandler {
                 const w = parseInt( extNode.getAttribute( "cx" ) ) / EMU_PER_PIXEL;
                 const h = parseInt( extNode.getAttribute( "cy" ) ) / EMU_PER_PIXEL;
                 rot = parseInt( xfrmNode.getAttribute( 'rot' ) || '0' );
-                const flipH = xfrmNode.getAttribute( 'flipH' ) === '1';
-                const flipV = xfrmNode.getAttribute( 'flipV' ) === '1';
+                flipH = xfrmNode.getAttribute( 'flipH' ) === '1';
+                flipV = xfrmNode.getAttribute( 'flipV' ) === '1';
                 pos = { width: w, height: h };
                 localMatrix.translate( x, y ).translate( w / 2, h / 2 ).rotate( rot / 60000 * Math.PI / 180 ).scale( flipH ? -1 : 1, flipV ? -1 : 1 ).translate( -w / 2, -h / 2 );
             }
@@ -572,7 +573,7 @@ export class SlideHandler {
             placeholderProps = { ...( masterPh?.shapeProps || {} ), ...( layoutPh?.shapeProps || {} ) };
         }
 
-        const pathString = placeholderProps?.geometry ? buildPathStringFromGeom( placeholderProps.geometry, pos ) : null;
+        const pathString = placeholderProps?.geometry ? buildPathStringFromGeom( placeholderProps.geometry, pos, flipH, flipV ) : null;
 
         let imageInfo = null;
         const blipFillNode = picNode.getElementsByTagNameNS( PML_NS, 'blipFill' )[ 0 ];
@@ -625,6 +626,7 @@ export class SlideHandler {
             matrix.m = transformValues;
         }
         this.renderer.setTransform( matrix, id );
+        let pathString = '';
 
         if ( picData.placeholderProps?.fill?.type === 'solid' || picData.placeholderProps?.fill?.type === 'gradient' ) {
             const fillOptions = {
@@ -657,20 +659,7 @@ export class SlideHandler {
                 imageOptions.filter = filters.join( ' ' );
             }
 
-            const geom = picData.placeholderProps?.geometry;
-            let pathString = picData.pathString;
-            if ( geom && !pathString ) {
-                if ( geom.type === 'preset' && geom.preset === 'ellipse' ) {
-                    const { width: w, height: h } = picData.pos;
-                    const cx = w / 2;
-                    const cy = h / 2;
-                    pathString = `M ${ cx - w / 2 },${ cy } a ${ w / 2 },${ h / 2 } 0 1,0 ${ w },0 a ${ w / 2 },${ h / 2 } 0 1,0 -${ w },0`;
-                } else if ( geom.type === 'custom' ) {
-                    pathString = buildPathStringFromGeom( geom, picData.pos );
-                }
-                // TODO: Add support for other preset shapes here
-            }
-
+            pathString = picData.pathString;
 
             if ( picData.image.srcRect ) {
                 const img = await createImage( picData.image.href );

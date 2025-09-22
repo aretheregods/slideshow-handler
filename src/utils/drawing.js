@@ -446,47 +446,179 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) 
  * @param {Object} pos - The position and dimensions of the shape.
  * @returns {string|null} The SVG path string, or null if the geometry is invalid.
  */
-export function buildPathStringFromGeom(geometry, pos) {
+export function buildPathStringFromGeom(geometry, pos, flipH, flipV) {
     if (!geometry || !pos) return null;
 
-    if (geometry.type === 'custom' && geometry.path) {
-        const pathData = geometry.path;
-        const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
-        const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
+    function polarToCartesian(centerX, centerY, radiusX, radiusY, angleInDegrees) {
+        const angleInRadians = (angleInDegrees - 180) * Math.PI / 180.0;
+        return {
+            x: centerX + (radiusX * Math.cos(angleInRadians)),
+            y: centerY + (radiusY * Math.sin(angleInRadians))
+        };
+    }
 
-        let pathString = '';
-        pathData.commands.forEach(command => {
-            switch (command.cmd) {
-                case 'moveTo': {
-                    const p = command.points[0];
-                    pathString += `M ${p.x * scaleX} ${p.y * scaleY} `;
-                    break;
-                }
-                case 'lnTo': {
-                    const p = command.points[0];
-                    pathString += `L ${p.x * scaleX} ${p.y * scaleY} `;
-                    break;
-                }
-                case 'cubicBezTo': {
-                    const p1 = command.points[0];
-                    const p2 = command.points[1];
-                    const p3 = command.points[2];
-                    pathString += `C ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} ${p3.x * scaleX} ${p3.y * scaleY} `;
-                    break;
-                }
-                case 'quadBezTo': {
-                    const p1 = command.points[0];
-                    const p2 = command.points[1];
-                    pathString += `Q ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} `;
-                    break;
-                }
-                case 'close': {
-                    pathString += 'Z ';
-                    break;
-                }
+    const geomType = geometry.type === 'preset' ? geometry.preset : geometry.type;
+
+    switch (geomType) {
+        case 'rect':
+            return `M 0 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L 0 ${pos.height} Z`;
+        case 'ellipse':
+            return `M ${pos.width / 2} 0 A ${pos.width / 2} ${pos.height / 2} 0 1 0 ${pos.width / 2} ${pos.height} A ${pos.width / 2} ${pos.height / 2} 0 1 0 ${pos.width / 2} 0 Z`;
+        case 'arc': {
+            const arcAdj = geometry.adjustments;
+            let arcStartAngle, arcSweepAngle;
+
+            if (arcAdj?.adj1 !== undefined && arcAdj?.adj2 !== undefined) {
+                const startAngleFromXml = arcAdj.adj1 / 60000;
+                const endAngleFromXml = arcAdj.adj2 / 60000;
+                arcSweepAngle = (endAngleFromXml - startAngleFromXml) / 2;
+                arcStartAngle = startAngleFromXml - 60;
+            } else {
+                arcStartAngle = 90;
+                arcSweepAngle = 90;
             }
-        });
-        return pathString;
+
+            const arcEndAngle = arcStartAngle + arcSweepAngle;
+            const arcCenterX = pos.width / 2;
+            const arcCenterY = pos.height / 2;
+            const arcRadiusX = pos.width / 2;
+            const arcRadiusY = pos.height / 2;
+
+            const arcStart = polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcStartAngle);
+            const arcEnd = polarToCartesian(arcCenterX, arcCenterY, arcRadiusX, arcRadiusY, arcEndAngle);
+
+            const arcLargeArcFlag = Math.abs(arcSweepAngle) <= 180 ? "0" : "1";
+            let arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
+            if (flipH ^ flipV) {
+                arcSweepFlag = arcSweepFlag === "0" ? "0" : "1";
+            }
+
+            return `M ${arcStart.x} ${arcStart.y} A ${arcRadiusX} ${arcRadiusY} 0 ${arcLargeArcFlag} ${arcSweepFlag} ${arcEnd.x} ${arcEnd.y}`;
+        }
+        case 'custom':
+            if (geometry.path) {
+                const pathData = geometry.path;
+                const scaleX = pathData.w === 0 ? 1 : pos.width / pathData.w;
+                const scaleY = pathData.h === 0 ? 1 : pos.height / pathData.h;
+
+                let pathString = '';
+                pathData.commands.forEach(command => {
+                    switch (command.cmd) {
+                        case 'moveTo': {
+                            const p = command.points[0];
+                            pathString += `M ${p.x * scaleX} ${p.y * scaleY} `;
+                            break;
+                        }
+                        case 'lnTo': {
+                            const p = command.points[0];
+                            pathString += `L ${p.x * scaleX} ${p.y * scaleY} `;
+                            break;
+                        }
+                        case 'cubicBezTo': {
+                            const p1 = command.points[0];
+                            const p2 = command.points[1];
+                            const p3 = command.points[2];
+                            pathString += `C ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} ${p3.x * scaleX} ${p3.y * scaleY} `;
+                            break;
+                        }
+                        case 'quadBezTo': {
+                            const p1 = command.points[0];
+                            const p2 = command.points[1];
+                            pathString += `Q ${p1.x * scaleX} ${p1.y * scaleY} ${p2.x * scaleX} ${p2.y * scaleY} `;
+                            break;
+                        }
+                        case 'close': {
+                            pathString += 'Z ';
+                            break;
+                        }
+                    }
+                });
+                return pathString;
+            }
+            return null;
+        case 'blockArc': {
+            const avLst = geometry.adjustments;
+            const adj1 = avLst?.adj1 !== undefined ? avLst.adj1 : 0;
+            const adj2 = avLst?.adj2 !== undefined ? avLst.adj2 : 10800000;
+            const adj3 = avLst?.adj3 !== undefined ? avLst.adj3 : 50000;
+
+            const startAngle = adj1 / 60000;
+            const sweepAngle = adj2 / 60000;
+            const endAngle = startAngle + sweepAngle;
+
+            const centerX = pos.width / 2;
+            const centerY = pos.height / 2;
+            const outerRadiusX = pos.width / 2;
+            const outerRadiusY = pos.height / 2;
+
+            const innerRadiusRatio = adj3 / 100000;
+            const innerRadiusX = outerRadiusX * (1 - innerRadiusRatio);
+            const innerRadiusY = outerRadiusY * (1 - innerRadiusRatio);
+
+            const outerStart = polarToCartesian(centerX, centerY, outerRadiusX, outerRadiusY, startAngle);
+            const outerEnd = polarToCartesian(centerX, centerY, outerRadiusX, outerRadiusY, endAngle);
+            const innerStart = polarToCartesian(centerX, centerY, innerRadiusX, innerRadiusY, startAngle);
+            const innerEnd = polarToCartesian(centerX, centerY, innerRadiusX, innerRadiusY, endAngle);
+
+            const largeArcFlag = sweepAngle <= 180 ? "0" : "1";
+
+            return `M ${outerStart.x} ${outerStart.y} A ${outerRadiusX} ${outerRadiusY} 0 ${largeArcFlag} 1 ${outerEnd.x} ${outerEnd.y} L ${innerEnd.x} ${innerEnd.y} A ${innerRadiusX} ${innerRadiusY} 0 ${largeArcFlag} 0 ${innerStart.x} ${innerStart.y} Z`;
+        }
+        case 'roundRect': {
+            const adj_roundRect = geometry.adjustments?.adj !== undefined ? geometry.adjustments.adj : 16667;
+            const cornerRadiusRatio = adj_roundRect / 100000;
+            const cornerRadius = ((pos.width + pos.height) / 2) * cornerRadiusRatio;
+
+            return `M ${cornerRadius} 0 L ${pos.width - cornerRadius} 0 A ${cornerRadius} ${cornerRadius} 0 0 1 ${pos.width} ${cornerRadius} L ${pos.width} ${pos.height - cornerRadius} A ${cornerRadius} ${cornerRadius} 0 0 1 ${pos.width - cornerRadius} ${pos.height} L ${cornerRadius} ${pos.height} A ${cornerRadius} ${cornerRadius} 0 0 1 0 ${pos.height - cornerRadius} L 0 ${cornerRadius} A ${cornerRadius} ${cornerRadius} 0 0 1 ${cornerRadius} 0 Z`;
+        }
+        case 'round1Rect':
+        case 'round2SameRect':
+        case 'round2DiagRect':
+        case 'snip1Rect':
+        case 'snip2SameRect':
+        case 'snip2DiagRect':
+        case 'snipRoundRect': {
+            const adj1_multi = geometry.adjustments?.adj1 !== undefined ? geometry.adjustments.adj1 : 16667;
+            const adj2_multi = geometry.adjustments?.adj2 !== undefined ? geometry.adjustments.adj2 : 16667;
+            const cornerRadius1 = Math.min(pos.width, pos.height) * (adj1_multi / 100000);
+            const cornerRadius2 = Math.min(pos.width, pos.height) * (adj2_multi / 100000);
+
+            switch (geomType) {
+                case 'round1Rect':
+                    return `M 0 ${cornerRadius1} A ${cornerRadius1} ${cornerRadius1} 0 0 1 ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L 0 ${pos.height} Z`;
+                case 'round2SameRect':
+                    return `M 0 ${cornerRadius1} A ${cornerRadius1} ${cornerRadius1} 0 0 1 ${cornerRadius1} 0 L ${pos.width - cornerRadius2} 0 A ${cornerRadius2} ${cornerRadius2} 0 0 1 ${pos.width} ${cornerRadius2} L ${pos.width} ${pos.height} L 0 ${pos.height} Z`;
+                case 'round2DiagRect':
+                    return `M 0 ${cornerRadius1} A ${cornerRadius1} ${cornerRadius1} 0 0 1 ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height - cornerRadius2} A ${cornerRadius2} ${cornerRadius2} 0 0 1 ${pos.width - cornerRadius2} ${pos.height} L 0 ${pos.height} Z`;
+                case 'snip1Rect':
+                    return `M ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L 0 ${pos.height} L 0 ${cornerRadius1} Z`;
+                case 'snip2SameRect':
+                    return `M ${cornerRadius1} 0 L ${pos.width - cornerRadius2} 0 L ${pos.width} ${cornerRadius2} L ${pos.width} ${pos.height} L 0 ${pos.height} L 0 ${cornerRadius1} Z`;
+                case 'snip2DiagRect':
+                    return `M ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height - cornerRadius2} L ${pos.width - cornerRadius2} ${pos.height} L 0 ${pos.height} L 0 ${cornerRadius1} Z`;
+                case 'snipRoundRect':
+                    return `M ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L ${cornerRadius2} ${pos.height} A ${cornerRadius2} ${cornerRadius2} 0 0 1 0 ${pos.height - cornerRadius2} L 0 ${cornerRadius1} Z`;
+            }
+            break;
+        }
+        case 'corner': {
+            return `M 0 0 L 0 ${pos.height} L ${pos.width} ${pos.height}`;
+        }
+        case 'chevron': {
+            const adj_chevron = geometry.adjustments?.adj !== undefined ? geometry.adjustments.adj : 50000;
+            const adjRatio = adj_chevron / 100000;
+            const x1 = pos.width * adjRatio * (3 / 10);
+            const x2 = pos.width - x1;
+            const midY = pos.height / 2;
+            return `M 0 0 L ${x2} 0 L ${pos.width} ${midY} L ${x2} ${pos.height} L 0 ${pos.height} L ${x1} ${midY} Z`;
+        }
+        case 'homePlate': {
+            const adj_homePlate = geometry.adjustments?.adj !== undefined ? geometry.adjustments.adj : 50000;
+            const adjRatio = adj_homePlate / 100000;
+            const shoulderX = pos.width * adjRatio * (3 / 10);
+            const x2 = pos.width - shoulderX;
+            return `M 0 0 L ${x2} 0 L ${pos.width} ${pos.height / 2} L ${x2} ${pos.height} L 0 ${pos.height} Z`;
+        }
     }
 
     return null;
