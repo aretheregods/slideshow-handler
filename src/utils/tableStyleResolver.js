@@ -73,7 +73,11 @@ export class TableStyleResolver {
         // Row/col styles
         if (this.firstCol && isFirstCol && this.tableStyle.firstCol) parts.push(this.tableStyle.firstCol);
         if (this.lastCol && isLastCol && this.tableStyle.lastCol) parts.push(this.tableStyle.lastCol);
-        if (this.firstRow && isFirstRow && this.tableStyle.firstRow) parts.push(this.tableStyle.firstRow);
+        if (this.firstRow && isFirstRow && this.tableStyle.firstRow) {
+            if (!this.tableStyle.firstRow.tcStyle || !this.tableStyle.firstRow.tcStyle.fill || this.tableStyle.firstRow.tcStyle.fill.type !== 'none') {
+                parts.push(this.tableStyle.firstRow);
+            }
+        }
         if (this.lastRow && isLastRow && this.tableStyle.lastRow) parts.push(this.tableStyle.lastRow);
 
         // Corner styles (highest precedence)
@@ -114,28 +118,25 @@ export class TableStyleResolver {
         // Level 2 & 3: Table Styles
         let finalFill = null;
 
-        // Table-level fill from tblPr (lowest precedence)
-        if (this.tblPrNode) {
-            const solidFillNode = this.tblPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-            if (solidFillNode) {
-                const colorObj = ColorParser.parseColor(solidFillNode);
-                if (colorObj) {
-                    finalFill = { type: 'solid', color: colorObj };
+        // Special case for first row with noFill
+        if (r === 0 && this.firstRow) {
+            const firstRowPart = this.tableStyle.firstRow;
+            if (firstRowPart && firstRowPart.tcStyle && firstRowPart.tcStyle.fill && firstRowPart.tcStyle.fill.type === 'none') {
+                const band1HPart = this.tableStyle.band1H;
+                if (band1HPart && band1HPart.tcStyle && band1HPart.tcStyle.fill) {
+                    finalFill = band1HPart.tcStyle.fill;
                 }
             }
         }
 
-        if (this.tableStyle) {
-            // Base fill from wholeTbl
-            if (this.tableStyle.wholeTbl && this.tableStyle.wholeTbl.tcStyle && this.tableStyle.wholeTbl.tcStyle.fill) {
-                finalFill = this.tableStyle.wholeTbl.tcStyle.fill;
-            }
-
+        if (finalFill === null) {
             const applicableParts = this._getApplicableParts(r, c);
             for (const part of applicableParts) {
                 if (part && part.tcStyle && part.tcStyle.fill) {
                     if (part.tcStyle.fill.type !== 'none') {
                         finalFill = part.tcStyle.fill;
+                    } else {
+                        finalFill = null;
                     }
                 }
             }
