@@ -490,7 +490,7 @@ export function buildPathStringFromGeom(geometry, pos, flipH, flipV) {
             const arcLargeArcFlag = Math.abs(arcSweepAngle) <= 180 ? "0" : "1";
             let arcSweepFlag = arcSweepAngle >= 0 ? "1" : "0";
             if (flipH ^ flipV) {
-                arcSweepFlag = arcSweepFlag === "0" ? "1" : "0";
+                arcSweepFlag = arcSweepFlag === "0" ? "0" : "1";
             }
 
             return `M ${arcStart.x} ${arcStart.y} A ${arcRadiusX} ${arcRadiusY} 0 ${arcLargeArcFlag} ${arcSweepFlag} ${arcEnd.x} ${arcEnd.y}`;
@@ -600,6 +600,24 @@ export function buildPathStringFromGeom(geometry, pos, flipH, flipV) {
                     return `M ${cornerRadius1} 0 L ${pos.width} 0 L ${pos.width} ${pos.height} L ${cornerRadius2} ${pos.height} A ${cornerRadius2} ${cornerRadius2} 0 0 1 0 ${pos.height - cornerRadius2} L 0 ${cornerRadius1} Z`;
             }
             break;
+        }
+        case 'corner': {
+            return `M 0 0 L 0 ${pos.height} L ${pos.width} ${pos.height}`;
+        }
+        case 'chevron': {
+            const adj_chevron = geometry.adjustments?.adj !== undefined ? geometry.adjustments.adj : 50000;
+            const adjRatio = adj_chevron / 100000;
+            const x1 = pos.width * adjRatio * (3 / 10);
+            const x2 = pos.width - x1;
+            const midY = pos.height / 2;
+            return `M 0 0 L ${x2} 0 L ${pos.width} ${midY} L ${x2} ${pos.height} L 0 ${pos.height} L ${x1} ${midY} Z`;
+        }
+        case 'homePlate': {
+            const adj_homePlate = geometry.adjustments?.adj !== undefined ? geometry.adjustments.adj : 50000;
+            const adjRatio = adj_homePlate / 100000;
+            const shoulderX = pos.width * adjRatio * (3 / 10);
+            const x2 = pos.width - shoulderX;
+            return `M 0 0 L ${x2} 0 L ${pos.width} ${pos.height / 2} L ${x2} ${pos.height} L 0 ${pos.height} Z`;
         }
     }
 

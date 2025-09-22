@@ -66,62 +66,30 @@ export class ShapeBuilder {
                     effect: shapeProps.effect,
                     pos,
                 } );
-            } else {
-                // Fallback or specific rendering for non-path shapes
-                switch ( geomType ) {
-                    case 'line':
-                        const m = matrix.m;
-                        const sx = Math.sqrt( m[ 0 ] * m[ 0 ] + m[ 1 ] * m[ 1 ] );
-                        const sy = Math.sqrt( m[ 2 ] * m[ 2 ] + m[ 3 ] * m[ 3 ] );
+            } else if (geomType === 'line') {
+                // Fallback for line shape
+                const m = matrix.m;
+                const sx = Math.sqrt( m[ 0 ] * m[ 0 ] + m[ 1 ] * m[ 1 ] );
+                const sy = Math.sqrt( m[ 2 ] * m[ 2 ] + m[ 3 ] * m[ 3 ] );
 
-                        const noScaleMatrix = matrix.clone();
-                        if ( sx !== 0 && sy !== 0 ) {
-                            noScaleMatrix.scale( 1 / sx, 1 / sy );
-                        }
-
-                        const scaledWidth = pos.width * sx;
-                        const scaledHeight = pos.height * sy;
-
-                        const originalGroup = this.renderer.currentGroup;
-                        this.renderer.currentGroup = this.renderer.svg;
-
-                        this.renderer.setTransform( noScaleMatrix );
-                        this.renderer.drawLine( 0, 0, scaledWidth, scaledHeight, {
-                            stroke: shapeProps.stroke,
-                            effect: shapeProps.effect,
-                        } );
-
-                        this.renderer.currentGroup = originalGroup;
-                        break;
-                    case 'corner':
-                        this.renderer.drawCorner( 0, 0, pos.width, pos.height, {
-                            fill: shapeProps.fill,
-                            stroke: shapeProps.stroke,
-                            effect: shapeProps.effect,
-                            pos,
-                        } );
-                        break;
-                    case 'chevron':
-                        const adj_chevron = shapeProps.geometry.adjustments?.adj !== undefined ? shapeProps.geometry.adjustments.adj : 50000;
-                        var adjRatio = adj_chevron / 100000;
-                        this.renderer.drawChevron( 0, 0, pos.width, pos.height, adjRatio, {
-                            fill: shapeProps.fill,
-                            stroke: shapeProps.stroke,
-                            effect: shapeProps.effect,
-                            pos,
-                        } );
-                        break;
-                    case 'homePlate':
-                        const adj_homePlate = shapeProps.geometry.adjustments?.adj !== undefined ? shapeProps.geometry.adjustments.adj : 50000;
-                        var adjRatio = adj_homePlate / 100000;
-                        this.renderer.drawHomePlate( 0, 0, pos.width, pos.height, adjRatio, {
-                            fill: shapeProps.fill,
-                            stroke: shapeProps.stroke,
-                            effect: shapeProps.effect,
-                            pos,
-                        } );
-                        break;
+                const noScaleMatrix = matrix.clone();
+                if ( sx !== 0 && sy !== 0 ) {
+                    noScaleMatrix.scale( 1 / sx, 1 / sy );
                 }
+
+                const scaledWidth = pos.width * sx;
+                const scaledHeight = pos.height * sy;
+
+                const originalGroup = this.renderer.currentGroup;
+                this.renderer.currentGroup = this.renderer.svg;
+
+                this.renderer.setTransform( noScaleMatrix );
+                this.renderer.drawLine( 0, 0, scaledWidth, scaledHeight, {
+                    stroke: shapeProps.stroke,
+                    effect: shapeProps.effect,
+                } );
+
+                this.renderer.currentGroup = originalGroup;
             }
         } else if ( txBody ) {
             // This is a shapeless textbox. Create a transparent rectangle to host the text.

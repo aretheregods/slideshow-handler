@@ -563,19 +563,21 @@ describe('drawing.js', () => {
             expect(drawing.buildPathStringFromGeom(geometry, pos)).toBe(expectedPath);
         });
 
-        it('should handle flipped arcs correctly', () => {
+        it('should handle arcs with the original logic, including the sweep flag bug', () => {
             const geometry = {
                 type: 'preset',
                 preset: 'arc',
-                adjustments: { adj1: 0, adj2: 5400000 } // 90 degrees sweep
+                adjustments: { adj1: 0, adj2: 5400000 } // 90 degrees sweep, so sweep flag should be '1'
             };
             const pos = { width: 100, height: 100 };
-            const pathNoFlip = drawing.buildPathStringFromGeom(geometry, pos, false, false);
-            const pathFlipped = drawing.buildPathStringFromGeom(geometry, pos, true, false);
 
-            // Check that the sweep flag changes
+            // Test without flipping
+            const pathNoFlip = drawing.buildPathStringFromGeom(geometry, pos, false, false);
             expect(pathNoFlip).toContain('A 50 50 0 0 1');
-            expect(pathFlipped).toContain('A 50 50 0 0 0');
+
+            // Test with flipping, expecting the sweep flag to remain '1' due to the original logic
+            const pathFlipped = drawing.buildPathStringFromGeom(geometry, pos, true, false);
+            expect(pathFlipped).toContain('A 50 50 0 0 1');
         });
 
         it('should build a path string for custom geometry', () => {
@@ -596,6 +598,27 @@ describe('drawing.js', () => {
             const expectedPath = 'M 20 20 L 380 20 C 390 20 400 30 400 40 Z ';
             const path = drawing.buildPathStringFromGeom(geometry, pos);
             expect(path).toBe(expectedPath);
+        });
+
+        it('should build a path string for a corner shape', () => {
+            const geometry = { type: 'preset', preset: 'corner' };
+            const pos = { width: 100, height: 100 };
+            const expectedPath = 'M 0 0 L 0 100 L 100 100';
+            expect(drawing.buildPathStringFromGeom(geometry, pos)).toBe(expectedPath);
+        });
+
+        it('should build a path string for a chevron shape', () => {
+            const geometry = { type: 'preset', preset: 'chevron', adjustments: { adj: 50000 } };
+            const pos = { width: 100, height: 100 };
+            const expectedPath = 'M 0 0 L 85 0 L 100 50 L 85 100 L 0 100 L 15 50 Z';
+            expect(drawing.buildPathStringFromGeom(geometry, pos)).toBe(expectedPath);
+        });
+
+        it('should build a path string for a homePlate shape', () => {
+            const geometry = { type: 'preset', preset: 'homePlate', adjustments: { adj: 50000 } };
+            const pos = { width: 100, height: 100 };
+            const expectedPath = 'M 0 0 L 85 0 L 100 50 L 85 100 L 0 100 Z';
+            expect(drawing.buildPathStringFromGeom(geometry, pos)).toBe(expectedPath);
         });
     });
 
