@@ -52,18 +52,17 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
         }
 
         let tableStyles = {};
-        let defaultTableStyleId = null;
+        let tableStylesResult = {};
         const tableStylesRel = sortedPresRels.find( rel => rel.type === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles' );
         if ( tableStylesRel ) {
             const tableStylesPath = resolvePath( 'ppt', tableStylesRel.target );
             const tableStylesXml = await getNormalizedXmlString( entriesMap, tableStylesPath );
             if ( tableStylesXml ) {
-                const tableStylesResult = parseTableStyles( tableStylesXml, theme );
+                tableStylesResult = parseTableStyles( tableStylesXml, theme );
                 tableStyles = tableStylesResult.styles;
-                defaultTableStyleId = tableStylesResult.defaultStyleId;
                 presentationStore.dispatch( {
                     type: actions.set.presentation.data,
-                    payload: { tableStyles, defaultTableStyleId }
+                    payload: { tableStyles, defaultTableStyleId: tableStylesResult.defaultStyleId }
                 } );
             }
         }
@@ -81,7 +80,7 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
             theme,
             tableStyles,
             defaultTableStyle: tableStylesResult.defaultStyle,
-            entriesMap
+            entriesMap,
         }
 
         for ( let i = 0; i < slideIds.length; i++ ) {
