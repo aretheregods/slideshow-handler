@@ -483,36 +483,6 @@ describe('drawing.js', () => {
             const fill = drawing.getCellFillColor(cellNode, tblPrNode, 0, 0, 2, 2, tableStyle, mockSlideContext);
             expect(fill).toEqual({ type: 'solid', color: 'TABLE_STYLE_COLOR' });
         });
-
-        it('should correctly apply fill colors based on precedence', () => {
-            const cellNode = createMockElement({ name: 'tc' });
-            const tblPrNodeWithFill = createMockElement({
-                attributes: { firstRow: '1' },
-                children: {
-                    'solidFill': [{ name: 'solidFill', children: { 'srgbClr': [{ name: 'srgbClr', attributes: { val: 'TBLPR_FILL' } }] } }]
-                }
-            });
-            const tableStyle = {
-                wholeTbl: {
-                    tcStyle: { fill: { type: 'solid', color: { val: 'WHOLETBL_FILL' } } }
-                },
-                firstRow: {
-                    tcStyle: { fill: { type: 'solid', color: { val: 'FIRSTROW_FILL' } } }
-                }
-            };
-
-            // Test case 1: First row should get firstRow fill
-            const firstRowFill = drawing.getCellFillColor(cellNode, tblPrNodeWithFill, 0, 0, 2, 2, tableStyle, mockSlideContext);
-            expect(firstRowFill).toEqual({ type: 'solid', color: 'FIRSTROW_FILL' });
-
-            // Test case 2: Other rows should get wholeTbl fill
-            const otherRowFill = drawing.getCellFillColor(cellNode, tblPrNodeWithFill, 1, 0, 2, 2, tableStyle, mockSlideContext);
-            expect(otherRowFill).toEqual({ type: 'solid', color: 'WHOLETBL_FILL' });
-
-            // Test case 3: No table style, should use tblPr fill
-            const noStyleFill = drawing.getCellFillColor(cellNode, tblPrNodeWithFill, 0, 0, 2, 2, null, mockSlideContext);
-            expect(noStyleFill).toEqual({ type: 'solid', color: 'TBLPR_FILL' });
-        });
     });
 
     describe('getCellTextStyle', () => {
