@@ -572,6 +572,8 @@ export class SlideHandler {
             placeholderProps = { ...( masterPh?.shapeProps || {} ), ...( layoutPh?.shapeProps || {} ) };
         }
 
+        const pathString = placeholderProps?.geometry ? buildPathStringFromGeom( placeholderProps.geometry, pos ) : null;
+
         let imageInfo = null;
         const blipFillNode = picNode.getElementsByTagNameNS( PML_NS, 'blipFill' )[ 0 ];
         if ( blipFillNode ) {
@@ -606,6 +608,7 @@ export class SlideHandler {
         return {
             type: 'picture',
             transform,
+            pathString,
             pos,
             placeholderProps,
             image: imageInfo,
@@ -655,8 +658,8 @@ export class SlideHandler {
             }
 
             const geom = picData.placeholderProps?.geometry;
-            let pathString = null;
-            if ( geom ) {
+            let pathString = picData.pathString;
+            if ( geom && !pathString ) {
                 if ( geom.type === 'preset' && geom.preset === 'ellipse' ) {
                     const { width: w, height: h } = picData.pos;
                     const cx = w / 2;
