@@ -556,10 +556,11 @@ describe('drawing.js', () => {
             expect(drawing.buildPathStringFromGeom({}, null)).toBeNull();
         });
 
-        it('should return null for non-custom geometry', () => {
+        it('should return a path for a preset rectangle geometry', () => {
             const geometry = { type: 'preset', preset: 'rect' };
             const pos = { width: 100, height: 100 };
-            expect(drawing.buildPathStringFromGeom(geometry, pos)).toBeNull();
+            const expectedPath = 'M 0 0 L 100 0 L 100 100 L 0 100 Z';
+            expect(drawing.buildPathStringFromGeom(geometry, pos)).toBe(expectedPath);
         });
 
         it('should build a path string for custom geometry', () => {

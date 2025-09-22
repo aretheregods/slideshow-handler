@@ -657,20 +657,7 @@ export class SlideHandler {
                 imageOptions.filter = filters.join( ' ' );
             }
 
-            const geom = picData.placeholderProps?.geometry;
             let pathString = picData.pathString;
-            if ( geom && !pathString ) {
-                if ( geom.type === 'preset' && geom.preset === 'ellipse' ) {
-                    const { width: w, height: h } = picData.pos;
-                    const cx = w / 2;
-                    const cy = h / 2;
-                    pathString = `M ${ cx - w / 2 },${ cy } a ${ w / 2 },${ h / 2 } 0 1,0 ${ w },0 a ${ w / 2 },${ h / 2 } 0 1,0 -${ w },0`;
-                } else if ( geom.type === 'custom' ) {
-                    pathString = buildPathStringFromGeom( geom, picData.pos );
-                }
-                // TODO: Add support for other preset shapes here
-            }
-
 
             if ( picData.image.srcRect ) {
                 const img = await createImage( picData.image.href );

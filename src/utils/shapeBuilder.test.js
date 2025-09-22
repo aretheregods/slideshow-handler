@@ -149,7 +149,7 @@ describe('ShapeBuilder', () => {
         it('should render a rect shape', () => {
             const pos = { width: 100, height: 50 };
             const shapeProps = {
-                geometry: { type: 'rect' },
+                geometry: { type: 'preset', preset: 'rect' },
                 fill: 'blue',
                 stroke: 'black',
                 effect: 'shadow',
@@ -158,7 +158,8 @@ describe('ShapeBuilder', () => {
 
             shapeBuilder.renderShape(pos, shapeProps, matrix, false, false);
 
-            expect(renderer.drawRect).toHaveBeenCalledWith(0, 0, 100, 50, {
+            const expectedPath = 'M 0 0 L 100 0 L 100 50 L 0 50 Z';
+            expect(renderer.drawPath).toHaveBeenCalledWith(expectedPath, {
                 fill: 'blue',
                 stroke: 'black',
                 effect: 'shadow',
@@ -169,7 +170,7 @@ describe('ShapeBuilder', () => {
         it('should render an ellipse shape', () => {
             const pos = { width: 100, height: 50 };
             const shapeProps = {
-                geometry: { type: 'ellipse' },
+                geometry: { type: 'preset', preset: 'ellipse' },
                 fill: 'red',
                 stroke: 'green',
                 effect: 'glow',
@@ -178,7 +179,8 @@ describe('ShapeBuilder', () => {
 
             shapeBuilder.renderShape(pos, shapeProps, matrix, false, false);
 
-            expect(renderer.drawEllipse).toHaveBeenCalledWith(50, 25, 50, 25, {
+            const expectedPath = 'M 50 0 A 50 25 0 1 0 50 50 A 50 25 0 1 0 50 0 Z';
+            expect(renderer.drawPath).toHaveBeenCalledWith(expectedPath, {
                 fill: 'red',
                 stroke: 'green',
                 effect: 'glow',
