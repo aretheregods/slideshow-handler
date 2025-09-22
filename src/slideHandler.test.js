@@ -167,8 +167,8 @@ describe('SlideHandler', () => {
 
             slideHandler.parseShapeTree = vi.fn().mockImplementation(async (elements) => {
                 const elementsArray = Array.from(elements);
-                const shapes = elementsArray.map((_, i) => ({ type: 'shape', id: `shape-${i}` }));
-                return { shapes, backgroundPictures: [] };
+                if (elementsArray.length === 0) return [];
+                return elementsArray.map((_, i) => ({ type: 'shape', id: `shape-${i}` }));
             });
         });
 

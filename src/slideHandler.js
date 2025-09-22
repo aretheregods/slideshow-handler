@@ -160,24 +160,31 @@ export class SlideHandler {
 
 
         const initialMatrix = new Matrix();
-        const masterResult = this.showMasterShapes && this.masterStaticShapes
-            ? await this.parseShapeTree( filteredMasterShapes, initialMatrix.clone(), slideLevelVisibility, this.masterImageMap )
-            : { shapes: [], backgroundPictures: [] };
-        const layoutResult = this.showMasterShapes && this.layoutStaticShapes
-            ? await this.parseShapeTree( filteredLayoutShapes, initialMatrix.clone(), slideLevelVisibility, this.layoutImageMap )
-            : { shapes: [], backgroundPictures: [] };
-        const slideResult = spTreeNode
-            ? await this.parseShapeTree( spTreeNode.children, initialMatrix.clone(), slideLevelVisibility, this.slideImageMap )
-            : { shapes: [], backgroundPictures: [] };
+        const masterShapes = this.showMasterShapes && this.masterStaticShapes ?
+            await this.parseShapeTree(filteredMasterShapes, initialMatrix.clone(), slideLevelVisibility, this.masterImageMap) : [];
 
-        const backgroundPictures = [ ...masterResult.backgroundPictures, ...layoutResult.backgroundPictures, ...slideResult.backgroundPictures ];
-        const masterShapes = masterResult.shapes;
-        const layoutShapes = layoutResult.shapes;
-        const slideShapes = slideResult.shapes;
+        const layoutShapes = this.showMasterShapes && this.layoutStaticShapes ?
+            await this.parseShapeTree(filteredLayoutShapes, initialMatrix.clone(), slideLevelVisibility, this.layoutImageMap) : [];
+
+        const slideShapes = spTreeNode ?
+            await this.parseShapeTree(spTreeNode.children, initialMatrix.clone(), slideLevelVisibility, this.slideImageMap) : [];
+
+        // The order of shapes is master -> layout -> slide.
+        // The first shape in the slide's spTree is the background picture.
+        // We need to render the layout shapes on top of the slide's background picture.
+        const slideBackground = slideShapes.find(shape => shape.type === 'picture' && shape.pos.width === this.slideSize.width && shape.pos.height === this.slideSize.height);
+
+        let finalShapes;
+        if (slideBackground) {
+            const otherSlideShapes = slideShapes.filter(shape => shape !== slideBackground);
+            finalShapes = [...masterShapes, slideBackground, ...layoutShapes, ...otherSlideShapes];
+        } else {
+            finalShapes = [...masterShapes, ...layoutShapes, ...slideShapes];
+        }
 
         return {
             background: this.finalBg,
-            shapes: [ ...backgroundPictures, ...masterShapes, ...layoutShapes, ...slideShapes ],
+            shapes: finalShapes,
         };
     }
 
@@ -229,7 +236,6 @@ export class SlideHandler {
 
     async parseShapeTree( elements, parentMatrix, slideLevelVisibility, imageMap ) {
         const shapes = [];
-        const backgroundPictures = [];
         const listCounters = {}; // Reset for each shape tree (master, layout, slide)
 
         for ( const element of elements ) {
@@ -263,17 +269,13 @@ export class SlideHandler {
                 }
             } else if ( tagName === 'pic' ) {
                 shapeData = await this.parsePicture( element, parentMatrix, slideLevelVisibility, imageMap );
-                if (shapeData && shapeData.isBackground) {
-                    backgroundPictures.push(shapeData);
-                    shapeData = null;
-                }
             }
 
             if ( shapeData ) {
                 shapes.push( shapeData );
             }
         }
-        return { shapes, backgroundPictures };
+        return shapes;
     }
 
     async renderShapeTree( shapes = [] ) {
@@ -546,7 +548,6 @@ export class SlideHandler {
 
         let rot = 0;
         let flipH = false, flipV = false;
-        let isBackgroundPic = false;
         if ( xfrmNode ) {
             const offNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'off' )[ 0 ];
             const extNode = xfrmNode.getElementsByTagNameNS( DML_NS, 'ext' )[ 0 ];
@@ -560,8 +561,6 @@ export class SlideHandler {
                 flipV = xfrmNode.getAttribute( 'flipV' ) === '1';
                 pos = { width: w, height: h };
                 localMatrix.translate( x, y ).translate( w / 2, h / 2 ).rotate( rot / 60000 * Math.PI / 180 ).scale( flipH ? -1 : 1, flipV ? -1 : 1 ).translate( -w / 2, -h / 2 );
-
-                isBackgroundPic = x === 0 && y === 0 && w === this.slideSize.width && h === this.slideSize.height;
             }
         } else if ( phNode ) {
             const phKey = phNode.getAttribute( 'idx' ) ? `idx_${ phNode.getAttribute( 'idx' ) }` : phNode.getAttribute( 'type' );
@@ -627,7 +626,6 @@ export class SlideHandler {
             image: imageInfo,
             rot,
             extensions,
-            isBackground: isBackgroundPic,
         };
     }
 
