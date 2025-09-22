@@ -45,34 +45,42 @@ export class TableStyleResolver {
         const isLastCol = c === this.numCols - 1;
 
         const parts = [];
-        if (this.bandRow) {
-            const isDataRow = !(this.firstRow && isFirstRow) && !(this.lastRow && isLastRow);
-            if (isDataRow) {
-                const dataRowIdx = this.firstRow ? r - 1 : r;
-                if (dataRowIdx >= 0) {
-                    if (dataRowIdx % 2 === 0 && this.tableStyle.band1H) { parts.push(this.tableStyle.band1H); }
-                    else if (dataRowIdx % 2 === 1 && this.tableStyle.band2H) { parts.push(this.tableStyle.band2H); }
-                }
-            }
-        }
+
+        if (this.tableStyle.wholeTbl) parts.push(this.tableStyle.wholeTbl);
+
+        // Banding has lower precedence than row/col styles
         if (this.bandCol) {
             const isDataCol = !(this.firstCol && isFirstCol) && !(this.lastCol && isLastCol);
             if (isDataCol) {
                 const dataColIdx = this.firstCol ? c - 1 : c;
                 if (dataColIdx >= 0) {
-                    if (dataColIdx % 2 === 0 && this.tableStyle.band1V) { parts.push(this.tableStyle.band1V); }
-                    else if (dataColIdx % 2 === 1 && this.tableStyle.band2V) { parts.push(this.tableStyle.band2V); }
+                    if (dataColIdx % 2 === 0 && this.tableStyle.band1V) parts.push(this.tableStyle.band1V);
+                    else if (dataColIdx % 2 === 1 && this.tableStyle.band2V) parts.push(this.tableStyle.band2V);
                 }
             }
         }
-        if (this.firstRow && isFirstRow && this.tableStyle.firstRow) { parts.push(this.tableStyle.firstRow); }
-        if (this.lastRow && isLastRow && this.tableStyle.lastRow) { parts.push(this.tableStyle.lastRow); }
-        if (this.firstCol && isFirstCol && this.tableStyle.firstCol) { parts.push(this.tableStyle.firstCol); }
-        if (this.lastCol && isLastCol && this.tableStyle.lastCol) { parts.push(this.tableStyle.lastCol); }
-        if (this.firstRow && isFirstRow && this.firstCol && isFirstCol && this.tableStyle.nwCell) { parts.push(this.tableStyle.nwCell); }
-        if (this.firstRow && isFirstRow && this.lastCol && isLastCol && this.tableStyle.neCell) { parts.push(this.tableStyle.neCell); }
-        if (this.lastRow && isLastRow && this.firstCol && isFirstCol && this.tableStyle.swCell) { parts.push(this.tableStyle.swCell); }
-        if (this.lastRow && isLastRow && this.lastCol && isLastCol && this.tableStyle.seCell) { parts.push(this.tableStyle.seCell); }
+        if (this.bandRow) {
+            const isDataRow = !(this.firstRow && isFirstRow) && !(this.lastRow && isLastRow);
+            if (isDataRow) {
+                const dataRowIdx = this.firstRow ? r - 1 : r;
+                if (dataRowIdx >= 0) {
+                    if (dataRowIdx % 2 === 0 && this.tableStyle.band1H) parts.push(this.tableStyle.band1H);
+                    else if (dataRowIdx % 2 === 1 && this.tableStyle.band2H) parts.push(this.tableStyle.band2H);
+                }
+            }
+        }
+
+        // Row/col styles
+        if (this.firstCol && isFirstCol && this.tableStyle.firstCol) parts.push(this.tableStyle.firstCol);
+        if (this.lastCol && isLastCol && this.tableStyle.lastCol) parts.push(this.tableStyle.lastCol);
+        if (this.firstRow && isFirstRow && this.tableStyle.firstRow) parts.push(this.tableStyle.firstRow);
+        if (this.lastRow && isLastRow && this.tableStyle.lastRow) parts.push(this.tableStyle.lastRow);
+
+        // Corner styles (highest precedence)
+        if (this.firstRow && isFirstRow && this.firstCol && isFirstCol && this.tableStyle.nwCell) parts.push(this.tableStyle.nwCell);
+        if (this.firstRow && isFirstRow && this.lastCol && isLastCol && this.tableStyle.neCell) parts.push(this.tableStyle.neCell);
+        if (this.lastRow && isLastRow && this.firstCol && isFirstCol && this.tableStyle.swCell) parts.push(this.tableStyle.swCell);
+        if (this.lastRow && isLastRow && this.lastCol && isLastCol && this.tableStyle.seCell) parts.push(this.tableStyle.seCell);
 
         return parts;
     }
@@ -126,7 +134,9 @@ export class TableStyleResolver {
             const applicableParts = this._getApplicableParts(r, c);
             for (const part of applicableParts) {
                 if (part && part.tcStyle && part.tcStyle.fill) {
-                    finalFill = part.tcStyle.fill;
+                    if (part.tcStyle.fill.type !== 'none') {
+                        finalFill = part.tcStyle.fill;
+                    }
                 }
             }
         }
