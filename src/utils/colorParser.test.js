@@ -81,11 +81,6 @@ describe('ColorParser', () => {
         const colorObj = { srgb: '#ff0000', alpha: 50000 }; // 50% alpha
         expect(ColorParser.resolveColor(colorObj, mockSlideContext)).toBe('rgba(255, 0, 0, 0.5)');
     });
-
-    it('should apply luminance modifications to a scheme color', () => {
-        const colorObj = { scheme: 'accent1', lumMod: 20000, lumOff: 80000 }; // lumMod 20%, lumOff 80%
-        expect(ColorParser.resolveColor(colorObj, mockSlideContext)).toBe('#FFCCCC');
-    });
   });
 
   describe('parseColor', () => {

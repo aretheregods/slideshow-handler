@@ -264,7 +264,7 @@ export class ColorParser {
                 hex = slideContext.theme.colorScheme[themeColorName];
                 if (colorObj.tint) hex = ColorParser.applyTint(hex, colorObj.tint);
                 if (colorObj.shade) hex = ColorParser.applyShade(hex, colorObj.shade);
-                if (colorObj.lumMod !== undefined || colorObj.lumOff !== undefined) hex = ColorParser.applyLuminance(hex, colorObj.lumMod, colorObj.lumOff);
+                if (colorObj.lumMod || colorObj.lumOff) hex = ColorParser.applyLuminance(hex, colorObj.lumMod, colorObj.lumOff);
                 if (colorObj.satMod) hex = ColorParser.applySaturation(hex, colorObj.satMod);
             }
         } else if (colorObj.prst) {

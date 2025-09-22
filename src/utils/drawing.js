@@ -277,35 +277,25 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
     // Level 1: Direct Formatting (highest precedence)
     const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
     if (tcPrNode) {
-        for ( const child of tcPrNode.children ) {
-            if ( child.localName === 'noFill' ) {
-                return 'none';
-            }
-        }
-
-        let gradFillNode = null;
-        for ( const child of tcPrNode.children ) {
-            if ( child.localName === 'gradFill' ) {
-                gradFillNode = child;
-                break;
-            }
-        }
-        if (gradFillNode) {
-            return parseGradientFill(gradFillNode, slideContext);
-        }
-
-        let solidFillNode = null;
-        for ( const child of tcPrNode.children ) {
-            if ( child.localName === 'solidFill' ) {
-                solidFillNode = child;
-                break;
-            }
-        }
+        const solidFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
         if (solidFillNode) {
             const colorObj = ColorParser.parseColor(solidFillNode);
             if (colorObj) {
                 return { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
             }
+        }
+
+        const gradFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
+        if (gradFillNode) {
+            return parseGradientFill(gradFillNode, slideContext);
+        }
+
+        const noFillNode = tcPrNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+        if (noFillNode) {
+            // A "noFill" on a cell means it should inherit from the table style, not be transparent.
+            // So we'll fall through to the style logic.
+        } else {
+            // If there's a tcPr but no fill instructions, we assume no direct fill is specified.
         }
     }
 
