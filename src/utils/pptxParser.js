@@ -1065,6 +1065,8 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
             const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
             const ph = nvPr ? nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
 
+            const isUserDrawn = nvPr && nvPr.getAttribute('userDrawn') === '1';
+
             if (ph) {
                 const type = ph.getAttribute('type');
                 const idx = ph.getAttribute('idx');
@@ -1114,13 +1116,10 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
 
                 placeholders[key] = placeholderData;
 
-                const spPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
-                const hasPrstGeom = spPrNode && spPrNode.getElementsByTagNameNS(DML_NS, 'prstGeom')[0];
-
-                if (type === 'pic' || hasPrstGeom) {
+                if (type === 'pic') {
                     staticShapes.push(shapeNode);
                 }
-            } else {
+            } else if (isUserDrawn) {
                 staticShapes.push(shapeNode);
             }
         }
