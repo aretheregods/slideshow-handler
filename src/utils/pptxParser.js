@@ -1065,8 +1065,6 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
             const nvPr = shapeNode.getElementsByTagNameNS(PML_NS, 'nvPr')[0];
             const ph = nvPr ? nvPr.getElementsByTagNameNS(PML_NS, 'ph')[0] : null;
 
-            const isUserDrawn = nvPr && nvPr.getAttribute('userDrawn') === '1';
-
             if (ph) {
                 const type = ph.getAttribute('type');
                 const idx = ph.getAttribute('idx');
@@ -1119,7 +1117,7 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
                 if (type === 'pic') {
                     staticShapes.push(shapeNode);
                 }
-            } else if (isUserDrawn) {
+            } else {
                 staticShapes.push(shapeNode);
             }
         }
