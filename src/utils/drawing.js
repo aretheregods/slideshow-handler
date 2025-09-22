@@ -128,6 +128,27 @@ export function calculateTextBlockSize(paragraphs, pos, defaultTextStyles, phKey
  * @param {Object} slideContext - The context of the slide.
  * @returns {Object} The parsed cell borders.
  */
+function parseBorder(lnNode, slideContext) {
+    const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+    if (noFillNode) {
+        return 'none';
+    }
+
+    const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+    if (solidFillNode) {
+        const colorObj = ColorParser.parseColor(solidFillNode);
+        const width = parseInt(lnNode.getAttribute('w') || '0') / EMU_PER_PIXEL;
+        if (colorObj && width > 0) {
+            return {
+                color: ColorParser.resolveColor(colorObj, slideContext),
+                width: width
+            };
+        }
+    }
+
+    return null;
+}
+
 export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
     const borders = {};
     const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
@@ -137,94 +158,101 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
         for (const child of tcPrNode.children) {
             const side = borderMap[child.localName];
             if (side) {
-                const lnNode = child;
-                const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
-                const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                const border = parseBorder(child, slideContext);
+                if (border) {
+                    borders[side] = border;
+                }
+            }
+        }
+    }
 
-                if (noFillNode) {
-                    borders[side] = 'none';
-                } else if (solidFillNode) {
-                    const colorObj = ColorParser.parseColor(solidFillNode);
-                    const width = parseInt(lnNode.getAttribute('w') || '0') / EMU_PER_PIXEL;
-                    if (colorObj && width > 0) {
-                        borders[side] = {
-                            color: ColorParser.resolveColor(colorObj, slideContext),
-                            width: width
-                        };
+    const finalBorders = { ...borders };
+    let baseBorders = {};
+
+    // Table-level borders from tblPr
+    const tblBdrNode = tblPrNode.getElementsByTagNameNS(DML_NS, 'tblBdr')[0];
+    if (tblBdrNode) {
+        const borderMap = { 'left': 'left', 'right': 'right', 'top': 'top', 'bottom': 'bottom', 'insideH': 'insideH', 'insideV': 'insideV' };
+        for (const child of tblBdrNode.children) {
+            const side = borderMap[child.localName];
+            if (side) {
+                const lnNode = child.getElementsByTagNameNS(DML_NS, 'ln')[0];
+                if (lnNode) {
+                    const border = parseBorder(lnNode, slideContext);
+                    if (border) {
+                        baseBorders[side] = border;
                     }
                 }
             }
         }
     }
 
-        if (!tableStyle) {
-        return borders;
-    }
+    if (tableStyle) {
+        // Base borders from wholeTbl (overrides tblPr)
+        if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.borders) {
+            baseBorders = { ...baseBorders, ...tableStyle.wholeTbl.tcStyle.borders };
+        }
 
-    const finalBorders = { ...borders };
+        const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+        const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+        const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+        const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+        const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+        const bandCol = tblPrNode.getAttribute('bandCol') === '1';
 
-    // Base borders from wholeTbl
-    const baseBorders = (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.borders) ? tableStyle.wholeTbl.tcStyle.borders : {};
+        const isFirstRow = r === 0;
+        const isLastRow = r === numRows - 1;
+        const isFirstCol = c === 0;
+        const isLastCol = c === numCols - 1;
 
-    const firstRow = tblPrNode.getAttribute('firstRow') === '1';
-    const lastRow = tblPrNode.getAttribute('lastRow') === '1';
-    const firstCol = tblPrNode.getAttribute('firstCol') === '1';
-    const lastCol = tblPrNode.getAttribute('lastCol') === '1';
-    const bandRow = tblPrNode.getAttribute('bandRow') === '1';
-    const bandCol = tblPrNode.getAttribute('bandCol') === '1';
-
-    const isFirstRow = r === 0;
-    const isLastRow = r === numRows - 1;
-    const isFirstCol = c === 0;
-    const isLastCol = c === numCols - 1;
-
-    const partsToCheck = [];
+        const partsToCheck = [];
         if (bandRow) {
-        const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
-        if (isDataRow) {
-            const dataRowIdx = firstRow ? r - 1 : r;
-            if (dataRowIdx >= 0) {
-                if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
-                else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+            const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+            if (isDataRow) {
+                const dataRowIdx = firstRow ? r - 1 : r;
+                if (dataRowIdx >= 0) {
+                    if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
+                    else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+                }
             }
         }
-    }
         if (bandCol) {
-        const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+            const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
             if (isDataCol) {
-            const dataColIdx = firstCol ? c - 1 : c;
+                const dataColIdx = firstCol ? c - 1 : c;
                 if (dataColIdx >= 0) {
-                if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
-                else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+                    if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
+                    else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+                }
             }
         }
-    }
-    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
-    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
-    if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
-    if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
-    if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
-    if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
-    if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
-    if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
+        if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+        if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
+        if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
+        if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+        if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
+        if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
+        if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
+        if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
 
-    const mergedPartBorders = {};
-    for (const part of partsToCheck) {
-        if (part && part.tcStyle && part.tcStyle.borders) {
-            Object.assign(mergedPartBorders, part.tcStyle.borders);
+        const mergedPartBorders = {};
+        for (const part of partsToCheck) {
+            if (part && part.tcStyle && part.tcStyle.borders) {
+                Object.assign(mergedPartBorders, part.tcStyle.borders);
+            }
         }
-    }
 
-    for (const side of ['left', 'right', 'top', 'bottom']) {
-        if (finalBorders[side] === undefined) {
-            const borderToApply = mergedPartBorders[side] || baseBorders[side];
-            if (borderToApply) {
+        for (const side of ['left', 'right', 'top', 'bottom']) {
+            if (finalBorders[side] === undefined) {
+                const borderToApply = mergedPartBorders[side] || baseBorders[side];
+                if (borderToApply) {
                     const color = ColorParser.resolveColor(borderToApply.color, slideContext);
-                if (color) {
-                    finalBorders[side] = {
-                        width: borderToApply.width,
-                        color: color
-                    };
+                    if (color) {
+                        finalBorders[side] = {
+                            width: borderToApply.width,
+                            color: color
+                        };
+                    }
                 }
             }
         }
@@ -282,61 +310,72 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
     }
 
     // Level 2 & 3: Table Styles
-    if (!tableStyle) return null;
-
     let finalFill = null;
 
-    // Base fill from wholeTbl
-    if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.fill) {
-        finalFill = tableStyle.wholeTbl.tcStyle.fill;
-    }
-
-    const firstRow = tblPrNode.getAttribute('firstRow') === '1';
-    const lastRow = tblPrNode.getAttribute('lastRow') === '1';
-    const firstCol = tblPrNode.getAttribute('firstCol') === '1';
-    const lastCol = tblPrNode.getAttribute('lastCol') === '1';
-    const bandRow = tblPrNode.getAttribute('bandRow') === '1';
-    const bandCol = tblPrNode.getAttribute('bandCol') === '1';
-
-    const isFirstRow = r === 0;
-    const isLastRow = r === numRows - 1;
-    const isFirstCol = c === 0;
-    const isLastCol = c === numCols - 1;
-
-    // Layer styles in increasing order of precedence
-    const partsToCheck = [];
-    if (bandRow) {
-        const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
-        if (isDataRow) {
-            const dataRowIdx = firstRow ? r - 1 : r;
-            if (dataRowIdx >= 0) {
-                if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
-                else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+    // Table-level fill from tblPr (lowest precedence)
+    if (tblPrNode) {
+        const solidFillNode = tblPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+        if (solidFillNode) {
+            const colorObj = ColorParser.parseColor(solidFillNode);
+            if (colorObj) {
+                finalFill = { type: 'solid', color: colorObj };
             }
         }
     }
-        if (bandCol) {
-        const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
-            if (isDataCol) {
-            const dataColIdx = firstCol ? c - 1 : c;
-                if (dataColIdx >= 0) {
-                if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
-                else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+
+    if (tableStyle) {
+        // Base fill from wholeTbl
+        if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.fill) {
+            finalFill = tableStyle.wholeTbl.tcStyle.fill;
+        }
+
+        const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+        const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+        const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+        const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+        const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+        const bandCol = tblPrNode.getAttribute('bandCol') === '1';
+
+        const isFirstRow = r === 0;
+        const isLastRow = r === numRows - 1;
+        const isFirstCol = c === 0;
+        const isLastCol = c === numCols - 1;
+
+        // Layer styles in increasing order of precedence
+        const partsToCheck = [];
+        if (bandRow) {
+            const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+            if (isDataRow) {
+                const dataRowIdx = firstRow ? r - 1 : r;
+                if (dataRowIdx >= 0) {
+                    if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
+                    else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+                }
             }
         }
-    }
-    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
-    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
-    if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
-    if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
-    if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
-    if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
-    if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
-    if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
+            if (bandCol) {
+            const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+                if (isDataCol) {
+                const dataColIdx = firstCol ? c - 1 : c;
+                    if (dataColIdx >= 0) {
+                    if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
+                    else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+                }
+            }
+        }
+        if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+        if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
+        if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
+        if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+        if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
+        if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
+        if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
+        if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
 
-    for (const part of partsToCheck) {
-        if (part && part.tcStyle && part.tcStyle.fill) {
-            finalFill = part.tcStyle.fill;
+        for (const part of partsToCheck) {
+            if (part && part.tcStyle && part.tcStyle.fill) {
+                finalFill = part.tcStyle.fill;
+            }
         }
     }
 
