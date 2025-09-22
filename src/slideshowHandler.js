@@ -58,7 +58,7 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
             const tableStylesPath = resolvePath( 'ppt', tableStylesRel.target );
             const tableStylesXml = await getNormalizedXmlString( entriesMap, tableStylesPath );
             if ( tableStylesXml ) {
-                const tableStylesResult = parseTableStyles( tableStylesXml );
+                const tableStylesResult = parseTableStyles( tableStylesXml, theme );
                 tableStyles = tableStylesResult.styles;
                 defaultTableStyleId = tableStylesResult.defaultStyleId;
                 presentationStore.dispatch( {

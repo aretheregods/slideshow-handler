@@ -253,9 +253,10 @@ export function parseColorMap(node) {
 /**
  * Parses table styles from an XML string.
  * @param {string} xmlString - The XML content of the table styles.
+ * @param {Object} theme - The presentation theme.
  * @returns {{styles: Object, defaultStyleId: string}} An object containing the parsed styles and the default style ID.
  */
-export function parseTableStyles(xmlString) {
+export function parseTableStyles(xmlString, theme) {
     const xmlDoc = parseXmlString(xmlString, "tableStyles");
     const styles = {};
 
@@ -273,7 +274,7 @@ export function parseTableStyles(xmlString) {
         for (const partName of styleParts) {
             const partNode = styleNode.getElementsByTagNameNS(DML_NS, partName)[0];
             if (partNode) {
-                styleDef[partName] = parseStylePart(partNode);
+                styleDef[partName] = parseStylePart(partNode, theme);
             }
         }
         styles[styleId] = styleDef;
@@ -285,9 +286,10 @@ export function parseTableStyles(xmlString) {
 /**
  * Parses a part of a table style.
  * @param {Element} partNode - The XML node of the style part.
+ * @param {Object} theme - The presentation theme.
  * @returns {Object} The parsed style part definition.
  */
-export function parseStylePart(partNode) {
+export function parseStylePart(partNode, theme) {
     const partDef = {
         tcStyle: {},
         tcTxStyle: {}
@@ -296,46 +298,77 @@ export function parseStylePart(partNode) {
     const tcStyleNode = partNode.getElementsByTagNameNS(DML_NS, 'tcStyle')[0];
     if (tcStyleNode) {
         const fillContainer = tcStyleNode.getElementsByTagNameNS(DML_NS, 'fill')[0] || tcStyleNode;
-        for (const fillChild of fillContainer.children) {
-            if (fillChild.localName === 'noFill') {
-                partDef.tcStyle.fill = { type: 'none' };
-                break;
-            } else if (fillChild.localName === 'solidFill') {
-                partDef.tcStyle.fill = { type: 'solid', color: ColorParser.parseColor(fillChild) };
-                break;
-            } else if (fillChild.localName === 'gradFill') {
-                const gsLstNode = fillChild.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
-                const stops = [];
-                if (gsLstNode) {
-                    for (const gsNode of gsLstNode.children) {
-                        const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
-                        const colorObj = ColorParser.parseColor(gsNode);
-                        if (colorObj) {
-                            stops.push({ pos, color: colorObj });
+        const fillRefNode = tcStyleNode.getElementsByTagNameNS(DML_NS, 'fillRef')[0];
+
+        if (fillRefNode) {
+            const idx = parseInt(fillRefNode.getAttribute('idx'));
+            const colorOverride = ColorParser.parseColor(fillRefNode);
+            if (idx > 0 && theme.formatScheme.fills[idx - 1]) {
+                const themeFill = theme.formatScheme.fills[idx - 1];
+                let colorObj = colorOverride || themeFill.color;
+                if (themeFill.type === 'solid') {
+                    partDef.tcStyle.fill = { type: 'solid', color: colorObj };
+                }
+            } else if (colorOverride) {
+                partDef.tcStyle.fill = { type: 'solid', color: colorOverride };
+            }
+        } else {
+            for (const fillChild of fillContainer.children) {
+                if (fillChild.localName === 'noFill') {
+                    partDef.tcStyle.fill = { type: 'none' };
+                    break;
+                } else if (fillChild.localName === 'solidFill') {
+                    partDef.tcStyle.fill = { type: 'solid', color: ColorParser.parseColor(fillChild) };
+                    break;
+                } else if (fillChild.localName === 'gradFill') {
+                    const gsLstNode = fillChild.getElementsByTagNameNS(DML_NS, 'gsLst')[0];
+                    const stops = [];
+                    if (gsLstNode) {
+                        for (const gsNode of gsLstNode.children) {
+                            const pos = parseInt(gsNode.getAttribute('pos')) / 100000;
+                            const colorObj = ColorParser.parseColor(gsNode);
+                            if (colorObj) {
+                                stops.push({ pos, color: colorObj });
+                            }
                         }
+                        stops.sort((a, b) => a.pos - b.pos);
                     }
-                    stops.sort((a, b) => a.pos - b.pos);
+                    let angle = 0;
+                    let type = 'linear';
+                    const linNode = fillChild.getElementsByTagNameNS(DML_NS, 'lin')[0];
+                    if (linNode) {
+                        angle = parseInt(linNode.getAttribute('ang')) / 60000;
+                    }
+                    partDef.tcStyle.fill = { type: 'gradient', gradient: { type, stops, angle } };
+                    break;
                 }
-                let angle = 0;
-                let type = 'linear';
-                const linNode = fillChild.getElementsByTagNameNS(DML_NS, 'lin')[0];
-                if (linNode) {
-                    angle = parseInt(linNode.getAttribute('ang')) / 60000;
-                }
-                partDef.tcStyle.fill = { type: 'gradient', gradient: { type, stops, angle } };
-                break;
             }
         }
 
         const tcBdrNode = tcStyleNode.getElementsByTagNameNS(DML_NS, 'tcBdr')[0];
         if (tcBdrNode) {
             partDef.tcStyle.borders = {};
-            const borderTypes = ['left', 'right', 'top', 'bottom'];
+            const borderTypes = ['left', 'right', 'top', 'bottom', 'insideH', 'insideV'];
             for (const type of borderTypes) {
                 const borderNode = tcBdrNode.getElementsByTagNameNS(DML_NS, type)[0];
                 if (borderNode) {
                     const lnNode = borderNode.getElementsByTagNameNS(DML_NS, 'ln')[0];
-                    if (lnNode) {
+                    const lnRefNode = borderNode.getElementsByTagNameNS(DML_NS, 'lnRef')[0];
+
+                    if (lnRefNode) {
+                        const idx = parseInt(lnRefNode.getAttribute('idx'));
+                        if (idx > 0 && theme.formatScheme.lines[idx - 1]) {
+                            const themeLine = theme.formatScheme.lines[idx - 1];
+                            if (themeLine.type === 'solid') {
+                                const borderProps = { ...themeLine };
+                                const lnRefColorObj = ColorParser.parseColor(lnRefNode);
+                                if (lnRefColorObj) {
+                                    borderProps.color = lnRefColorObj;
+                                }
+                                partDef.tcStyle.borders[type] = borderProps;
+                            }
+                        }
+                    } else if (lnNode) {
                         const width = parseInt(lnNode.getAttribute('w') || '9525') / EMU_PER_PIXEL;
                         const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
                         if (solidFillNode) {
