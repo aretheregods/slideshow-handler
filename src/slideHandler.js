@@ -626,6 +626,7 @@ export class SlideHandler {
             matrix.m = transformValues;
         }
         this.renderer.setTransform( matrix, id );
+        let pathString = '';
 
         if ( picData.placeholderProps?.fill?.type === 'solid' || picData.placeholderProps?.fill?.type === 'gradient' ) {
             const fillOptions = {
@@ -658,7 +659,7 @@ export class SlideHandler {
                 imageOptions.filter = filters.join( ' ' );
             }
 
-            let pathString = picData.pathString;
+            pathString = picData.pathString;
 
             if ( picData.image.srcRect ) {
                 const img = await createImage( picData.image.href );
