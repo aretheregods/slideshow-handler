@@ -59,13 +59,21 @@ export class ShapeBuilder {
             const geomType = shapeProps.geometry.type === 'preset' ? shapeProps.geometry.preset : shapeProps.geometry.type;
 
             const path = buildPathStringFromGeom(shapeProps.geometry, pos, flipH, flipV);
-            if (path) {
-                this.renderer.drawPath( path, {
-                    fill: shapeProps.fill,
-                    stroke: shapeProps.stroke,
-                    effect: shapeProps.effect,
-                    pos,
-                } );
+            if ( path ) {
+                if ( geomType === 'arc') {
+                    this.renderer.drawPath( path, {
+                        stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
+                        pos,
+                    } );
+                } else {
+                    this.renderer.drawPath( path, {
+                        fill: shapeProps.fill,
+                        stroke: shapeProps.stroke,
+                        effect: shapeProps.effect,
+                        pos,
+                    } );
+                }
             } else if (geomType === 'line') {
                 // Fallback for line shape
                 const m = matrix.m;
