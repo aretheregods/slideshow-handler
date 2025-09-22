@@ -280,7 +280,9 @@ export function parseTableStyles(xmlString, theme) {
         styles[styleId] = styleDef;
     }
 
-    return { styles, defaultStyleId };
+    const defaultStyle = styles[defaultStyleId] || null;
+
+    return { styles, defaultStyleId, defaultStyle };
 }
 
 /**

@@ -57,7 +57,7 @@ describe('TableStyleResolver', () => {
         const cellDoc = parser.parseFromString(cellXml, "application/xml");
         const cellNode = cellDoc.documentElement;
 
-        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], 5, 5, slideContext);
+        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], tableStyles.defaultStyle, 5, 5, slideContext);
         const fill = resolver.getFill(cellNode, 0, 0);
 
         expect(fill).toEqual({ type: 'solid', color: '#4472C4' });
@@ -94,7 +94,7 @@ describe('TableStyleResolver', () => {
         const cellDoc = parser.parseFromString(cellXml, "application/xml");
         const cellNode = cellDoc.documentElement;
 
-        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], 5, 5, slideContext);
+        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], tableStyles.defaultStyle, 5, 5, slideContext);
 
         const fill1 = resolver.getFill(cellNode, 1, 0); // band1H
         const fill2 = resolver.getFill(cellNode, 2, 0); // band2H
@@ -135,7 +135,7 @@ describe('TableStyleResolver', () => {
         const cellDoc = parser.parseFromString(cellXml, "application/xml");
         const cellNode = cellDoc.documentElement;
 
-        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], 5, 5, slideContext);
+        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], tableStyles.defaultStyle, 5, 5, slideContext);
         const fill = resolver.getFill(cellNode, 0, 0);
 
         expect(fill).toEqual({ type: 'solid', color: '#4472C4' });
@@ -165,7 +165,7 @@ describe('TableStyleResolver', () => {
         const cellDoc = parser.parseFromString(cellXml, "application/xml");
         const cellNode = cellDoc.documentElement;
 
-        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], 5, 5, slideContext);
+        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], tableStyles.defaultStyle, 5, 5, slideContext);
         const fill = resolver.getFill(cellNode, 1, 0);
 
         expect(fill.color).toBeDefined();
@@ -195,7 +195,7 @@ describe('TableStyleResolver', () => {
         const cellDoc = parser.parseFromString(cellXml, "application/xml");
         const cellNode = cellDoc.documentElement;
 
-        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], 5, 5, slideContext);
+        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], tableStyles.defaultStyle, 5, 5, slideContext);
         const fill = resolver.getFill(cellNode, 0, 0);
 
         expect(fill).toEqual({ type: 'solid', color: '#4472C4' });
@@ -225,7 +225,7 @@ describe('TableStyleResolver', () => {
         const cellDoc = parser.parseFromString(cellXml, "application/xml");
         const cellNode = cellDoc.documentElement;
 
-        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], 5, 5, slideContext);
+        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], tableStyles.defaultStyle, 5, 5, slideContext);
         const fill = resolver.getFill(cellNode, 0, 0);
 
         expect(fill).toEqual({ type: 'solid', color: '#FF0000' });
@@ -255,7 +255,7 @@ describe('TableStyleResolver', () => {
         const cellDoc = parser.parseFromString(cellXml, "application/xml");
         const cellNode = cellDoc.documentElement;
 
-        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], 5, 5, slideContext);
+        const resolver = new TableStyleResolver(tblPrNode, tableStyles.styles['{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}'], tableStyles.defaultStyle, 5, 5, slideContext);
         const fill = resolver.getFill(cellNode, 0, 0);
 
         expect(fill).toEqual({ type: 'solid', color: '#4472C4' });

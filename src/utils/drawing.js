@@ -128,8 +128,8 @@ export function calculateTextBlockSize(paragraphs, pos, defaultTextStyles, phKey
  * @param {Object} slideContext - The context of the slide.
  * @returns {Object} The parsed cell borders.
  */
-export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
-    const resolver = new TableStyleResolver(tblPrNode, tableStyle, numRows, numCols, slideContext);
+export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, defaultTableStyle, slideContext) {
+    const resolver = new TableStyleResolver(tblPrNode, tableStyle, defaultTableStyle, numRows, numCols, slideContext);
     return resolver.getBorders(cellNode, r, c);
 }
 
@@ -145,8 +145,8 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
  * @param {Object} slideContext - The context of the slide.
  * @returns {Object|string|null} The parsed cell fill color, or null if no fill is defined.
  */
-export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
-    const resolver = new TableStyleResolver(tblPrNode, tableStyle, numRows, numCols, slideContext);
+export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, defaultTableStyle, slideContext) {
+    const resolver = new TableStyleResolver(tblPrNode, tableStyle, defaultTableStyle, numRows, numCols, slideContext);
     return resolver.getFill(cellNode, r, c);
 }
 
@@ -160,8 +160,8 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
  * @param {Object} tableStyle - The table style object.
  * @returns {Object} The parsed cell text style.
  */
-export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) {
-    const resolver = new TableStyleResolver(tblPrNode, tableStyle, numRows, numCols, null);
+export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, defaultTableStyle, slideContext) {
+    const resolver = new TableStyleResolver(tblPrNode, tableStyle, defaultTableStyle, numRows, numCols, slideContext);
     return resolver.getTextStyle(r, c);
 }
 

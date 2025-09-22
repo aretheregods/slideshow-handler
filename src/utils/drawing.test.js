@@ -254,10 +254,11 @@ describe('drawing.js', () => {
             const cellNode = {};
             const tblPrNode = {};
             const tableStyle = {};
+            const defaultTableStyle = {};
 
-            drawing.getCellBorders(cellNode, tblPrNode, 0, 0, 1, 1, tableStyle, mockSlideContext);
+            drawing.getCellBorders(cellNode, tblPrNode, 0, 0, 1, 1, tableStyle, defaultTableStyle, mockSlideContext);
 
-            expect(TableStyleResolver).toHaveBeenCalledWith(tblPrNode, tableStyle, 1, 1, mockSlideContext);
+            expect(TableStyleResolver).toHaveBeenCalledWith(tblPrNode, tableStyle, defaultTableStyle, 1, 1, mockSlideContext);
             const resolverInstance = TableStyleResolver.mock.instances[0];
             expect(resolverInstance.getBorders).toHaveBeenCalledWith(cellNode, 0, 0);
         });
@@ -281,10 +282,11 @@ describe('drawing.js', () => {
             const cellNode = {};
             const tblPrNode = {};
             const tableStyle = {};
+            const defaultTableStyle = {};
 
-            drawing.getCellFillColor(cellNode, tblPrNode, 0, 0, 1, 1, tableStyle, mockSlideContext);
+            drawing.getCellFillColor(cellNode, tblPrNode, 0, 0, 1, 1, tableStyle, defaultTableStyle, mockSlideContext);
 
-            expect(TableStyleResolver).toHaveBeenCalledWith(tblPrNode, tableStyle, 1, 1, mockSlideContext);
+            expect(TableStyleResolver).toHaveBeenCalledWith(tblPrNode, tableStyle, defaultTableStyle, 1, 1, mockSlideContext);
             const resolverInstance = TableStyleResolver.mock.instances[0];
             expect(resolverInstance.getFill).toHaveBeenCalledWith(cellNode, 0, 0);
         });
@@ -292,6 +294,7 @@ describe('drawing.js', () => {
 
     describe('getCellTextStyle', () => {
         let TableStyleResolver;
+        const mockSlideContext = { theme: {} };
 
         beforeAll(async () => {
             const utils = await import('utils');
@@ -306,10 +309,11 @@ describe('drawing.js', () => {
         it('should instantiate TableStyleResolver and call getTextStyle', () => {
             const tblPrNode = {};
             const tableStyle = {};
+            const defaultTableStyle = {};
 
-            drawing.getCellTextStyle(tblPrNode, 0, 0, 1, 1, tableStyle);
+            drawing.getCellTextStyle(tblPrNode, 0, 0, 1, 1, tableStyle, defaultTableStyle, mockSlideContext);
 
-            expect(TableStyleResolver).toHaveBeenCalledWith(tblPrNode, tableStyle, 1, 1, null);
+            expect(TableStyleResolver).toHaveBeenCalledWith(tblPrNode, tableStyle, defaultTableStyle, 1, 1, mockSlideContext);
             const resolverInstance = TableStyleResolver.mock.instances[0];
             expect(resolverInstance.getTextStyle).toHaveBeenCalledWith(0, 0);
         });

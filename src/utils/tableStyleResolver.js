@@ -23,9 +23,10 @@ function parseBorder(lnNode, slideContext) {
 }
 
 export class TableStyleResolver {
-    constructor(tblPrNode, tableStyle, numRows, numCols, slideContext) {
+    constructor(tblPrNode, tableStyle, defaultTableStyle, numRows, numCols, slideContext) {
         this.tblPrNode = tblPrNode;
-        this.tableStyle = tableStyle;
+        this.tableStyle = tableStyle || {}; // Ensure tableStyle is an object
+        this.defaultTableStyle = defaultTableStyle || {}; // Ensure defaultTableStyle is an object
         this.numRows = numRows;
         this.numCols = numCols;
         this.slideContext = slideContext;
@@ -36,57 +37,6 @@ export class TableStyleResolver {
         this.lastCol = this.tblPrNode.getAttribute('lastCol') === '1';
         this.bandRow = this.tblPrNode.getAttribute('bandRow') === '1';
         this.bandCol = this.tblPrNode.getAttribute('bandCol') === '1';
-    }
-
-    _getApplicableParts(r, c) {
-        const isFirstRow = r === 0;
-        const isLastRow = r === this.numRows - 1;
-        const isFirstCol = c === 0;
-        const isLastCol = c === this.numCols - 1;
-
-        const parts = [];
-
-        if (this.tableStyle.wholeTbl) parts.push(this.tableStyle.wholeTbl);
-
-        // Banding has lower precedence than row/col styles
-        if (this.bandCol) {
-            const isDataCol = !(this.firstCol && isFirstCol) && !(this.lastCol && isLastCol);
-            if (isDataCol) {
-                const dataColIdx = this.firstCol ? c - 1 : c;
-                if (dataColIdx >= 0) {
-                    if (dataColIdx % 2 === 0 && this.tableStyle.band1V) parts.push(this.tableStyle.band1V);
-                    else if (dataColIdx % 2 === 1 && this.tableStyle.band2V) parts.push(this.tableStyle.band2V);
-                }
-            }
-        }
-        if (this.bandRow) {
-            const isDataRow = !(this.firstRow && isFirstRow) && !(this.lastRow && isLastRow);
-            if (isDataRow) {
-                const dataRowIdx = this.firstRow ? r - 1 : r;
-                if (dataRowIdx >= 0) {
-                    if (dataRowIdx % 2 === 0 && this.tableStyle.band1H) parts.push(this.tableStyle.band1H);
-                    else if (dataRowIdx % 2 === 1 && this.tableStyle.band2H) parts.push(this.tableStyle.band2H);
-                }
-            }
-        }
-
-        // Row/col styles
-        if (this.firstCol && isFirstCol && this.tableStyle.firstCol) parts.push(this.tableStyle.firstCol);
-        if (this.lastCol && isLastCol && this.tableStyle.lastCol) parts.push(this.tableStyle.lastCol);
-        if (this.firstRow && isFirstRow && this.tableStyle.firstRow) {
-            if (!this.tableStyle.firstRow.tcStyle || !this.tableStyle.firstRow.tcStyle.fill || this.tableStyle.firstRow.tcStyle.fill.type !== 'none') {
-                parts.push(this.tableStyle.firstRow);
-            }
-        }
-        if (this.lastRow && isLastRow && this.tableStyle.lastRow) parts.push(this.tableStyle.lastRow);
-
-        // Corner styles (highest precedence)
-        if (this.firstRow && isFirstRow && this.firstCol && isFirstCol && this.tableStyle.nwCell) parts.push(this.tableStyle.nwCell);
-        if (this.firstRow && isFirstRow && this.lastCol && isLastCol && this.tableStyle.neCell) parts.push(this.tableStyle.neCell);
-        if (this.lastRow && isLastRow && this.firstCol && isFirstCol && this.tableStyle.swCell) parts.push(this.tableStyle.swCell);
-        if (this.lastRow && isLastRow && this.lastCol && isLastCol && this.tableStyle.seCell) parts.push(this.tableStyle.seCell);
-
-        return parts;
     }
 
     getFill(cellNode, r, c) {
@@ -118,44 +68,66 @@ export class TableStyleResolver {
         // Level 2 & 3: Table Styles
         let finalFill = null;
 
-        // Special case for first row with noFill
+        const getPart = (partName) => this.tableStyle[partName] || (this.defaultTableStyle && this.defaultTableStyle[partName]);
+
+        const isFirstRow = r === 0;
+        const isLastRow = r === this.numRows - 1;
+        const isFirstCol = c === 0;
+        const isLastCol = c === this.numCols - 1;
+
+        const partNames = [];
+        if (this.firstRow && isFirstRow && this.firstCol && isFirstCol) partNames.push('nwCell');
+        if (this.firstRow && isFirstRow && this.lastCol && isLastCol) partNames.push('neCell');
+        if (this.lastRow && isLastRow && this.firstCol && isFirstCol) partNames.push('swCell');
+        if (this.lastRow && isLastRow && this.lastCol && isLastCol) partNames.push('seCell');
+        if (this.firstRow && isFirstRow) partNames.push('firstRow');
+        if (this.lastRow && isLastRow) partNames.push('lastRow');
+        if (this.firstCol && isFirstCol) partNames.push('firstCol');
+        if (this.lastCol && isLastCol) partNames.push('lastCol');
+        if (this.bandRow) {
+            const isDataRow = !(this.firstRow && isFirstRow) && !(this.lastRow && isLastRow);
+            if (isDataRow) {
+                const dataRowIdx = this.firstRow ? r - 1 : r;
+                if (dataRowIdx >= 0) {
+                    if (dataRowIdx % 2 === 0) partNames.push('band1H');
+                    else partNames.push('band2H');
+                }
+            }
+        }
+        if (this.bandCol) {
+            const isDataCol = !(this.firstCol && isFirstCol) && !(this.lastCol && isLastCol);
+            if (isDataCol) {
+                const dataColIdx = this.firstCol ? c - 1 : c;
+                if (dataColIdx >= 0) {
+                    if (dataColIdx % 2 === 0) partNames.push('band1V');
+                    else partNames.push('band2V');
+                }
+            }
+        }
+        partNames.push('wholeTbl');
+
+        for (const partName of partNames) {
+            const part = getPart(partName);
+            if (part && part.tcStyle && part.tcStyle.fill) {
+                if (part.tcStyle.fill.type !== 'none') {
+                    finalFill = part.tcStyle.fill;
+                    break;
+                }
+            }
+        }
+
         if (r === 0 && this.firstRow) {
-            const firstRowPart = this.tableStyle.firstRow;
+            const firstRowPart = getPart('firstRow');
             if (firstRowPart && firstRowPart.tcStyle && firstRowPart.tcStyle.fill && firstRowPart.tcStyle.fill.type === 'none') {
-                const band1HPart = this.tableStyle.band1H;
+                const band1HPart = getPart('band1H');
                 if (band1HPart && band1HPart.tcStyle && band1HPart.tcStyle.fill) {
                     finalFill = band1HPart.tcStyle.fill;
                 }
             }
         }
 
-        if (finalFill === null) {
-            const applicableParts = this._getApplicableParts(r, c);
-            for (const part of applicableParts) {
-                if (part && part.tcStyle && part.tcStyle.fill) {
-                    if (part.tcStyle.fill.type !== 'none') {
-                        finalFill = part.tcStyle.fill;
-                    } else {
-                        finalFill = null;
-                    }
-                }
-            }
-        }
-
         if (finalFill) {
-            if (finalFill.type === 'none') {
-                return 'none';
-            }
-            if (finalFill.type === 'solid') {
-                return { type: 'solid', color: ColorParser.resolveColor(finalFill.color, this.slideContext) };
-            }
-            if (finalFill.type === 'gradient') {
-                const resolvedStops = finalFill.gradient.stops.map(stop => ({
-                    ...stop,
-                    color: ColorParser.resolveColor(stop.color, this.slideContext, true)
-                }));
-                return { type: 'gradient', gradient: { ...finalFill.gradient, stops: resolvedStops } };
-            }
+            return { type: 'solid', color: ColorParser.resolveColor(finalFill.color, this.slideContext) };
         }
 
         return null;
