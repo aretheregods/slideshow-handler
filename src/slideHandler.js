@@ -160,20 +160,31 @@ export class SlideHandler {
 
 
         const initialMatrix = new Matrix();
-        const masterShapes = this.showMasterShapes && this.masterStaticShapes
-            ? await this.parseShapeTree( filteredMasterShapes, initialMatrix.clone(), slideLevelVisibility, this.masterImageMap )
-            : [];
-        const layoutShapes = this.showMasterShapes && this.layoutStaticShapes
-            ? await this.parseShapeTree( filteredLayoutShapes, initialMatrix.clone(), slideLevelVisibility, this.layoutImageMap )
-            : [];
+        const masterShapes = this.showMasterShapes && this.masterStaticShapes ?
+            await this.parseShapeTree(filteredMasterShapes, initialMatrix.clone(), slideLevelVisibility, this.masterImageMap) : [];
 
-        const slideShapes = spTreeNode
-            ? await this.parseShapeTree( spTreeNode.children, initialMatrix.clone(), slideLevelVisibility, this.slideImageMap )
-            : [];
+        const layoutShapes = this.showMasterShapes && this.layoutStaticShapes ?
+            await this.parseShapeTree(filteredLayoutShapes, initialMatrix.clone(), slideLevelVisibility, this.layoutImageMap) : [];
+
+        const slideShapes = spTreeNode ?
+            await this.parseShapeTree(spTreeNode.children, initialMatrix.clone(), slideLevelVisibility, this.slideImageMap) : [];
+
+        // The order of shapes is master -> layout -> slide.
+        // The first shape in the slide's spTree is the background picture.
+        // We need to render the layout shapes on top of the slide's background picture.
+        const slideBackground = slideShapes.find(shape => shape.type === 'picture' && shape.pos.width === this.slideSize.width && shape.pos.height === this.slideSize.height);
+
+        let finalShapes;
+        if (slideBackground) {
+            const otherSlideShapes = slideShapes.filter(shape => shape !== slideBackground);
+            finalShapes = [...masterShapes, slideBackground, ...layoutShapes, ...otherSlideShapes];
+        } else {
+            finalShapes = [...masterShapes, ...layoutShapes, ...slideShapes];
+        }
 
         return {
             background: this.finalBg,
-            shapes: [ ...masterShapes, ...layoutShapes, ...slideShapes ],
+            shapes: finalShapes,
         };
     }
 
