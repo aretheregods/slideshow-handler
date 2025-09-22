@@ -171,31 +171,66 @@ export class TableStyleResolver {
             }
         }
 
-        if (this.tableStyle) {
-            // Base borders from wholeTbl (overrides tblPr)
-            if (this.tableStyle.wholeTbl && this.tableStyle.wholeTbl.tcStyle && this.tableStyle.wholeTbl.tcStyle.borders) {
-                baseBorders = { ...baseBorders, ...this.tableStyle.wholeTbl.tcStyle.borders };
-            }
+        const getPart = (partName) => this.tableStyle[partName] || (this.defaultTableStyle && this.defaultTableStyle[partName]);
 
-            const applicableParts = this._getApplicableParts(r, c);
-            const mergedPartBorders = {};
-            for (const part of applicableParts) {
-                if (part && part.tcStyle && part.tcStyle.borders) {
-                    Object.assign(mergedPartBorders, part.tcStyle.borders);
+        const wholeTblPart = getPart('wholeTbl');
+        if (wholeTblPart && wholeTblPart.tcStyle && wholeTblPart.tcStyle.borders) {
+            baseBorders = { ...baseBorders, ...wholeTblPart.tcStyle.borders };
+        }
+
+        const isFirstRow = r === 0;
+        const isLastRow = r === this.numRows - 1;
+        const isFirstCol = c === 0;
+        const isLastCol = c === this.numCols - 1;
+
+        const partNames = [];
+        if (this.firstRow && isFirstRow && this.firstCol && isFirstCol) partNames.push('nwCell');
+        if (this.firstRow && isFirstRow && this.lastCol && isLastCol) partNames.push('neCell');
+        if (this.lastRow && isLastRow && this.firstCol && isFirstCol) partNames.push('swCell');
+        if (this.lastRow && isLastRow && this.lastCol && isLastCol) partNames.push('seCell');
+        if (this.firstRow && isFirstRow) partNames.push('firstRow');
+        if (this.lastRow && isLastRow) partNames.push('lastRow');
+        if (this.firstCol && isFirstCol) partNames.push('firstCol');
+        if (this.lastCol && isLastCol) partNames.push('lastCol');
+        if (this.bandRow) {
+            const isDataRow = !(this.firstRow && isFirstRow) && !(this.lastRow && isLastRow);
+            if (isDataRow) {
+                const dataRowIdx = this.firstRow ? r - 1 : r;
+                if (dataRowIdx >= 0) {
+                    if (dataRowIdx % 2 === 0) partNames.push('band1H');
+                    else partNames.push('band2H');
                 }
             }
+        }
+        if (this.bandCol) {
+            const isDataCol = !(this.firstCol && isFirstCol) && !(this.lastCol && isLastCol);
+            if (isDataCol) {
+                const dataColIdx = this.firstCol ? c - 1 : c;
+                if (dataColIdx >= 0) {
+                    if (dataColIdx % 2 === 0) partNames.push('band1V');
+                    else partNames.push('band2V');
+                }
+            }
+        }
 
-            for (const side of ['left', 'right', 'top', 'bottom']) {
-                if (finalBorders[side] === undefined) {
-                    const borderToApply = mergedPartBorders[side] || baseBorders[side];
-                    if (borderToApply) {
-                        const color = ColorParser.resolveColor(borderToApply.color, this.slideContext);
-                        if (color) {
-                            finalBorders[side] = {
-                                width: borderToApply.width,
-                                color: color
-                            };
-                        }
+        const mergedPartBorders = {};
+        for (const partName of partNames) {
+            const part = getPart(partName);
+            if (part && part.tcStyle && part.tcStyle.borders) {
+                Object.assign(mergedPartBorders, part.tcStyle.borders);
+            }
+        }
+
+        for (const side of ['left', 'right', 'top', 'bottom']) {
+            if (finalBorders[side] === undefined) {
+                const borderToApply = mergedPartBorders[side] || baseBorders[side];
+                if (borderToApply) {
+                    const color = ColorParser.resolveColor(borderToApply.color, this.slideContext);
+                    if (color) {
+                        finalBorders[side] = {
+                            width: borderToApply.width,
+                            color: color
+                        };
                     }
                 }
             }
@@ -205,17 +240,51 @@ export class TableStyleResolver {
     }
 
     getTextStyle(r, c) {
-        if (!this.tableStyle) return {};
-
         let finalStyle = {};
+        const getPart = (partName) => this.tableStyle[partName] || (this.defaultTableStyle && this.defaultTableStyle[partName]);
 
-        // Base style from wholeTbl
-        if (this.tableStyle.wholeTbl && this.tableStyle.wholeTbl.tcTxStyle) {
-            finalStyle = { ...this.tableStyle.wholeTbl.tcTxStyle };
+        const wholeTblPart = getPart('wholeTbl');
+        if (wholeTblPart && wholeTblPart.tcTxStyle) {
+            finalStyle = { ...wholeTblPart.tcTxStyle };
         }
 
-        const applicableParts = this._getApplicableParts(r, c);
-        for (const part of applicableParts) {
+        const isFirstRow = r === 0;
+        const isLastRow = r === this.numRows - 1;
+        const isFirstCol = c === 0;
+        const isLastCol = c === this.numCols - 1;
+
+        const partNames = [];
+        if (this.bandRow) {
+            const isDataRow = !(this.firstRow && isFirstRow) && !(this.lastRow && isLastRow);
+            if (isDataRow) {
+                const dataRowIdx = this.firstRow ? r - 1 : r;
+                if (dataRowIdx >= 0) {
+                    if (dataRowIdx % 2 === 0) partNames.push('band1H');
+                    else partNames.push('band2H');
+                }
+            }
+        }
+        if (this.bandCol) {
+            const isDataCol = !(this.firstCol && isFirstCol) && !(this.lastCol && isLastCol);
+            if (isDataCol) {
+                const dataColIdx = this.firstCol ? c - 1 : c;
+                if (dataColIdx >= 0) {
+                    if (dataColIdx % 2 === 0) partNames.push('band1V');
+                    else partNames.push('band2V');
+                }
+            }
+        }
+        if (this.firstCol && isFirstCol) partNames.push('firstCol');
+        if (this.lastCol && isLastCol) partNames.push('lastCol');
+        if (this.firstRow && isFirstRow) partNames.push('firstRow');
+        if (this.lastRow && isLastRow) partNames.push('lastRow');
+        if (this.firstRow && isFirstRow && this.firstCol && isFirstCol) partNames.push('nwCell');
+        if (this.firstRow && isFirstRow && this.lastCol && isLastCol) partNames.push('neCell');
+        if (this.lastRow && isLastRow && this.firstCol && isFirstCol) partNames.push('swCell');
+        if (this.lastRow && isLastRow && this.lastCol && isLastCol) partNames.push('seCell');
+
+        for (const partName of partNames) {
+            const part = getPart(partName);
             if (part && part.tcTxStyle) {
                 finalStyle = { ...finalStyle, ...part.tcTxStyle };
             }
