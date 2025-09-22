@@ -25,10 +25,6 @@ vi.mock('constants', async (importOriginal) => {
     };
 });
 
-// Mock zipjs
-vi.mock('zipjs', () => ({
-    BlobWriter: vi.fn(),
-}));
 
 describe('drawing.js', () => {
     describe('resolveFontFamily', () => {
@@ -166,24 +162,12 @@ describe('drawing.js', () => {
     });
 
     describe('populateImageMap', () => {
-        let mockFileReader;
-
         beforeEach(() => {
-            mockFileReader = {
-                readAsDataURL: vi.fn(function() {
-                    this.onloadend();
-                }),
-                result: 'data:image/png;base64,mock-image-data',
-                onloadend: null,
-                onerror: null,
-            };
-            vi.stubGlobal('FileReader', vi.fn(() => mockFileReader));
             vi.spyOn(console, 'warn').mockImplementation(() => {});
             vi.spyOn(console, 'error').mockImplementation(() => {});
         });
 
         afterEach(() => {
-            vi.unstubAllGlobals();
             vi.clearAllMocks();
         });
 
@@ -193,18 +177,16 @@ describe('drawing.js', () => {
                 'rId1': { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image', target: 'media/image1.png' },
                 'rId2': { id: 'rId2', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide', target: 'slides/slide1.xml' },
             };
-            const mockBlob = new Blob(['image data'], { type: 'image/png' });
-            const entriesMap = new Map([
-                ['ppt/media/image1.png', { getData: vi.fn().mockResolvedValue(mockBlob) }],
-            ]);
+            const entriesMap = {
+                'ppt/media/image1.png': { async: vi.fn().mockResolvedValue('mock-image-data') },
+            };
 
             await drawing.populateImageMap(imageMap, rels, 'ppt', entriesMap);
 
             expect(imageMap).toHaveProperty('rId1');
             expect(imageMap['rId1']).toBe('data:image/png;base64,mock-image-data');
             expect(imageMap).not.toHaveProperty('rId2');
-            expect(entriesMap.get('ppt/media/image1.png').getData).toHaveBeenCalled();
-            expect(FileReader).toHaveBeenCalledTimes(1);
+            expect(entriesMap['ppt/media/image1.png'].async).toHaveBeenCalledWith('base64');
         });
 
         it('should not overwrite existing images in the map', async () => {
@@ -212,7 +194,7 @@ describe('drawing.js', () => {
             const rels = {
                 'rId1': { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image', target: 'media/image1.png' },
             };
-            const entriesMap = new Map();
+            const entriesMap = {};
 
             await drawing.populateImageMap(imageMap, rels, 'ppt', entriesMap);
 
@@ -224,7 +206,7 @@ describe('drawing.js', () => {
             const rels = {
                 'rId1': { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image', target: 'media/image1.png' },
             };
-            const entriesMap = new Map(); // Empty map
+            const entriesMap = {}; // Empty map
 
             await drawing.populateImageMap(imageMap, rels, 'ppt', entriesMap);
 
@@ -237,9 +219,9 @@ describe('drawing.js', () => {
             const rels = {
                 'rId1': { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image', target: 'media/image1.png' },
             };
-            const entriesMap = new Map([
-                ['ppt/media/image1.png', { getData: vi.fn().mockRejectedValue(new Error('Read error')) }],
-            ]);
+            const entriesMap = {
+                'ppt/media/image1.png': { async: vi.fn().mockRejectedValue(new Error('Read error')) },
+            };
 
             await drawing.populateImageMap(imageMap, rels, 'ppt', entriesMap);
 
