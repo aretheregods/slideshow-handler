@@ -1114,8 +1114,12 @@ export function parseMasterOrLayout(xml, theme, masterColorMap = null, isLayout 
 
                 placeholders[key] = placeholderData;
 
-                // All placeholders can potentially be rendered if not overridden on the slide.
-                staticShapes.push(shapeNode);
+                const spPrNode = shapeNode.getElementsByTagNameNS(PML_NS, 'spPr')[0];
+                const hasPrstGeom = spPrNode && spPrNode.getElementsByTagNameNS(DML_NS, 'prstGeom')[0];
+
+                if (type === 'pic' || hasPrstGeom) {
+                    staticShapes.push(shapeNode);
+                }
             } else {
                 staticShapes.push(shapeNode);
             }
