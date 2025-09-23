@@ -138,18 +138,24 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
             const side = borderMap[child.localName];
             if (side) {
                 const lnNode = child;
+                const prstDashNode = lnNode.getElementsByTagNameNS(DML_NS, 'prstDash')[0];
                 const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
-                const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
 
-                if (noFillNode) {
+                if (noFillNode && !prstDashNode) {
                     borders[side] = 'none';
-                } else if (solidFillNode) {
-                    const colorObj = ColorParser.parseColor(solidFillNode);
+                } else {
+                    const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+                    let colorObj = null;
+                    if (solidFillNode) {
+                        colorObj = ColorParser.parseColor(solidFillNode);
+                    }
+
                     const width = parseInt(lnNode.getAttribute('w') || '0') / EMU_PER_PIXEL;
-                    if (colorObj && width > 0) {
+                    if (width > 0) {
                         borders[side] = {
-                            color: ColorParser.resolveColor(colorObj, slideContext),
-                            width: width
+                            color: colorObj ? ColorParser.resolveColor(colorObj, slideContext) : slideContext.theme.colorScheme.tx1,
+                            width: width,
+                            dash: prstDashNode ? prstDashNode.getAttribute('val') : 'solid',
                         };
                     }
                 }
@@ -157,7 +163,7 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
         }
     }
 
-        if (!tableStyle) {
+    if (!tableStyle) {
         return borders;
     }
 
