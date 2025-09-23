@@ -138,58 +138,18 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
             const side = borderMap[child.localName];
             if (side) {
                 const lnNode = child;
-                const prstDashNode = lnNode.getElementsByTagNameNS(DML_NS, 'prstDash')[0];
                 const noFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'noFill')[0];
+                const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
 
-                if (noFillNode && !prstDashNode) {
+                if (noFillNode) {
                     borders[side] = 'none';
-                } else {
-                    const solidFillNode = lnNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-                    let colorObj = null;
-                    if (solidFillNode) {
-                        colorObj = ColorParser.parseColor(solidFillNode);
-                    }
-
+                } else if (solidFillNode) {
+                    const colorObj = ColorParser.parseColor(solidFillNode);
                     const width = parseInt(lnNode.getAttribute('w') || '0') / EMU_PER_PIXEL;
-                    if (width > 0) {
-                        const dashType = prstDashNode ? prstDashNode.getAttribute('val') : 'solid';
-                        let dash = [];
-                        switch (dashType) {
-                            case 'dot':
-                                dash = [width, 3 * width];
-                                break;
-                            case 'dash':
-                                dash = [3 * width, 4 * width];
-                                break;
-                            case 'lgDash':
-                                dash = [8 * width, 3 * width];
-                                break;
-                            case 'dashDot':
-                                dash = [4 * width, 3 * width, width, 3 * width];
-                                break;
-                            case 'lgDashDot':
-                                dash = [8 * width, 3 * width, width, 3 * width];
-                                break;
-                            case 'lgDashDotDot':
-                                dash = [8 * width, 3 * width, width, 3 * width, width, 3 * width];
-                                break;
-                            case 'sysDash':
-                                dash = [3 * width, width];
-                                break;
-                            case 'sysDot':
-                                dash = [width, width];
-                                break;
-                            case 'sysDashDot':
-                                dash = [3 * width, width, width, width];
-                                break;
-                            case 'sysDashDotDot':
-                                dash = [3 * width, width, width, width, width, width];
-                                break;
-                        }
+                    if (colorObj && width > 0) {
                         borders[side] = {
-                            color: colorObj ? ColorParser.resolveColor(colorObj, slideContext) : slideContext.theme.colorScheme.tx1,
-                            width: width,
-                            dash: dash,
+                            color: ColorParser.resolveColor(colorObj, slideContext),
+                            width: width
                         };
                     }
                 }
@@ -197,7 +157,7 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
         }
     }
 
-    if (!tableStyle) {
+        if (!tableStyle) {
         return borders;
     }
 
@@ -285,7 +245,43 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
  * @param {Object} slideContext - The context of the slide.
  * @returns {Object|string|null} The parsed cell fill color, or null if no fill is defined.
  */
-function getFillFromTableStyle(tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
+export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
+    // Level 1: Direct Formatting (highest precedence)
+    const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
+    if (tcPrNode) {
+        for ( const child of tcPrNode.children ) {
+            if ( child.localName === 'noFill' ) {
+                return 'none';
+            }
+        }
+
+        let gradFillNode = null;
+        for ( const child of tcPrNode.children ) {
+            if ( child.localName === 'gradFill' ) {
+                gradFillNode = child;
+                break;
+            }
+        }
+        if (gradFillNode) {
+            return parseGradientFill(gradFillNode, slideContext);
+        }
+
+        let solidFillNode = null;
+        for ( const child of tcPrNode.children ) {
+            if ( child.localName === 'solidFill' ) {
+                solidFillNode = child;
+                break;
+            }
+        }
+        if (solidFillNode) {
+            const colorObj = ColorParser.parseColor(solidFillNode);
+            if (colorObj) {
+                return { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
+            }
+        }
+    }
+
+    // Level 2 & 3: Table Styles
     if (!tableStyle) return null;
 
     let finalFill = null;
@@ -307,35 +303,36 @@ function getFillFromTableStyle(tblPrNode, r, c, numRows, numCols, tableStyle, sl
     const isFirstCol = c === 0;
     const isLastCol = c === numCols - 1;
 
+    // Layer styles in increasing order of precedence
     const partsToCheck = [];
-    if (bandCol) {
-        const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
-        if (isDataCol) {
-            const dataColIdx = firstCol ? c - 1 : c;
-            if (dataColIdx >= 0) {
-                if (dataColIdx % 2 === 0 && tableStyle.band1V) partsToCheck.push(tableStyle.band1V);
-                else if (dataColIdx % 2 === 1 && tableStyle.band2V) partsToCheck.push(tableStyle.band2V);
+    if (bandRow) {
+        const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+        if (isDataRow) {
+            const dataRowIdx = firstRow ? r - 1 : r;
+            if (dataRowIdx >= 0) {
+                if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
+                else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
             }
         }
     }
-        if (bandRow) {
-            const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
-            if (isDataRow) {
-                const dataRowIdx = firstRow ? r - 1 : r;
-                if (dataRowIdx >= 0) {
-                    if (dataRowIdx % 2 === 0 && tableStyle.band1H) partsToCheck.push(tableStyle.band1H);
-                    else if (dataRowIdx % 2 === 1 && tableStyle.band2H) partsToCheck.push(tableStyle.band2H);
-                }
+        if (bandCol) {
+        const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+            if (isDataCol) {
+            const dataColIdx = firstCol ? c - 1 : c;
+                if (dataColIdx >= 0) {
+                if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
+                else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
             }
         }
-    if (firstCol && isFirstCol && tableStyle.firstCol) partsToCheck.push(tableStyle.firstCol);
-    if (lastCol && isLastCol && tableStyle.lastCol) partsToCheck.push(tableStyle.lastCol);
-        if (firstRow && isFirstRow && tableStyle.firstRow) partsToCheck.push(tableStyle.firstRow);
-        if (lastRow && isLastRow && tableStyle.lastRow) partsToCheck.push(tableStyle.lastRow);
-    if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) partsToCheck.push(tableStyle.nwCell);
-    if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) partsToCheck.push(tableStyle.neCell);
-    if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) partsToCheck.push(tableStyle.swCell);
-    if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) partsToCheck.push(tableStyle.seCell);
+    }
+    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
+    if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
+    if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+    if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
+    if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
+    if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
+    if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
 
     for (const part of partsToCheck) {
         if (part && part.tcStyle && part.tcStyle.fill) {
@@ -356,45 +353,6 @@ function getFillFromTableStyle(tblPrNode, r, c, numRows, numCols, tableStyle, sl
                 color: ColorParser.resolveColor(stop.color, slideContext, true)
             }));
             return { type: 'gradient', gradient: { ...finalFill.gradient, stops: resolvedStops } };
-        }
-    }
-
-    return null;
-}
-
-export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
-    const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
-
-    // Level 1: Direct formatting (Explicit color fills)
-    if (tcPrNode) {
-        let solidFillNode, gradFillNode;
-        for (const child of tcPrNode.children) {
-            if (child.localName === 'solidFill') solidFillNode = child;
-            if (child.localName === 'gradFill') gradFillNode = child;
-        }
-
-        if (gradFillNode) {
-            return parseGradientFill(gradFillNode, slideContext);
-        }
-        if (solidFillNode) {
-            const colorObj = ColorParser.parseColor(solidFillNode);
-            if (colorObj) {
-                return { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
-            }
-        }
-    }
-
-    // Level 2 & 3: Table Styles
-    const styleFill = getFillFromTableStyle(tblPrNode, r, c, numRows, numCols, tableStyle, slideContext);
-    if (styleFill && styleFill !== 'none') {
-        return styleFill;
-    }
-
-    // Level 4: Direct noFill (lowest precedence)
-    if (tcPrNode) {
-        const noFillNode = Array.from(tcPrNode.children).find(c => c.localName === 'noFill');
-        if (noFillNode) {
-            return 'none';
         }
     }
 
@@ -435,16 +393,6 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) 
 
     // Layer styles in increasing order of precedence
     const partsToCheck = [];
-    if (bandRow) {
-        const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
-        if (isDataRow) {
-            const dataRowIdx = firstRow ? r - 1 : r;
-            if (dataRowIdx >= 0) {
-                if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
-                else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
-            }
-        }
-    }
     if (bandCol) {
         const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
         if (isDataCol) {
@@ -455,10 +403,20 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) 
             }
         }
     }
-    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
-    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
+    if (bandRow) {
+        const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+        if (isDataRow) {
+            const dataRowIdx = firstRow ? r - 1 : r;
+            if (dataRowIdx >= 0) {
+                if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
+                else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
+            }
+        }
+    }
     if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
     if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
     if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
     if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
     if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
