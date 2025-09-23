@@ -245,87 +245,8 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
  * @param {Object} slideContext - The context of the slide.
  * @returns {Object|string|null} The parsed cell fill color, or null if no fill is defined.
  */
-function getFillFromTableStyle(tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
-    if (!tableStyle) return { conditional: null, wholeTbl: null };
-
-    let conditionalFill = null;
-    let wholeTblFill = null;
-
-    // Base fill from wholeTbl
-    if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.fill) {
-        if (tableStyle.wholeTbl.tcStyle.fill.type === 'solid') {
-            wholeTblFill = { type: 'solid', color: ColorParser.resolveColor(tableStyle.wholeTbl.tcStyle.fill.color, slideContext) };
-        }
-    }
-
-    let finalFill = null;
-
-    const firstRow = tblPrNode.getAttribute('firstRow') === '1';
-    const lastRow = tblPrNode.getAttribute('lastRow') === '1';
-    const firstCol = tblPrNode.getAttribute('firstCol') === '1';
-    const lastCol = tblPrNode.getAttribute('lastCol') === '1';
-    const bandRow = tblPrNode.getAttribute('bandRow') === '1';
-    const bandCol = tblPrNode.getAttribute('bandCol') === '1';
-
-    const isFirstRow = r === 0;
-    const isLastRow = r === numRows - 1;
-    const isFirstCol = c === 0;
-    const isLastCol = c === numCols - 1;
-
-    const partsToCheck = [];
-    if (bandCol) {
-        const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
-        if (isDataCol) {
-            const dataColIdx = firstCol ? c - 1 : c;
-            if (dataColIdx >= 0) {
-                if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
-                else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
-            }
-        }
-    }
-    if (bandRow) {
-        const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
-        if (isDataRow) {
-            const dataRowIdx = firstRow ? r - 1 : r;
-            if (dataRowIdx >= 0) {
-                if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
-                else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
-            }
-        }
-    }
-    if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
-    if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
-    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
-    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
-    if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
-    if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
-    if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
-    if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
-
-    for (const part of partsToCheck) {
-        if (part && part.tcStyle && part.tcStyle.fill) {
-            finalFill = part.tcStyle.fill;
-        }
-    }
-
-    if (finalFill) {
-        if (finalFill.type === 'none') {
-            conditionalFill = 'none';
-        } else if (finalFill.type === 'solid') {
-            conditionalFill = { type: 'solid', color: ColorParser.resolveColor(finalFill.color, slideContext) };
-        } else if (finalFill.type === 'gradient') {
-            const resolvedStops = finalFill.gradient.stops.map(stop => ({
-                ...stop,
-                color: ColorParser.resolveColor(stop.color, slideContext, true)
-            }));
-            conditionalFill = { type: 'gradient', gradient: { ...finalFill.gradient, stops: resolvedStops } };
-        }
-    }
-
-    return { conditional: conditionalFill, wholeTbl: wholeTblFill };
-}
-
 export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
+    // This function is now self-contained and handles all precedence logic.
     const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
 
     // Level 1: Direct formatting (Explicit color fills)
@@ -348,12 +269,85 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
     }
 
     // Level 2 & 3: Table Styles
-    const styleFills = getFillFromTableStyle(tblPrNode, r, c, numRows, numCols, tableStyle, slideContext);
-    if (styleFills.conditional && styleFills.conditional !== 'none') {
-        return styleFills.conditional;
-    }
-    if (styleFills.wholeTbl && styleFills.wholeTbl !== 'none') {
-        return styleFills.wholeTbl;
+    if (tableStyle) {
+        let conditionalFill = null;
+        let wholeTblFill = null;
+
+        if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.fill) {
+            if (tableStyle.wholeTbl.tcStyle.fill.type === 'solid') {
+                wholeTblFill = { type: 'solid', color: ColorParser.resolveColor(tableStyle.wholeTbl.tcStyle.fill.color, slideContext) };
+            }
+        }
+
+        const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+        const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+        const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+        const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+        const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+        const bandCol = tblPrNode.getAttribute('bandCol') === '1';
+
+        const isFirstRow = r === 0;
+        const isLastRow = r === numRows - 1;
+        const isFirstCol = c === 0;
+        const isLastCol = c === numCols - 1;
+
+        const partsToCheck = [];
+        if (bandCol) {
+            const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+            if (isDataCol) {
+                const dataColIdx = firstCol ? c - 1 : c;
+                if (dataColIdx >= 0) {
+                    if (dataColIdx % 2 === 0 && tableStyle.band1V) partsToCheck.push(tableStyle.band1V);
+                    else if (dataColIdx % 2 === 1 && tableStyle.band2V) partsToCheck.push(tableStyle.band2V);
+                }
+            }
+        }
+        if (bandRow) {
+            const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+            if (isDataRow) {
+                const dataRowIdx = firstRow ? r - 1 : r;
+                if (dataRowIdx >= 0) {
+                    if (dataRowIdx % 2 === 0 && tableStyle.band1H) partsToCheck.push(tableStyle.band1H);
+                    else if (dataRowIdx % 2 === 1 && tableStyle.band2H) partsToCheck.push(tableStyle.band2H);
+                }
+            }
+        }
+        if (firstCol && isFirstCol && tableStyle.firstCol) partsToCheck.push(tableStyle.firstCol);
+        if (lastCol && isLastCol && tableStyle.lastCol) partsToCheck.push(tableStyle.lastCol);
+        if (firstRow && isFirstRow && tableStyle.firstRow) partsToCheck.push(tableStyle.firstRow);
+        if (lastRow && isLastRow && tableStyle.lastRow) partsToCheck.push(tableStyle.lastRow);
+        if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) partsToCheck.push(tableStyle.nwCell);
+        if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) partsToCheck.push(tableStyle.neCell);
+        if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) partsToCheck.push(tableStyle.swCell);
+        if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) partsToCheck.push(tableStyle.seCell);
+
+        let finalConditionalFill = null;
+        for (const part of partsToCheck) {
+            if (part && part.tcStyle && part.tcStyle.fill) {
+                finalConditionalFill = part.tcStyle.fill;
+            }
+        }
+
+        if (finalConditionalFill) {
+            if (finalConditionalFill.type === 'none') {
+                conditionalFill = 'none';
+            } else if (finalConditionalFill.type === 'solid') {
+                conditionalFill = { type: 'solid', color: ColorParser.resolveColor(finalConditionalFill.color, slideContext) };
+            } else if (finalConditionalFill.type === 'gradient') {
+                const resolvedStops = finalConditionalFill.gradient.stops.map(stop => ({
+                    ...stop,
+                    color: ColorParser.resolveColor(stop.color, slideContext, true)
+                }));
+                conditionalFill = { type: 'gradient', gradient: { ...finalConditionalFill.gradient, stops: resolvedStops } };
+            }
+        }
+
+        if (conditionalFill && conditionalFill !== 'none') {
+            return conditionalFill;
+        }
+        if (wholeTblFill && wholeTblFill !== 'none') {
+            return wholeTblFill;
+        }
     }
 
     // Level 4: Direct noFill (lowest precedence)
