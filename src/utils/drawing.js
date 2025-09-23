@@ -152,10 +152,44 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
 
                     const width = parseInt(lnNode.getAttribute('w') || '0') / EMU_PER_PIXEL;
                     if (width > 0) {
+                        const dashType = prstDashNode ? prstDashNode.getAttribute('val') : 'solid';
+                        let dash = [];
+                        switch (dashType) {
+                            case 'dot':
+                                dash = [width, 3 * width];
+                                break;
+                            case 'dash':
+                                dash = [3 * width, 4 * width];
+                                break;
+                            case 'lgDash':
+                                dash = [8 * width, 3 * width];
+                                break;
+                            case 'dashDot':
+                                dash = [4 * width, 3 * width, width, 3 * width];
+                                break;
+                            case 'lgDashDot':
+                                dash = [8 * width, 3 * width, width, 3 * width];
+                                break;
+                            case 'lgDashDotDot':
+                                dash = [8 * width, 3 * width, width, 3 * width, width, 3 * width];
+                                break;
+                            case 'sysDash':
+                                dash = [3 * width, width];
+                                break;
+                            case 'sysDot':
+                                dash = [width, width];
+                                break;
+                            case 'sysDashDot':
+                                dash = [3 * width, width, width, width];
+                                break;
+                            case 'sysDashDotDot':
+                                dash = [3 * width, width, width, width, width, width];
+                                break;
+                        }
                         borders[side] = {
                             color: colorObj ? ColorParser.resolveColor(colorObj, slideContext) : slideContext.theme.colorScheme.tx1,
                             width: width,
-                            dash: prstDashNode ? prstDashNode.getAttribute('val') : 'solid',
+                            dash: dash,
                         };
                     }
                 }
