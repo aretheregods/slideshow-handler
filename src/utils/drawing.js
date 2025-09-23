@@ -268,16 +268,6 @@ function getFillFromTableStyle(tblPrNode, r, c, numRows, numCols, tableStyle, sl
     const isLastCol = c === numCols - 1;
 
     const partsToCheck = [];
-    if (bandRow) {
-        const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
-        if (isDataRow) {
-            const dataRowIdx = firstRow ? r - 1 : r;
-            if (dataRowIdx >= 0) {
-                if (dataRowIdx % 2 === 0 && tableStyle.band1H) partsToCheck.push(tableStyle.band1H);
-                else if (dataRowIdx % 2 === 1 && tableStyle.band2H) partsToCheck.push(tableStyle.band2H);
-            }
-        }
-    }
     if (bandCol) {
         const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
         if (isDataCol) {
@@ -288,10 +278,20 @@ function getFillFromTableStyle(tblPrNode, r, c, numRows, numCols, tableStyle, sl
             }
         }
     }
-    if (firstRow && isFirstRow && tableStyle.firstRow) partsToCheck.push(tableStyle.firstRow);
-    if (lastRow && isLastRow && tableStyle.lastRow) partsToCheck.push(tableStyle.lastRow);
+        if (bandRow) {
+            const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+            if (isDataRow) {
+                const dataRowIdx = firstRow ? r - 1 : r;
+                if (dataRowIdx >= 0) {
+                    if (dataRowIdx % 2 === 0 && tableStyle.band1H) partsToCheck.push(tableStyle.band1H);
+                    else if (dataRowIdx % 2 === 1 && tableStyle.band2H) partsToCheck.push(tableStyle.band2H);
+                }
+            }
+        }
     if (firstCol && isFirstCol && tableStyle.firstCol) partsToCheck.push(tableStyle.firstCol);
     if (lastCol && isLastCol && tableStyle.lastCol) partsToCheck.push(tableStyle.lastCol);
+        if (firstRow && isFirstRow && tableStyle.firstRow) partsToCheck.push(tableStyle.firstRow);
+        if (lastRow && isLastRow && tableStyle.lastRow) partsToCheck.push(tableStyle.lastRow);
     if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) partsToCheck.push(tableStyle.nwCell);
     if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) partsToCheck.push(tableStyle.neCell);
     if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) partsToCheck.push(tableStyle.swCell);
