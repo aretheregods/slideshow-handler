@@ -245,51 +245,20 @@ export function getCellBorders(cellNode, tblPrNode, r, c, numRows, numCols, tabl
  * @param {Object} slideContext - The context of the slide.
  * @returns {Object|string|null} The parsed cell fill color, or null if no fill is defined.
  */
-export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
-    // Level 1: Direct Formatting (highest precedence)
-    const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
-    if (tcPrNode) {
-        for ( const child of tcPrNode.children ) {
-            if ( child.localName === 'noFill' ) {
-                return 'none';
-            }
-        }
+function getFillFromTableStyle(tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
+    if (!tableStyle) return { conditional: null, wholeTbl: null };
 
-        let gradFillNode = null;
-        for ( const child of tcPrNode.children ) {
-            if ( child.localName === 'gradFill' ) {
-                gradFillNode = child;
-                break;
-            }
-        }
-        if (gradFillNode) {
-            return parseGradientFill(gradFillNode, slideContext);
-        }
-
-        let solidFillNode = null;
-        for ( const child of tcPrNode.children ) {
-            if ( child.localName === 'solidFill' ) {
-                solidFillNode = child;
-                break;
-            }
-        }
-        if (solidFillNode) {
-            const colorObj = ColorParser.parseColor(solidFillNode);
-            if (colorObj) {
-                return { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
-            }
-        }
-    }
-
-    // Level 2 & 3: Table Styles
-    if (!tableStyle) return null;
-
-    let finalFill = null;
+    let conditionalFill = null;
+    let wholeTblFill = null;
 
     // Base fill from wholeTbl
     if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcStyle && tableStyle.wholeTbl.tcStyle.fill) {
-        finalFill = tableStyle.wholeTbl.tcStyle.fill;
+        if (tableStyle.wholeTbl.tcStyle.fill.type === 'solid') {
+            wholeTblFill = { type: 'solid', color: ColorParser.resolveColor(tableStyle.wholeTbl.tcStyle.fill.color, slideContext) };
+        }
     }
+
+    let finalFill = null;
 
     const firstRow = tblPrNode.getAttribute('firstRow') === '1';
     const lastRow = tblPrNode.getAttribute('lastRow') === '1';
@@ -303,8 +272,17 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
     const isFirstCol = c === 0;
     const isLastCol = c === numCols - 1;
 
-    // Layer styles in increasing order of precedence
     const partsToCheck = [];
+    if (bandCol) {
+        const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+        if (isDataCol) {
+            const dataColIdx = firstCol ? c - 1 : c;
+            if (dataColIdx >= 0) {
+                if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
+                else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+            }
+        }
+    }
     if (bandRow) {
         const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
         if (isDataRow) {
@@ -315,20 +293,10 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
             }
         }
     }
-        if (bandCol) {
-        const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
-            if (isDataCol) {
-            const dataColIdx = firstCol ? c - 1 : c;
-                if (dataColIdx >= 0) {
-                if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
-                else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
-            }
-        }
-    }
-    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
-    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
     if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
     if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
+    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
+    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
     if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
     if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
     if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
@@ -342,17 +310,57 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
 
     if (finalFill) {
         if (finalFill.type === 'none') {
-            return 'none';
-        }
-        if (finalFill.type === 'solid') {
-            return { type: 'solid', color: ColorParser.resolveColor(finalFill.color, slideContext) };
-        }
-        if (finalFill.type === 'gradient') {
+            conditionalFill = 'none';
+        } else if (finalFill.type === 'solid') {
+            conditionalFill = { type: 'solid', color: ColorParser.resolveColor(finalFill.color, slideContext) };
+        } else if (finalFill.type === 'gradient') {
             const resolvedStops = finalFill.gradient.stops.map(stop => ({
                 ...stop,
                 color: ColorParser.resolveColor(stop.color, slideContext, true)
             }));
-            return { type: 'gradient', gradient: { ...finalFill.gradient, stops: resolvedStops } };
+            conditionalFill = { type: 'gradient', gradient: { ...finalFill.gradient, stops: resolvedStops } };
+        }
+    }
+
+    return { conditional: conditionalFill, wholeTbl: wholeTblFill };
+}
+
+export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, slideContext) {
+    const tcPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'tcPr')[0];
+
+    // Level 1: Direct formatting (Explicit color fills)
+    if (tcPrNode) {
+        let solidFillNode, gradFillNode;
+        for (const child of tcPrNode.children) {
+            if (child.localName === 'solidFill') solidFillNode = child;
+            if (child.localName === 'gradFill') gradFillNode = child;
+        }
+
+        if (gradFillNode) {
+            return parseGradientFill(gradFillNode, slideContext);
+        }
+        if (solidFillNode) {
+            const colorObj = ColorParser.parseColor(solidFillNode);
+            if (colorObj) {
+                return { type: 'solid', color: ColorParser.resolveColor(colorObj, slideContext) };
+            }
+        }
+    }
+
+    // Level 2 & 3: Table Styles
+    const styleFills = getFillFromTableStyle(tblPrNode, r, c, numRows, numCols, tableStyle, slideContext);
+    if (styleFills.conditional && styleFills.conditional !== 'none') {
+        return styleFills.conditional;
+    }
+    if (styleFills.wholeTbl && styleFills.wholeTbl !== 'none') {
+        return styleFills.wholeTbl;
+    }
+
+    // Level 4: Direct noFill (lowest precedence)
+    if (tcPrNode) {
+        const noFillNode = Array.from(tcPrNode.children).find(c => c.localName === 'noFill');
+        if (noFillNode) {
+            return 'none';
         }
     }
 
