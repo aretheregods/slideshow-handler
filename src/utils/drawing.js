@@ -405,7 +405,7 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, 
 
 	const bandRowAttr = tblPrNode.getAttribute('bandRow');
 
-    const firstRow = tblPrNode.getAttribute('firstRow') === '1' && bandRowAttr !== '1';
+    const firstRow = tblPrNode.getAttribute('firstRow') === '1';
     const lastRow = tblPrNode.getAttribute('lastRow') === '1';
     const firstCol = tblPrNode.getAttribute('firstCol') === '1';
     const lastCol = tblPrNode.getAttribute('lastCol') === '1';
@@ -428,10 +428,12 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, 
                 else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
             }
         }
-    }
+	}
+	console.log( { r } );
     if (bandRow) {
         const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
         if (isDataRow) {
+			console.log( { isDataRow, isFirstRow, r } );
             const dataRowIdx = firstRow ? r - 1 : r;
             if (dataRowIdx >= 0) {
                 if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
