@@ -490,45 +490,80 @@ describe('drawing.js', () => {
             const { name = '', attributes = {}, children = {} } = config;
             return {
                 getAttribute: (attr) => attributes[attr],
+                getElementsByTagNameNS: (ns, tagName) => {
+                    return children[tagName] ? children[tagName].map(createMockElement) : [];
+                },
+                hasAttribute: (attr) => attr in attributes,
             };
         };
 
         it('should return an empty object if no table style is provided', () => {
             const tblPrNode = createMockElement();
-            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 1, 1, null);
+            const cellNode = createMockElement();
+            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 1, 1, null, cellNode, {});
             expect(style).toEqual({});
         });
 
         it('should return the base text style from wholeTbl', () => {
             const tblPrNode = createMockElement();
+            const cellNode = createMockElement();
             const tableStyle = {
-                wholeTbl: { tcTxStyle: { color: 'red', bold: true } }
+                wholeTbl: { tcTxStyle: { color: { val: 'red' }, bold: true } }
             };
-            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 2, 2, tableStyle);
+            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 2, 2, tableStyle, cellNode, {});
             expect(style).toEqual({ color: 'red', bold: true });
         });
 
         it('should merge conditional styles over the base style', () => {
             const tblPrNode = createMockElement({ attributes: { firstRow: '1' } });
+            const cellNode = createMockElement();
             const tableStyle = {
-                wholeTbl: { tcTxStyle: { color: 'red', bold: true } },
-                firstRow: { tcTxStyle: { color: 'blue', italic: true } }
+                wholeTbl: { tcTxStyle: { color: { val: 'red' }, bold: true } },
+                firstRow: { tcTxStyle: { color: { val: 'blue' }, italic: true } }
             };
-            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 2, 2, tableStyle);
+            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 2, 2, tableStyle, cellNode, {});
             expect(style).toEqual({ color: 'blue', bold: true, italic: true });
         });
 
         it('should apply multiple conditional styles with correct precedence', () => {
-            // nwCell should override firstRow and firstCol
             const tblPrNode = createMockElement({ attributes: { firstRow: '1', firstCol: '1' } });
+            const cellNode = createMockElement();
             const tableStyle = {
                 wholeTbl: { tcTxStyle: { fontSize: 12 } },
                 firstRow: { tcTxStyle: { bold: true } },
                 firstCol: { tcTxStyle: { italic: true } },
-                nwCell: { tcTxStyle: { color: 'green' } }
+                nwCell: { tcTxStyle: { color: { val: 'green' } } }
             };
-            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 3, 3, tableStyle);
+            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 3, 3, tableStyle, cellNode, {});
             expect(style).toEqual({ fontSize: 12, bold: true, italic: true, color: 'green' });
+        });
+
+        it('should override table styles with direct cell-level styles', () => {
+            const tblPrNode = createMockElement();
+            const tableStyle = {
+                wholeTbl: { tcTxStyle: { color: 'red', bold: true, font: 'Arial' } }
+            };
+            const cellNode = createMockElement({
+                name: 'tc',
+                children: {
+                    'rPr': [{
+                        name: 'rPr',
+                        attributes: { sz: '1800' }, // Font size 18
+                        children: {
+                            'latin': [{ name: 'latin', attributes: { typeface: 'Courier New' }, hasAttribute: (attr) => attr === 'typeface' }],
+                            'solidFill': [{ name: 'solidFill' }] // Represents a color override
+                        }
+                    }]
+                }
+            });
+
+            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 1, 1, tableStyle, cellNode, {});
+            expect(style).toEqual({
+                color: 'resolved-color',
+                bold: true,
+                font: 'Courier New',
+                fontSize: 18
+            });
         });
     });
 

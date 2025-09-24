@@ -379,32 +379,6 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, 
 
     let finalStyle = {};
 
-    // Base style from wholeTbl
-    if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcTxStyle) {
-        finalStyle = { ...tableStyle.wholeTbl.tcTxStyle };
-	}
-
-    const tcTxNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
-
-    if (tcTxNode) {
-		const solidFillNode = tcTxNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-		const gradFillNode = tcTxNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
-
-        if (gradFillNode) {
-            return parseGradientFill(gradFillNode, slideContext);
-        }
-        if (solidFillNode) {
-			const schemeClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
-            const colorObj = ColorParser.parseColor(schemeClrNode);
-            if (colorObj) {
-				console.log({ colorObj });
-                finalStyle = colorObj;
-            }
-        }
-    }
-
-	const bandRowAttr = tblPrNode.getAttribute('bandRow');
-
     const firstRow = tblPrNode.getAttribute('firstRow') === '1';
     const lastRow = tblPrNode.getAttribute('lastRow') === '1';
     const firstCol = tblPrNode.getAttribute('firstCol') === '1';
@@ -419,6 +393,7 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, 
 
     // Layer styles in increasing order of precedence
     const partsToCheck = [];
+    if (tableStyle.wholeTbl) partsToCheck.push(tableStyle.wholeTbl);
     if (bandCol) {
         const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
         if (isDataCol) {
@@ -428,12 +403,10 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, 
                 else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
             }
         }
-	}
-	console.log( { r } );
+    }
     if (bandRow) {
         const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
         if (isDataRow) {
-			console.log( { isDataRow, isFirstRow, r } );
             const dataRowIdx = firstRow ? r - 1 : r;
             if (dataRowIdx >= 0) {
                 if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
@@ -450,10 +423,34 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, 
     if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
     if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
 
-
     for (const part of partsToCheck) {
         if (part && part.tcTxStyle) {
             finalStyle = { ...finalStyle, ...part.tcTxStyle };
+        }
+    }
+
+    if (finalStyle.color) {
+        finalStyle.color = ColorParser.resolveColor(finalStyle.color, slideContext);
+    }
+
+    const rPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+    if (rPrNode) {
+        const sz = rPrNode.getAttribute('sz');
+        if (sz) {
+            finalStyle.fontSize = parseInt(sz) / 100;
+        }
+
+        const latinFontNode = rPrNode.getElementsByTagNameNS(DML_NS, 'latin')[0];
+        if (latinFontNode && latinFontNode.hasAttribute('typeface')) {
+            finalStyle.font = latinFontNode.getAttribute('typeface');
+        }
+
+        const solidFillNode = rPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+        if (solidFillNode) {
+            const colorObj = ColorParser.parseColor(solidFillNode);
+            if (colorObj) {
+                finalStyle.color = ColorParser.resolveColor(colorObj, slideContext);
+            }
         }
     }
 
