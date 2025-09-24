@@ -590,11 +590,11 @@ describe('drawing.js', () => {
             });
         });
 
-        it('should ignore conditional formatting if cell has direct text style', () => {
+        it('should layer conditional formatting and direct styles correctly', () => {
             const tblPrNode = createMockElement({ attributes: { firstRow: '1' } });
             const tableStyle = {
-                wholeTbl: { tcTxStyle: { color: 'blue', font: 'Arial' } },
-                firstRow: { tcTxStyle: { color: 'red', bold: true } } // This should be ignored
+                wholeTbl: { tcTxStyle: { color: { val: 'blue' }, font: 'Arial' } },
+                firstRow: { tcTxStyle: { color: { val: 'red' }, bold: true } }
             };
             const cellNode = createMockElement({
                 name: 'tc',
@@ -611,10 +611,10 @@ describe('drawing.js', () => {
 
             const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 2, 2, tableStyle, cellNode, {});
             expect(style).toEqual({
-                color: 'blue', // Inherited from wholeTbl
+                color: 'red', // Inherited from firstRow, which overrides wholeTbl
                 font: 'Times New Roman', // Overridden by cell
                 fontSize: 12, // Overridden by cell
-                // `bold: true` from firstRow should NOT be present
+                bold: true // Inherited from firstRow
             });
         });
     });
