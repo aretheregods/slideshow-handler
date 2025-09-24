@@ -767,7 +767,7 @@ export class SlideHandler {
                     pos: { x: cellX, y: cellY, width: cellWidth, height: cellHeight },
                     fill: getCellFillColor( cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext ),
                     borders: getCellBorders( cellNode, tblPrNode, r, c, numRows, numCols, tableStyle, this.slideContext ),
-                    text: this.parseCellText( cellNode, { x: cellX, y: cellY, width: cellWidth, height: cellHeight }, getCellTextStyle( tblPrNode, r, c, numRows, numCols, tableStyle ) ),
+					text: this.parseCellText( cellNode, { x: cellX, y: cellY, width: cellWidth, height: cellHeight }, getCellTextStyle( tblPrNode, r, c, numRows, numCols, tableStyle, cellNode, this.slideContext ) ),
                 } );
             }
         }

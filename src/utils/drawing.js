@@ -268,7 +268,15 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
         }
     }
 
-    // Level 2 & 3: Table Styles
+    // Level 2: Direct noFill (Explicit no fill)
+    if (tcPrNode) {
+        const noFillNode = Array.from(tcPrNode.children).find(c => c.localName === 'noFill');
+        if (noFillNode) {
+            return 'none';
+        }
+    }
+
+    // Level 3 & 4: Table Styles
     if (tableStyle) {
         let conditionalFill = null;
         let wholeTblFill = null;
@@ -279,7 +287,10 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
             }
         }
 
-        const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+		const firstRowAttr = tblPrNode.getAttribute('firstRow');
+		const bandRowAttr = tblPrNode.getAttribute('bandRow');
+
+        const firstRow = firstRowAttr === '1';
         const lastRow = tblPrNode.getAttribute('lastRow') === '1';
         const firstCol = tblPrNode.getAttribute('firstCol') === '1';
         const lastCol = tblPrNode.getAttribute('lastCol') === '1';
@@ -350,14 +361,6 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
         }
     }
 
-    // Level 4: Direct noFill (lowest precedence)
-    if (tcPrNode) {
-        const noFillNode = Array.from(tcPrNode.children).find(c => c.localName === 'noFill');
-        if (noFillNode) {
-            return 'none';
-        }
-    }
-
     return null;
 }
 
@@ -371,7 +374,7 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
  * @param {Object} tableStyle - The table style object.
  * @returns {Object} The parsed cell text style.
  */
-export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) {
+export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, cellNode, slideContext) {
     if (!tableStyle) return {};
 
     let finalStyle = {};
@@ -379,9 +382,30 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle) 
     // Base style from wholeTbl
     if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcTxStyle) {
         finalStyle = { ...tableStyle.wholeTbl.tcTxStyle };
+	}
+
+    const tcTxNode = cellNode.getElementsByTagNameNS(DML_NS, 'txBody')[0];
+
+    if (tcTxNode) {
+		const solidFillNode = tcTxNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
+		const gradFillNode = tcTxNode.getElementsByTagNameNS(DML_NS, 'gradFill')[0];
+
+        if (gradFillNode) {
+            return parseGradientFill(gradFillNode, slideContext);
+        }
+        if (solidFillNode) {
+			const schemeClrNode = solidFillNode.getElementsByTagNameNS(DML_NS, 'schemeClr')[0];
+            const colorObj = ColorParser.parseColor(schemeClrNode);
+            if (colorObj) {
+				console.log({ colorObj });
+                finalStyle = colorObj;
+            }
+        }
     }
 
-    const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+	const bandRowAttr = tblPrNode.getAttribute('bandRow');
+
+    const firstRow = tblPrNode.getAttribute('firstRow') === '1' && bandRowAttr !== '1';
     const lastRow = tblPrNode.getAttribute('lastRow') === '1';
     const firstCol = tblPrNode.getAttribute('firstCol') === '1';
     const lastCol = tblPrNode.getAttribute('lastCol') === '1';
