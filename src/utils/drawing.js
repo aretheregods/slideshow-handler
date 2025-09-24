@@ -378,63 +378,72 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, 
     if (!tableStyle) return {};
 
     let finalStyle = {};
+    const rPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+    const hasDirectTextStyle = !!rPrNode;
 
-    const firstRow = tblPrNode.getAttribute('firstRow') === '1';
-    const lastRow = tblPrNode.getAttribute('lastRow') === '1';
-    const firstCol = tblPrNode.getAttribute('firstCol') === '1';
-    const lastCol = tblPrNode.getAttribute('lastCol') === '1';
-    const bandRow = tblPrNode.getAttribute('bandRow') === '1';
-    const bandCol = tblPrNode.getAttribute('bandCol') === '1';
+    // Base style from wholeTbl is always applied
+    if (tableStyle.wholeTbl && tableStyle.wholeTbl.tcTxStyle) {
+        finalStyle = { ...tableStyle.wholeTbl.tcTxStyle };
+    }
 
-    const isFirstRow = r === 0;
-    const isLastRow = r === numRows - 1;
-    const isFirstCol = c === 0;
-    const isLastCol = c === numCols - 1;
+    // If there's no direct text styling, layer conditional styles
+    if (!hasDirectTextStyle) {
+        const firstRow = tblPrNode.getAttribute('firstRow') === '1';
+        const lastRow = tblPrNode.getAttribute('lastRow') === '1';
+        const firstCol = tblPrNode.getAttribute('firstCol') === '1';
+        const lastCol = tblPrNode.getAttribute('lastCol') === '1';
+        const bandRow = tblPrNode.getAttribute('bandRow') === '1';
+        const bandCol = tblPrNode.getAttribute('bandCol') === '1';
 
-    // Layer styles in increasing order of precedence
-    const partsToCheck = [];
-    if (tableStyle.wholeTbl) partsToCheck.push(tableStyle.wholeTbl);
-    if (bandCol) {
-        const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
-        if (isDataCol) {
-            const dataColIdx = firstCol ? c - 1 : c;
-            if (dataColIdx >= 0) {
-                if (dataColIdx % 2 === 0 && tableStyle.band1V) { partsToCheck.push(tableStyle.band1V); }
-                else if (dataColIdx % 2 === 1 && tableStyle.band2V) { partsToCheck.push(tableStyle.band2V); }
+        const isFirstRow = r === 0;
+        const isLastRow = r === numRows - 1;
+        const isFirstCol = c === 0;
+        const isLastCol = c === numCols - 1;
+
+        const partsToCheck = [];
+        if (bandCol) {
+            const isDataCol = !(firstCol && isFirstCol) && !(lastCol && isLastCol);
+            if (isDataCol) {
+                const dataColIdx = firstCol ? c - 1 : c;
+                if (dataColIdx >= 0) {
+                    if (dataColIdx % 2 === 0 && tableStyle.band1V) partsToCheck.push(tableStyle.band1V);
+                    else if (dataColIdx % 2 === 1 && tableStyle.band2V) partsToCheck.push(tableStyle.band2V);
+                }
+            }
+        }
+        if (bandRow) {
+            const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
+            if (isDataRow) {
+                const dataRowIdx = firstRow ? r - 1 : r;
+                if (dataRowIdx >= 0) {
+                    if (dataRowIdx % 2 === 0 && tableStyle.band1H) partsToCheck.push(tableStyle.band1H);
+                    else if (dataRowIdx % 2 === 1 && tableStyle.band2H) partsToCheck.push(tableStyle.band2H);
+                }
+            }
+        }
+        if (firstCol && isFirstCol && tableStyle.firstCol) partsToCheck.push(tableStyle.firstCol);
+        if (lastCol && isLastCol && tableStyle.lastCol) partsToCheck.push(tableStyle.lastCol);
+        if (firstRow && isFirstRow && tableStyle.firstRow) partsToCheck.push(tableStyle.firstRow);
+        if (lastRow && isLastRow && tableStyle.lastRow) partsToCheck.push(tableStyle.lastRow);
+        if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) partsToCheck.push(tableStyle.nwCell);
+        if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) partsToCheck.push(tableStyle.neCell);
+        if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) partsToCheck.push(tableStyle.swCell);
+        if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) partsToCheck.push(tableStyle.seCell);
+
+        for (const part of partsToCheck) {
+            if (part && part.tcTxStyle) {
+                finalStyle = { ...finalStyle, ...part.tcTxStyle };
             }
         }
     }
-    if (bandRow) {
-        const isDataRow = !(firstRow && isFirstRow) && !(lastRow && isLastRow);
-        if (isDataRow) {
-            const dataRowIdx = firstRow ? r - 1 : r;
-            if (dataRowIdx >= 0) {
-                if (dataRowIdx % 2 === 0 && tableStyle.band1H) { partsToCheck.push(tableStyle.band1H); }
-                else if (dataRowIdx % 2 === 1 && tableStyle.band2H) { partsToCheck.push(tableStyle.band2H); }
-            }
-        }
-    }
-    if (firstCol && isFirstCol && tableStyle.firstCol) { partsToCheck.push(tableStyle.firstCol); }
-    if (lastCol && isLastCol && tableStyle.lastCol) { partsToCheck.push(tableStyle.lastCol); }
-    if (firstRow && isFirstRow && tableStyle.firstRow) { partsToCheck.push(tableStyle.firstRow); }
-    if (lastRow && isLastRow && tableStyle.lastRow) { partsToCheck.push(tableStyle.lastRow); }
-    if (firstRow && isFirstRow && firstCol && isFirstCol && tableStyle.nwCell) { partsToCheck.push(tableStyle.nwCell); }
-    if (firstRow && isFirstRow && lastCol && isLastCol && tableStyle.neCell) { partsToCheck.push(tableStyle.neCell); }
-    if (lastRow && isLastRow && firstCol && isFirstCol && tableStyle.swCell) { partsToCheck.push(tableStyle.swCell); }
-    if (lastRow && isLastRow && lastCol && isLastCol && tableStyle.seCell) { partsToCheck.push(tableStyle.seCell); }
 
-    for (const part of partsToCheck) {
-        if (part && part.tcTxStyle) {
-            finalStyle = { ...finalStyle, ...part.tcTxStyle };
-        }
-    }
-
+    // Always resolve color before applying direct overrides
     if (finalStyle.color) {
         finalStyle.color = ColorParser.resolveColor(finalStyle.color, slideContext);
     }
 
-    const rPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
-    if (rPrNode) {
+    // Apply direct style overrides from rPr
+    if (hasDirectTextStyle) {
         const sz = rPrNode.getAttribute('sz');
         if (sz) {
             finalStyle.fontSize = parseInt(sz) / 100;

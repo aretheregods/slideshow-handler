@@ -486,6 +486,30 @@ describe('drawing.js', () => {
     });
 
     describe('getCellTextStyle', () => {
+        let ColorParser;
+
+        beforeAll(async () => {
+            const utils = await import('utils');
+            ColorParser = utils.ColorParser;
+        });
+
+        beforeEach(() => {
+            vi.mocked(ColorParser.parseColor).mockClear();
+            vi.mocked(ColorParser.resolveColor).mockClear();
+            ColorParser.resolveColor.mockImplementation(color => {
+                if (typeof color === 'object' && color !== null && color.val) {
+                    return color.val;
+                }
+                return color;
+            });
+            ColorParser.parseColor.mockImplementation(solidFillNode => {
+                if (solidFillNode) {
+                    return { val: 'parsed-color' };
+                }
+                return undefined;
+            });
+        });
+
         const createMockElement = (config = {}) => {
             const { name = '', attributes = {}, children = {} } = config;
             return {
@@ -559,10 +583,38 @@ describe('drawing.js', () => {
 
             const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 1, 1, tableStyle, cellNode, {});
             expect(style).toEqual({
-                color: 'resolved-color',
+                color: 'parsed-color',
                 bold: true,
                 font: 'Courier New',
                 fontSize: 18
+            });
+        });
+
+        it('should ignore conditional formatting if cell has direct text style', () => {
+            const tblPrNode = createMockElement({ attributes: { firstRow: '1' } });
+            const tableStyle = {
+                wholeTbl: { tcTxStyle: { color: 'blue', font: 'Arial' } },
+                firstRow: { tcTxStyle: { color: 'red', bold: true } } // This should be ignored
+            };
+            const cellNode = createMockElement({
+                name: 'tc',
+                children: {
+                    'rPr': [{
+                        name: 'rPr',
+                        attributes: { sz: '1200' },
+                        children: {
+                            'latin': [{ name: 'latin', attributes: { typeface: 'Times New Roman' }, hasAttribute: (attr) => attr === 'typeface' }]
+                        }
+                    }]
+                }
+            });
+
+            const style = drawing.getCellTextStyle(tblPrNode, 0, 0, 2, 2, tableStyle, cellNode, {});
+            expect(style).toEqual({
+                color: 'blue', // Inherited from wholeTbl
+                font: 'Times New Roman', // Overridden by cell
+                fontSize: 12, // Overridden by cell
+                // `bold: true` from firstRow should NOT be present
             });
         });
     });
