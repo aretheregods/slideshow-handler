@@ -732,8 +732,8 @@ export class SlideHandler {
         if ( !tblNode ) return null;
 
         const tblPrNode = tblNode.getElementsByTagNameNS( DML_NS, 'tblPr' )[ 0 ];
-        const styleId = tblPrNode?.getElementsByTagNameNS( DML_NS, 'tableStyleId' )[ 0 ]?.textContent || this.defaultTableStyleId;
-        const tableStyle = this.tableStyles[ styleId ];
+        const styleId = tblPrNode?.getElementsByTagNameNS( DML_NS, 'tableStyleId' )[ 0 ]?.textContent;
+        const tableStyle = styleId ? this.tableStyles[ styleId ] : {};
 
         const colWidths = Array.from( tblNode.getElementsByTagNameNS( DML_NS, 'gridCol' ) ).map( n => parseInt( n.getAttribute( 'w' ) ) / EMU_PER_PIXEL );
         const rowNodes = Array.from( tblNode.getElementsByTagNameNS( DML_NS, 'tr' ) );
@@ -913,7 +913,11 @@ export class SlideHandler {
                 tspan.setAttribute( 'font-size', `${ run.font.size }px` );
                 tspan.setAttribute( 'font-style', run.font.style );
                 tspan.setAttribute( 'font-weight', run.font.weight );
-                tspan.setAttribute( 'fill', run.color );
+                if ( typeof line?.paragraphProps?.defRPr.color === 'string' ) {
+                    tspan.setAttribute( 'fill', line.paragraphProps.defRPr.color );
+                } else {
+                    tspan.setAttribute( 'fill', run.color );
+                }
                 tspan.textContent = run.text;
                 textElement.appendChild( tspan );
             }
