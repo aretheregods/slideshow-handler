@@ -266,7 +266,7 @@ export function parseTableStyles(xmlString, theme) {
     const tblStyleNodes = xmlDoc.getElementsByTagNameNS(DML_NS, 'tblStyle');
 
     for (const styleNode of tblStyleNodes) {
-        const styleId = styleNode.getAttribute('styleId');
+        const styleId = styleNode.getAttribute( 'styleId' );
         const styleDef = {};
 
         const styleParts = ['wholeTbl', 'band1H', 'band2H', 'band1V', 'band2V', 'firstRow', 'lastRow', 'firstCol', 'lastCol', 'nwCell', 'neCell', 'swCell', 'seCell'];
@@ -403,15 +403,21 @@ export function parseStylePart(partNode, theme) {
             style.italic = false;
         }
 
-        // Color can be in fontRef or a direct child of tcTxStyle
         const fontRefNode = tcTxStyleNode.getElementsByTagNameNS(DML_NS, 'fontRef')[0];
-        const colorContainerNode = fontRefNode || tcTxStyleNode; // This is where the color info lives
+        let colorContainerNode = tcTxStyleNode; // Default to tcTxStyleNode
 
-        // The actual color can be a direct child, or inside a fill tag.
+        // Check for direct color children on tcTxStyleNode
+        const hasDirectColor = Array.from(tcTxStyleNode.children).some(
+            child => child.localName.endsWith('Clr') || child.localName.endsWith('Fill')
+        );
+
+        // If there's no direct color and a fontRefNode exists, use it as the container
+        if (!hasDirectColor && fontRefNode) {
+            colorContainerNode = fontRefNode;
+        }
+
         const solidFillNode = colorContainerNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-
-        const colorSourceNode = solidFillNode || colorContainerNode; // Pass the fill node if it exists
-
+        const colorSourceNode = solidFillNode || colorContainerNode;
         const colorObj = ColorParser.parseColor(colorSourceNode);
         if (colorObj) {
             style.color = colorObj;
