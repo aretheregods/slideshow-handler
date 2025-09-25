@@ -266,7 +266,7 @@ export function parseTableStyles(xmlString, theme) {
     const tblStyleNodes = xmlDoc.getElementsByTagNameNS(DML_NS, 'tblStyle');
 
     for (const styleNode of tblStyleNodes) {
-        const styleId = styleNode.getAttribute('styleId');
+        const styleId = styleNode.getAttribute( 'styleId' );
         const styleDef = {};
 
         const styleParts = ['wholeTbl', 'band1H', 'band2H', 'band1V', 'band2V', 'firstRow', 'lastRow', 'firstCol', 'lastCol', 'nwCell', 'neCell', 'swCell', 'seCell'];

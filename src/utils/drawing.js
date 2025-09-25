@@ -288,7 +288,6 @@ export function getCellFillColor(cellNode, tblPrNode, r, c, numRows, numCols, ta
         }
 
 		const firstRowAttr = tblPrNode.getAttribute('firstRow');
-		const bandRowAttr = tblPrNode.getAttribute('bandRow');
 
         const firstRow = firstRowAttr === '1';
         const lastRow = tblPrNode.getAttribute('lastRow') === '1';
@@ -429,7 +428,7 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, 
         }
     }
 
-    const rPrNode = cellNode.getElementsByTagNameNS(DML_NS, 'rPr')[0];
+    const rPrNode = cellNode.getElementsByTagNameNS( DML_NS, 'rPr' )[ 0 ];
     if (rPrNode) {
         const sz = rPrNode.getAttribute('sz');
         if (sz) {
@@ -442,15 +441,15 @@ export function getCellTextStyle(tblPrNode, r, c, numRows, numCols, tableStyle, 
         }
 
         const solidFillNode = rPrNode.getElementsByTagNameNS(DML_NS, 'solidFill')[0];
-        if (solidFillNode) {
-            const colorObj = ColorParser.parseColor(solidFillNode);
+        if ( solidFillNode ) {
+            const colorObj = ColorParser.parseColor( solidFillNode );
             if (colorObj) {
                 finalStyle.color = colorObj;
             }
         }
     }
 
-    if (finalStyle.color) {
+    if ( finalStyle.color ) {
         finalStyle.color = ColorParser.resolveColor(finalStyle.color, slideContext);
     }
 

@@ -314,9 +314,6 @@ export class SvgRenderer {
             rect.setAttribute( 'height', height );
         }
 
-        // For debugging positioning issues
-        // console.log(`Drawing rect: x=${rect.getAttribute('x')}, y=${rect.getAttribute('y')}, width=${rect.getAttribute('width')}, height=${rect.getAttribute('height')}`, { stroke: options.stroke, fill: options.fill });
-
         const filterUrl = this.applyEffects( options );
         if ( filterUrl ) {
             rect.setAttribute( 'filter', filterUrl );
