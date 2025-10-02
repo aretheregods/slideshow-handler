@@ -499,7 +499,7 @@ export function buildPathStringFromGeom( geometry, pos, flipH, flipV ) {
                 arcSweepAngle = endAngleFromXml - arcStartAngle;
 
                 if ( !flipH && !flipV ) {
-                    // Unintuitive but it's the only thing that worked. So it must be right.
+                    // Unintuitive; but it's the only thing that worked. So it must be right.
                     arcStartAngle -= 60;
                     arcSweepAngle /= Math.PI * Math.SQRT2;
                 }
