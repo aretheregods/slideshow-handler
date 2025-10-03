@@ -1,6 +1,13 @@
 # AGENTS.md
 
+## description
+- This app processes PPTX archives and renders them as SVG in the browser.
+- There are 2 phases: parsing and then rendering.
+- During the parsing phase, the data from a slide in the PPTX archive is parsed into shapes and text and saved as JavaScript object data into the ReactiveStore on a per slide basis.
+- During the rendering phase, the data for a given slide is retrieved from the ReactiveStore and rendered to the SVG canvas.
+
 ## coding style
+
 - Never use async/await. Always prefer promise chaining.
 - Never use typescript.
 - Always preserve functionality unless expressly requested by the user to remove it.
@@ -9,6 +16,7 @@
 - Always use space around code inside of brackets or parentheses.
 
 ## testing and code verification
+
 - Always request code reviews.
 - Always test added or refactored code until the tests pass.
 - Don't ever remove tests to get them to pass.

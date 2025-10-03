@@ -523,9 +523,6 @@ export function buildPathStringFromGeom( geometry, pos, flipH, flipV ) {
                 arcSweepFlag = arcSweepFlag === "0" ? "0" : "1";
             }
 
-
-            console.log( { arcStart, arcEnd } );
-
             return `M ${ arcStart.x } ${ arcStart.y } A ${ arcRadiusX } ${ arcRadiusY } 0 ${ arcLargeArcFlag } ${ arcSweepFlag } ${ arcEnd.x } ${ arcEnd.y }`;
         }
         case 'custom':
