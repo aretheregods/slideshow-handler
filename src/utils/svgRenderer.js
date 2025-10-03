@@ -435,6 +435,19 @@ export class SvgRenderer {
             return;
         }
 
+        // Add a single hitbox for the entire compound line
+        const hitbox = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        hitbox.setAttribute('x1', x1);
+        hitbox.setAttribute('y1', y1);
+        hitbox.setAttribute('x2', x2);
+        hitbox.setAttribute('y2', y2);
+        hitbox.setAttribute('stroke', 'transparent');
+        hitbox.setAttribute('stroke-width', totalWidth);
+        if (stroke.cap) {
+            hitbox.setAttribute('stroke-linecap', stroke.cap);
+        }
+        this.currentGroup.appendChild(hitbox);
+
         const dx = x2 - x1;
         const dy = y2 - y1;
         const len = Math.sqrt( dx * dx + dy * dy );
@@ -582,6 +595,19 @@ export class SvgRenderer {
                         line.setAttribute( 'filter', filterUrl );
                     }
                     this.currentGroup.appendChild( line );
+
+                    // Add a transparent hitbox for better clickability
+                    const hitbox = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    hitbox.setAttribute('x1', x1);
+                    hitbox.setAttribute('y1', y1);
+                    hitbox.setAttribute('x2', x2);
+                    hitbox.setAttribute('y2', y2);
+                    hitbox.setAttribute('stroke', 'transparent');
+                    hitbox.setAttribute('stroke-width', options.stroke.width + 10); // 10px buffer
+                    if (options.stroke.cap) {
+                        hitbox.setAttribute('stroke-linecap', options.stroke.cap);
+                    }
+                    this.currentGroup.appendChild(hitbox);
                 }
             }
         }
