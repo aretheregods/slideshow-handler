@@ -51,7 +51,8 @@ export class SlideHandler {
         masterStaticShapes,
         layoutStaticShapes,
         slideRels,
-        entriesMap
+        entriesMap,
+        presentationStore
     } ) {
         this.slideXml = slideXml;
         this.slideContainer = slideContainer;
@@ -73,6 +74,7 @@ export class SlideHandler {
         this.layoutStaticShapes = layoutStaticShapes;
         this.slideRels = slideRels;
         this.entriesMap = entriesMap;
+        this.presentationStore = presentationStore;
 
         this.svg = this.createSvg();
         this.renderer = new SvgRenderer( this.svg, this.slideContext );
@@ -278,6 +280,10 @@ export class SlideHandler {
         return shapes;
     }
 
+    setActiveElement( element ) {
+        this.presentationStore.dispatch( { type: 'SET_ACTIVE_ELEMENT', payload: element } );
+    }
+
     async renderShapeTree( shapes = [] ) {
         for ( const [ index, shapeData ] of shapes.entries() ) {
             const id = `${ this.slideId }.shapes.${ index }`;
@@ -300,6 +306,14 @@ export class SlideHandler {
                 case 'diagram':
                     await this.renderDiagram( shapeData, id );
                     break;
+            }
+
+            const element = this.svg.querySelector( `[id="${ id }"]` );
+            if ( element ) {
+                element.addEventListener( 'click', ( event ) => {
+                    event.stopPropagation();
+                    this.setActiveElement( shapeData );
+                } );
             }
         };
     }

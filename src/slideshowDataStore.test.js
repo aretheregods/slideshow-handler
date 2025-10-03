@@ -5,6 +5,7 @@ describe('presentationStore', () => {
   const initialPresentationState = {
     status: 'idle',
     activeSlide: 0,
+    activeElement: null,
     slideSize: null,
     theme: null,
     error: null,
@@ -14,8 +15,9 @@ describe('presentationStore', () => {
   beforeEach(() => {
     presentationStore.dispatch({ type: 'RESET_FOR_TEST' }); // A dummy action to reset via default case
     // Manually reset state since reducers create new objects
-    Object.assign(presentationStore.getState(), initialPresentationState);
-    presentationStore.getState().status = 'idle'; // Ensure status is reset
+    const state = presentationStore.getState();
+    Object.keys(state).forEach(key => delete state[key]);
+    Object.assign(state, initialPresentationState);
   });
 
   it('should have the correct initial state', () => {

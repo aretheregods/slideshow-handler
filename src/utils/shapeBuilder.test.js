@@ -220,7 +220,7 @@ describe('ShapeBuilder', () => {
             shapeBuilder.renderShape(pos, shapeProps, matrix, false, false);
 
             expect(renderer.drawPath).toHaveBeenCalledWith(
-                "M 6.698729810778062 25.000000000000004 A 50 50 0 0 1 37.05904774487396 1.7037086855465873",
+                "M 6.698729810778062 25.000000000000004 A 50 50 0 0 1 18.0328253113894 11.553937231130497",
                 { stroke: 'black', effect: undefined, pos }
             );
         });

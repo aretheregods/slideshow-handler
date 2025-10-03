@@ -249,6 +249,9 @@
     <script src="./libraries/chartjs/chartjs-plugin-datalabels.min.js"></script>
     <script type="module">
         import { slideshowHandler } from './src/slideshowHandler.js';
+        import { presentationStore } from './src/slideshowDataStore.js';
+
+        window.presentationStore = presentationStore;
 
         const fileInput = document.getElementById('pptx-file');
         const fileInfo = document.getElementById('file-info');

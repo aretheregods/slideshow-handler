@@ -207,7 +207,7 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
                 state: { id: slideId, parsingData }
             } ) );
 
-            const slideHandler = new SlideHandler( { ...parsingData, ...staticParsingData } );
+            const slideHandler = new SlideHandler( { ...parsingData, ...staticParsingData, presentationStore } );
 			const renderingData = await slideHandler.parse();
 			slideHandlers[slideId] = slideHandler;
 
