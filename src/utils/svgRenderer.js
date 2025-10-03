@@ -283,6 +283,7 @@ export class SvgRenderer {
         g.setAttribute( 'transform', `matrix(${ matrix.m.join( ' ' ) })` );
         this.svg.appendChild( g );
         this.currentGroup = g;
+        return g;
     }
 
     /**

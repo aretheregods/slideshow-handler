@@ -202,6 +202,7 @@ export class SlideHandler {
         // Render background
         if ( slideData.background ) {
             const id = `${ this.slideId }.background`
+            let bgElement;
             if ( slideData.background.type === 'color' ) {
                 const bgRect = document.createElementNS( SVG_NS, 'rect' );
                 bgRect.setAttribute( 'id', id );
@@ -209,6 +210,7 @@ export class SlideHandler {
                 bgRect.setAttribute( 'height', '100%' );
                 bgRect.setAttribute( 'fill', slideData.background.value );
                 this.svg.insertBefore( bgRect, this.svg.firstChild );
+                bgElement = bgRect;
             } else if ( slideData.background.type === 'gradient' ) {
                 const bgRect = document.createElementNS( SVG_NS, 'rect' );
                 bgRect.setAttribute( 'id', id );
@@ -217,6 +219,7 @@ export class SlideHandler {
                 const gradientUrl = this.renderer._createGradient( slideData.background );
                 bgRect.setAttribute( 'fill', gradientUrl );
                 this.svg.insertBefore( bgRect, this.svg.firstChild );
+                bgElement = bgRect;
             } else if ( slideData.background.type === 'image' && slideData.background.relId ) {
                 const background = slideData.background;
                 let imageMap;
@@ -232,7 +235,15 @@ export class SlideHandler {
                     bgImage.setAttribute( 'height', this.slideSize.height );
                     bgImage.setAttribute( 'preserveAspectRatio', 'xMidYMid slice' );
                     this.svg.insertBefore( bgImage, this.svg.firstChild );
+                    bgElement = bgImage;
                 }
+            }
+
+            if ( this.isActive && bgElement ) {
+                bgElement.addEventListener( 'click', ( event ) => {
+                    event.stopPropagation();
+                    this.setActiveElement( slideData.background );
+                } );
             }
         }
 
@@ -290,35 +301,33 @@ export class SlideHandler {
     async renderShapeTree( shapes = [] ) {
         for ( const [ index, shapeData ] of shapes.entries() ) {
             const id = `${ this.slideId }.shapes.${ index }`;
+            let element;
             switch ( shapeData.type ) {
                 case 'shape':
-                    await this.renderShape( shapeData, id );
+                    element = await this.renderShape( shapeData, id );
                     break;
                 case 'group':
                     // Groups are not rendered directly in a flat model
                     break;
                 case 'table':
-                    await this.renderTable( shapeData, id );
+                    element = await this.renderTable( shapeData, id );
                     break;
                 case 'chart':
-                    await this.renderChart( shapeData, id );
+                    element = await this.renderChart( shapeData, id );
                     break;
                 case 'picture':
-                    await this.renderPicture( shapeData, id );
+                    element = await this.renderPicture( shapeData, id );
                     break;
                 case 'diagram':
-                    await this.renderDiagram( shapeData, id );
+                    element = await this.renderDiagram( shapeData, id );
                     break;
             }
 
-            if ( this.isActive ) {
-                const element = this.svg.querySelector( `[id="${ id }"]` );
-                if ( element ) {
-                    element.addEventListener( 'click', ( event ) => {
-                        event.stopPropagation();
-                        this.setActiveElement( shapeData );
-                    } );
-                }
+            if ( this.isActive && element ) {
+                element.addEventListener( 'click', ( event ) => {
+                    event.stopPropagation();
+                    this.setActiveElement( shapeData );
+                } );
             }
         };
     }
@@ -467,7 +476,7 @@ export class SlideHandler {
             const transformValues = transformString.split( ' ' ).map( Number );
             matrix.m = transformValues;
         }
-        this.renderer.setTransform( matrix, id );
+        const group = this.renderer.setTransform( matrix, id );
 
         if ( shapeData.shapeProps.path ) {
             this.renderer.drawPath( shapeData.shapeProps.path, {
@@ -483,6 +492,8 @@ export class SlideHandler {
         if ( shapeData.text ) {
             await this.renderParagraphs( shapeData.text, `${ id }.text` );
         }
+
+        return group;
     }
 
     async parseGroupShape( groupNode, listCounters, parentMatrix, slideLevelVisibility, imageMap ) {
@@ -655,7 +666,7 @@ export class SlideHandler {
             const transformValues = transformString.split( ' ' ).map( Number );
             matrix.m = transformValues;
         }
-        this.renderer.setTransform( matrix, id );
+        const group = this.renderer.setTransform( matrix, id );
         let pathString = '';
 
         if ( picData.placeholderProps?.fill?.type === 'solid' || picData.placeholderProps?.fill?.type === 'gradient' ) {
@@ -725,6 +736,8 @@ export class SlideHandler {
             if ( pathString ) this.renderer.drawPath( pathString, strokeOpts );
             else this.renderer.drawRect( 0, 0, picData.pos.width, picData.pos.height, strokeOpts );
         }
+
+        return group;
     }
 
     async parseTable( frameNode, parentMatrix ) {
@@ -800,7 +813,7 @@ export class SlideHandler {
             const transformValues = transformString.split( ' ' ).map( Number );
             matrix.m = transformValues;
         }
-        this.renderer.setTransform( matrix, id );
+        const group = this.renderer.setTransform( matrix, id );
 
         for ( const [ index, cell ] of tableData.cells.entries() ) {
             const cellId = `${ id }.cells.${ index }`;
@@ -834,6 +847,8 @@ export class SlideHandler {
                 this.renderer.currentGroup = originalGroup;
             }
         }
+
+        return group;
     }
 
     parseCellText( cellNode, pos, tableTextStyle ) {
@@ -1097,7 +1112,7 @@ export class SlideHandler {
             const transformValues = transformString.split( ' ' ).map( Number );
             matrix.m = transformValues;
         }
-        this.renderer.setTransform( matrix, id );
+        const group = this.renderer.setTransform( matrix, id );
 
         const { pos, chartData: data } = chartData;
         const foreignObject = document.createElementNS( 'http://www.w3.org/2000/svg', 'foreignObject' );
@@ -1129,6 +1144,8 @@ export class SlideHandler {
                 }
             }
         } );
+
+        return group;
     }
 
     async parseDiagram( frameNode, parentMatrix ) {
@@ -1158,5 +1175,7 @@ export class SlideHandler {
         }
 
         this.renderer.currentGroup = originalGroup;
+
+        return diagramGroup;
     }
 }
