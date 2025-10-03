@@ -817,13 +817,31 @@ export class SlideHandler {
 
         for ( const [ index, cell ] of tableData.cells.entries() ) {
             const cellId = `${ id }.cells.${ index }`;
-            this.renderer.drawRect( cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent', id: cellId } );
+            const cellRect = this.renderer.drawRect( cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent', id: cellId } );
+            if ( this.isActive && cellRect ) {
+                cellRect.addEventListener( 'click', ( event ) => {
+                    event.stopPropagation();
+                    this.setActiveElement( cell );
+                } );
+            }
 
             const { x, y, width, height } = cell.pos;
-            if ( cell.borders.top ) this.renderer.drawLine( x, y, x + width, y, { stroke: cell.borders.top } );
-            if ( cell.borders.right ) this.renderer.drawLine( x + width, y, x + width, y + height, { stroke: cell.borders.right } );
-            if ( cell.borders.bottom ) this.renderer.drawLine( x + width, y + height, x, y + height, { stroke: cell.borders.bottom } );
-            if ( cell.borders.left ) this.renderer.drawLine( x, y + height, x, y, { stroke: cell.borders.left } );
+            const borders = [];
+            if ( cell.borders.top ) borders.push( { border: cell.borders.top, line: this.renderer.drawLine( x, y, x + width, y, { stroke: cell.borders.top } ) } );
+            if ( cell.borders.right ) borders.push( { border: cell.borders.right, line: this.renderer.drawLine( x + width, y, x + width, y + height, { stroke: cell.borders.right } ) } );
+            if ( cell.borders.bottom ) borders.push( { border: cell.borders.bottom, line: this.renderer.drawLine( x + width, y + height, x, y + height, { stroke: cell.borders.bottom } ) } );
+            if ( cell.borders.left ) borders.push( { border: cell.borders.left, line: this.renderer.drawLine( x, y + height, x, y, { stroke: cell.borders.left } ) } );
+
+            if ( this.isActive ) {
+                borders.forEach( ( { border, line } ) => {
+                    if ( line ) {
+                        line.addEventListener( 'click', ( event ) => {
+                            event.stopPropagation();
+                            this.setActiveElement( border );
+                        } );
+                    }
+                } );
+            }
 
             if ( cell.text ) {
                 const clipId = `clip-${ Math.random().toString( 36 ).slice( 2, 11 ) }`;
@@ -837,14 +855,21 @@ export class SlideHandler {
                 clipPath.appendChild( rect );
                 this.renderer.defs.appendChild( clipPath );
 
-                const group = document.createElementNS( 'http://www.w3.org/2000/svg', 'g' );
-                group.setAttribute( 'clip-path', `url(#${ clipId })` );
-                this.renderer.currentGroup.appendChild( group );
+                const textGroup = document.createElementNS( 'http://www.w3.org/2000/svg', 'g' );
+                textGroup.setAttribute( 'clip-path', `url(#${ clipId })` );
+                this.renderer.currentGroup.appendChild( textGroup );
 
                 const originalGroup = this.renderer.currentGroup;
-                this.renderer.currentGroup = group;
-                await this.renderParagraphs( cell.text, `${ cellId }.text` );
+                this.renderer.currentGroup = textGroup;
+                const renderedTextGroup = await this.renderParagraphs( cell.text, `${ cellId }.text` );
                 this.renderer.currentGroup = originalGroup;
+
+                if ( this.isActive && renderedTextGroup ) {
+                    renderedTextGroup.addEventListener( 'click', ( event ) => {
+                        event.stopPropagation();
+                        this.setActiveElement( cell.text );
+                    } );
+                }
             }
         }
 
@@ -958,6 +983,8 @@ export class SlideHandler {
             textGroup.appendChild( textElement );
         }
         this.renderer.currentGroup.appendChild( textGroup );
+
+        return textGroup;
     }
 
     layoutParagraphs( paragraphs, pos, phKey, phType, bodyPr, tableTextStyle, defaultTextStyles, masterPlaceholders, layoutPlaceholders, listCounters ) {

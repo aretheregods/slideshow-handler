@@ -355,6 +355,7 @@ export class SvgRenderer {
         }
 
         this.currentGroup.appendChild( rect );
+        return rect;
     }
 
     /**
@@ -416,6 +417,7 @@ export class SvgRenderer {
         }
 
         this.currentGroup.appendChild( ellipse );
+        return ellipse;
     }
 
     /**
@@ -608,6 +610,8 @@ export class SvgRenderer {
                         hitbox.setAttribute('stroke-linecap', options.stroke.cap);
                     }
                     this.currentGroup.appendChild(hitbox);
+
+                    return line;
                 }
             }
         }
@@ -662,6 +666,7 @@ export class SvgRenderer {
         }
 
         this.currentGroup.appendChild( path );
+        return path;
     }
 
     /**
