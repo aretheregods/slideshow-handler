@@ -197,7 +197,7 @@ describe('slideshowHandler', () => {
             const slideViewerContainer = document.getElementById(options.slideViewerContainer);
             expect(slideViewerContainer.children.length).toBeGreaterThan(0);
             expect(slideViewerContainer.firstElementChild.id).toBe('slide-viewer-rId1');
-            expect(mockSlideHandlerInstance.newSlideContainer).toHaveBeenCalledWith('slide-viewer-rId1');
+            expect(mockSlideHandlerInstance.newSlideContainer).toHaveBeenCalledWith('slide-viewer-rId1', true);
 
             // Act: Simulate changing the active slide
             presentationStore.dispatch({ payload: { activeSlide: 'rId2' } });
@@ -205,7 +205,7 @@ describe('slideshowHandler', () => {
             // Assert: Verify the new slide is rendered
             expect(slideViewerContainer.children.length).toBe(1);
             expect(slideViewerContainer.firstElementChild.id).toBe('slide-viewer-rId2');
-            expect(mockSlideHandlerInstance.newSlideContainer).toHaveBeenCalledWith('slide-viewer-rId2');
+            expect(mockSlideHandlerInstance.newSlideContainer).toHaveBeenCalledWith('slide-viewer-rId2', true);
             expect(mockSlideHandlerInstance.render).toHaveBeenCalledTimes(4); // 2 for thumbnails, 2 for main view
         });
     });

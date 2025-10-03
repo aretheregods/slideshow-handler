@@ -207,7 +207,7 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
                 state: { id: slideId, parsingData }
             } ) );
 
-            const slideHandler = new SlideHandler( { ...parsingData, ...staticParsingData, presentationStore } );
+            const slideHandler = new SlideHandler( { ...parsingData, ...staticParsingData, presentationStore, isActive: false } );
 			const renderingData = await slideHandler.parse();
 			slideHandlers[slideId] = slideHandler;
 
@@ -249,7 +249,7 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
 					}
 
 					const renderingData = slide.getState( 'renderingData' );
-					const slideHandler = slideHandlers[ activeSlide ].newSlideContainer( slideContainer.id );
+					const slideHandler = slideHandlers[ activeSlide ].newSlideContainer( slideContainer.id, true );
 					slideHandler.render( renderingData );
 				}
 			}
