@@ -4,6 +4,7 @@
   "description": "Render pptx in the browser",
   "main": "index.js",
   "scripts": {
+    "start": "node server.js",
     "test": "./node_modules/.bin/vitest"
   },
   "repository": {
