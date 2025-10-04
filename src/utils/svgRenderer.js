@@ -273,12 +273,17 @@ export class SvgRenderer {
     /**
      * Sets the transformation for subsequent shapes.
      * @param {Matrix} matrix - The transformation matrix.
-     * @param {string} id - The ID to assign to the group element.
+     * @param {object} options - The options for the group element.
+     * @param {string} options.id - The ID to assign to the group element.
+     * @param {string} [options.className] - The class name to assign to the group element.
      */
-    setTransform( matrix, id ) {
+    setTransform( matrix, options ) {
         const g = document.createElementNS( 'http://www.w3.org/2000/svg', 'g' );
-        if ( id ) {
-            g.setAttribute( 'id', id );
+        if ( options.id ) {
+            g.setAttribute( 'id', options.id );
+        }
+        if ( options.className ) {
+            g.setAttribute( 'class', options.className );
         }
         g.setAttribute( 'transform', `matrix(${ matrix.m.join( ' ' ) })` );
         this.svg.appendChild( g );
