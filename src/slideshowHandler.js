@@ -262,6 +262,8 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
                             if ( targetId ) {
                                 if ( targetId.endsWith( '.text' ) ) {
                                     targetId = targetId.substring( 0, targetId.lastIndexOf( '.text' ) );
+                                } else if ( targetId.endsWith( '.image' ) ) {
+                                    targetId = targetId.substring( 0, targetId.lastIndexOf( '.image' ) );
                                 }
                                 presentationStore.dispatch( { type: actions.set.slide.element.active, payload: targetId } );
                             }
