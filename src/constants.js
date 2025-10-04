@@ -10,6 +10,7 @@ export const CHART_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 export const TABLE_NS = "http://schemas.openxmlformats.org/drawingml/2006/table";
 export const DIAGRAM_NS = "http://schemas.openxmlformats.org/drawingml/2006/diagram";
 export const DSP_NS = "http://schemas.microsoft.com/office/drawing/2008/diagram";
+export const SVG_NS = "http://www.w3.org/2000/svg";
 
 export const slideshowProcessingActions = {
     start: {
@@ -22,10 +23,13 @@ export const slideshowProcessingActions = {
             data: 'SET_PRESENTATION_DATA',
             status: 'SET_PRESENTATION_STATUS',
 			error: 'SET_PRESENTATION_ERROR',
-			activeSlide: 'SET_PRESENTATION_ACTIVE_SLIDE'
+			activeSlide: 'SET_PRESENTATION_ACTIVE_SLIDE',
         },
         slide: {
-            data: 'SET_SLIDE_DATA'
+			data: 'SET_SLIDE_DATA',
+			element: {
+				active: 'SET_ACTIVE_ELEMENT'
+			}
         }
     }
 }

@@ -3,6 +3,7 @@ import { ReactiveStore } from 'utils';
 const initialPresentationState = {
     status: 'idle', // idle, parsing, ready, error
     activeSlide: 0,
+	activeElement: null,
     slideSize: null,
     theme: null,
     error: null,
@@ -21,7 +22,9 @@ function presentationReducer(state = initialPresentationState, action) {
         case 'SET_PRESENTATION_STATUS':
             return { ...state, status: action.payload };
         case 'SET_PRESENTATION_ERROR':
-            return { ...state, status: 'error', error: action.payload };
+			return { ...state, status: 'error', error: action.payload };
+		case 'SET_ACTIVE_ELEMENT':
+			return { ...state, activeElement: action.payload };
         default:
             return state;
     }

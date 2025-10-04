@@ -12,7 +12,7 @@ import {
     parseBackground,
     populateImageMap
 } from 'utils';
-import { PML_NS, slideshowProcessingActions as actions } from 'constants';
+import { PML_NS, slideshowProcessingActions as actions, SVG_NS } from 'constants';
 import { SlideHandler } from './slideHandler.js';
 import { createSlideStore, presentationStore, slideStores } from './slideshowDataStore.js';
 
@@ -252,8 +252,8 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
 					const slideHandler = slideHandlers[ activeSlide ].newSlideContainer( slideContainer.id );
 					slideHandler.render( renderingData );
 					slideContainer.addEventListener('click', event => {
-						event.stopPropagation();
-						console.log(event.target.closest('[id]'));
+                        event.stopPropagation();
+                        presentationStore.dispatch( { type: actions.set.slide.element.active, payload: event.target.closest( '[id]' ).id } );
 					})
 				}
 			}
