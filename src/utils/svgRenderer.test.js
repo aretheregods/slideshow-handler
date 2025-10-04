@@ -168,10 +168,11 @@ describe('SvgRenderer', () => {
     });
 
     describe('drawLine', () => {
-        it('should draw a simple line', () => {
-            const options = { stroke: { color: 'black', width: 1 } };
+        it('should draw a simple line and set the id on the group', () => {
+            const options = { id: 'test-line', stroke: { color: 'black', width: 1 } };
             renderer.drawLine(10, 10, 100, 100, options);
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'g');
+            expect(mockGElement.setAttribute).toHaveBeenCalledWith('id', 'test-line');
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'line');
 
             // The hitbox and the line are appended to the group

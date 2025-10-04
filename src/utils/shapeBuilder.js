@@ -62,12 +62,14 @@ export class ShapeBuilder {
             if ( path ) {
                 if ( geomType === 'arc') {
                     this.renderer.drawPath( path, {
+                        id: shapeProps.id,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
                     } );
                 } else {
                     this.renderer.drawPath( path, {
+                        id: shapeProps.id,
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
@@ -93,6 +95,7 @@ export class ShapeBuilder {
 
                 this.renderer.setTransform( noScaleMatrix );
                 this.renderer.drawLine( 0, 0, scaledWidth, scaledHeight, {
+                    id: shapeProps.id,
                     stroke: shapeProps.stroke,
                     effect: shapeProps.effect,
                 } );
@@ -101,7 +104,7 @@ export class ShapeBuilder {
             }
         } else if ( txBody ) {
             // This is a shapeless textbox. Create a transparent rectangle to host the text.
-            this.renderer.drawRect( 0, 0, pos.width, pos.height, { fill: 'transparent', effect: shapeProps.effect } );
+            this.renderer.drawRect( 0, 0, pos.width, pos.height, { id: shapeProps.id, fill: 'transparent', effect: shapeProps.effect } );
         }
     }
 

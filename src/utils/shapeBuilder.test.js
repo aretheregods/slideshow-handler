@@ -209,6 +209,7 @@ describe('ShapeBuilder', () => {
         it('should render an arc shape', () => {
             const pos = { width: 100, height: 100 };
             const shapeProps = {
+                id: 'test-arc',
                 geometry: {
                     type: 'arc',
                     adjustments: { adj1: 5400000, adj2: 10800000 }
@@ -221,7 +222,7 @@ describe('ShapeBuilder', () => {
 
             expect(renderer.drawPath).toHaveBeenCalledWith(
                 "M 6.698729810778062 25.000000000000004 A 50 50 0 0 1 18.0328253113894 11.553937231130497",
-                { stroke: 'black', effect: undefined, pos }
+                { id: 'test-arc', stroke: 'black', effect: undefined, pos }
             );
         });
 

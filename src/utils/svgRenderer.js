@@ -426,17 +426,12 @@ export class SvgRenderer {
      * @param {object} options - The rendering options.
      * @private
      */
-    _drawCompoundLine( x1, y1, x2, y2, options ) {
+    _drawCompoundLine( x1, y1, x2, y2, options, parentGroup ) {
         const stroke = options.stroke;
         const totalWidth = stroke.width;
 
         if ( !totalWidth || totalWidth <= 0 ) {
             return;
-        }
-
-        const g = document.createElementNS( 'http://www.w3.org/2000/svg', 'g' );
-        if ( options.id ) {
-            g.setAttribute( 'id', options.id );
         }
 
         const dx = x2 - x1;
@@ -463,7 +458,7 @@ export class SvgRenderer {
             if ( stroke.cap ) {
                 line.setAttribute( 'stroke-linecap', stroke.cap );
             }
-            g.appendChild( line );
+            parentGroup.appendChild( line );
         };
 
         const sng = () => {
@@ -510,10 +505,6 @@ export class SvgRenderer {
                 sng();
                 break;
         }
-
-        this.currentGroup.appendChild( g );
-
-        return g;
     }
 
 
@@ -550,8 +541,7 @@ export class SvgRenderer {
             g.appendChild( hitbox );
 
             if ( options.stroke.cmpd && options.stroke.cmpd !== 'sng' ) {
-                const compoundLine = this._drawCompoundLine( x1, y1, x2, y2, options );
-                g.appendChild( compoundLine );
+                this._drawCompoundLine( x1, y1, x2, y2, options, g );
             } else {
                 if ( typeof options.stroke.color === 'object' && options.stroke.color?.type === 'gradient' ) {
                     const lineId = options.id || `line-${ this.defs.children.length }`;
