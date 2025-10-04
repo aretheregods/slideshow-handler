@@ -3,8 +3,10 @@
 ## description
 - This app processes PPTX archives and renders them as SVG in the browser.
 - There are 2 phases: parsing and then rendering.
-- During the parsing phase, the data from a slide in the PPTX archive is parsed into shapes and text and saved as JavaScript object data into the ReactiveStore on a per slide basis.
-- During the rendering phase, the data for a given slide is retrieved from the ReactiveStore and rendered to the SVG canvas.
+- During the parsing phase, the data from a slide in the PPTX archive is parsed into shapes
+  and text and saved as JavaScript object data into the ReactiveStore on a per slide basis.
+- During the rendering phase, the data for a given slide is retrieved from the ReactiveStore
+  and rendered to the SVG canvas.
 
 ## coding style
 
@@ -22,4 +24,5 @@
 - Don't ever remove tests to get them to pass.
 - Don't ever remove code to get tests to pass.
 - Don't ever commit code with failing tests
-- Always verify that the JSON schema as defined src/schemas/current.js is full and complete after your changes and before you submit changes to github.
+- Always verify that the JSON schema as defined src/schemas/current.js is full and complete
+  after your changes and before you submit changes to github.
