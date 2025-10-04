@@ -258,8 +258,11 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
                         slideHandler.newSlideContainer( slideContainer.id );
                         slideContainer.addEventListener('click', event => {
                             event.stopPropagation();
-                            const targetId = event.target.closest( '[id]' )?.id;
+                            let targetId = event.target.closest( '[id]' )?.id;
                             if ( targetId ) {
+                                if ( targetId.endsWith( '.text' ) ) {
+                                    targetId = targetId.substring( 0, targetId.lastIndexOf( '.text' ) );
+                                }
                                 presentationStore.dispatch( { type: actions.set.slide.element.active, payload: targetId } );
                             }
                         })
