@@ -77,6 +77,7 @@ export class SlideHandler {
         this.entriesMap = entriesMap;
         this.presentationStore = presentationStore;
         this.isActive = isActive;
+        this.elementMap = new Map();
 
         this.svg = this.createSvg();
         this.renderer = new SvgRenderer( this.svg, this.slideContext );
@@ -247,7 +248,23 @@ export class SlideHandler {
             }
         }
 
+        this.elementMap.set(this.svg.id, slideData);
+
         await this.renderShapeTree( slideData.shapes );
+
+        if (this.isActive) {
+            this.svg.addEventListener('click', (event) => {
+                let target = event.target;
+                while (target && target !== this.svg) {
+                    if (this.elementMap.has(target.id)) {
+                        this.setActiveElement(this.elementMap.get(target.id));
+                        event.stopPropagation();
+                        return;
+                    }
+                    target = target.parentElement;
+                }
+            });
+        }
     }
 
     async parseShapeTree( elements, parentMatrix, slideLevelVisibility, imageMap ) {
@@ -323,12 +340,7 @@ export class SlideHandler {
                     break;
             }
 
-            if ( this.isActive && element ) {
-                element.addEventListener( 'click', ( event ) => {
-                    event.stopPropagation();
-                    this.setActiveElement( shapeData );
-                } );
-            }
+            this.elementMap.set(id, shapeData);
         };
     }
 
@@ -492,8 +504,6 @@ export class SlideHandler {
         if ( shapeData.text ) {
             await this.renderParagraphs( shapeData.text, `${ id }.text` );
         }
-
-        return group;
     }
 
     async parseGroupShape( groupNode, listCounters, parentMatrix, slideLevelVisibility, imageMap ) {
@@ -736,8 +746,6 @@ export class SlideHandler {
             if ( pathString ) this.renderer.drawPath( pathString, strokeOpts );
             else this.renderer.drawRect( 0, 0, picData.pos.width, picData.pos.height, strokeOpts );
         }
-
-        return group;
     }
 
     async parseTable( frameNode, parentMatrix ) {
@@ -813,34 +821,29 @@ export class SlideHandler {
             const transformValues = transformString.split( ' ' ).map( Number );
             matrix.m = transformValues;
         }
-        const group = this.renderer.setTransform( matrix, id );
+        this.renderer.setTransform( matrix, id );
 
         for ( const [ index, cell ] of tableData.cells.entries() ) {
             const cellId = `${ id }.cells.${ index }`;
             const cellRect = this.renderer.drawRect( cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent', id: cellId } );
-            if ( this.isActive && cellRect ) {
-                cellRect.addEventListener( 'click', ( event ) => {
-                    event.stopPropagation();
-                    this.setActiveElement( cell );
-                } );
-            }
+            this.elementMap.set(cellId, cell);
 
             const { x, y, width, height } = cell.pos;
-            const borders = [];
-            if ( cell.borders.top ) borders.push( { border: cell.borders.top, line: this.renderer.drawLine( x, y, x + width, y, { stroke: cell.borders.top } ) } );
-            if ( cell.borders.right ) borders.push( { border: cell.borders.right, line: this.renderer.drawLine( x + width, y, x + width, y + height, { stroke: cell.borders.right } ) } );
-            if ( cell.borders.bottom ) borders.push( { border: cell.borders.bottom, line: this.renderer.drawLine( x + width, y + height, x, y + height, { stroke: cell.borders.bottom } ) } );
-            if ( cell.borders.left ) borders.push( { border: cell.borders.left, line: this.renderer.drawLine( x, y + height, x, y, { stroke: cell.borders.left } ) } );
-
-            if ( this.isActive ) {
-                borders.forEach( ( { border, line } ) => {
-                    if ( line ) {
-                        line.addEventListener( 'click', ( event ) => {
-                            event.stopPropagation();
-                            this.setActiveElement( border );
-                        } );
-                    }
-                } );
+            if ( cell.borders.top ) {
+                const borderElement = this.renderer.drawLine( x, y, x + width, y, { stroke: cell.borders.top } );
+                if(borderElement) this.elementMap.set(borderElement.id, cell.borders.top);
+            }
+            if ( cell.borders.right ) {
+                const borderElement = this.renderer.drawLine( x + width, y, x + width, y + height, { stroke: cell.borders.right } );
+                if(borderElement) this.elementMap.set(borderElement.id, cell.borders.right);
+            }
+            if ( cell.borders.bottom ) {
+                const borderElement = this.renderer.drawLine( x + width, y + height, x, y + height, { stroke: cell.borders.bottom } );
+                if(borderElement) this.elementMap.set(borderElement.id, cell.borders.bottom);
+            }
+            if ( cell.borders.left ) {
+                const borderElement = this.renderer.drawLine( x, y + height, x, y, { stroke: cell.borders.left } );
+                if(borderElement) this.elementMap.set(borderElement.id, cell.borders.left);
             }
 
             if ( cell.text ) {
@@ -864,16 +867,9 @@ export class SlideHandler {
                 const renderedTextGroup = await this.renderParagraphs( cell.text, `${ cellId }.text` );
                 this.renderer.currentGroup = originalGroup;
 
-                if ( this.isActive && renderedTextGroup ) {
-                    renderedTextGroup.addEventListener( 'click', ( event ) => {
-                        event.stopPropagation();
-                        this.setActiveElement( cell.text );
-                    } );
-                }
+                if(renderedTextGroup) this.elementMap.set(renderedTextGroup.id, cell.text);
             }
         }
-
-        return group;
     }
 
     parseCellText( cellNode, pos, tableTextStyle ) {
@@ -1139,7 +1135,7 @@ export class SlideHandler {
             const transformValues = transformString.split( ' ' ).map( Number );
             matrix.m = transformValues;
         }
-        const group = this.renderer.setTransform( matrix, id );
+        this.renderer.setTransform( matrix, id );
 
         const { pos, chartData: data } = chartData;
         const foreignObject = document.createElementNS( 'http://www.w3.org/2000/svg', 'foreignObject' );
@@ -1171,8 +1167,6 @@ export class SlideHandler {
                 }
             }
         } );
-
-        return group;
     }
 
     async parseDiagram( frameNode, parentMatrix ) {
@@ -1199,10 +1193,9 @@ export class SlideHandler {
         for ( const [ index, shapeData ] of diagramData.shapes.entries() ) {
             const shapeId = `${ id }.shapes.${ index }`;
             await this.renderShape( shapeData, shapeId );
+            this.elementMap.set(shapeId, shapeData);
         }
 
         this.renderer.currentGroup = originalGroup;
-
-        return diagramGroup;
     }
 }
