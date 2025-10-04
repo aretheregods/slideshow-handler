@@ -1,6 +1,7 @@
 # AGENTS.md
 
 ## description
+
 - This app processes PPTX archives and renders them as SVG in the browser.
 - There are 2 phases: parsing and then rendering.
 - During the parsing phase, the data from a slide in the PPTX archive is parsed into shapes
