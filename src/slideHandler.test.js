@@ -422,6 +422,71 @@ describe('SlideHandler', () => {
             expect(textElement.children[0].textContent).toBe('Hello, ');
             expect(textElement.children[1].textContent).toBe('World!');
         });
+
+        it('should create individual group for each line for selection', () => {
+            const layout = {
+                totalHeight: 50,
+                lines: [
+                    {
+                        x: 10,
+                        startY: 20,
+                        width: 180,
+                        height: 25,
+                        runs: [ { text: 'Line 1', font: { size: 24, family: 'Arial' }, color: '#000' } ],
+                        paragraphProps: { bullet: { type: 'char', char: '•' }, defRPr: {} },
+                        isFirstLine: true,
+                    },
+                    {
+                        x: 10,
+                        startY: 45,
+                        width: 180,
+                        height: 25,
+                        runs: [ { text: 'Line 2', font: { size: 24, family: 'Arial' }, color: '#000' } ],
+                        paragraphProps: { bullet: { type: 'char', char: '•' }, defRPr: {} },
+                        isFirstLine: true,
+                    },
+                ],
+            };
+            const textData = { layout, bodyPr: {}, pos: { x: 0, y: 0, width: 200, height: 100 } };
+
+            const svgNS = 'http://www.w3.org/2000/svg';
+            const mockRenderer = {
+                currentGroup: document.createElementNS(svgNS, 'g'),
+                drawText: vi.fn(function(textContent) {
+                    const text = document.createElementNS(svgNS, 'text');
+                    text.textContent = textContent;
+                    this.currentGroup.appendChild(text);
+                }),
+                drawImage: vi.fn(),
+            };
+            slideHandler.renderer = mockRenderer;
+
+            allUtils.ColorParser.resolveColor.mockReturnValue('#000000');
+
+            slideHandler.renderParagraphs(textData, 'text-1');
+
+            const textGroup = mockRenderer.currentGroup.querySelector('g[id="text-1"]');
+            expect(textGroup).not.toBeNull();
+
+            const lineGroups = textGroup.querySelectorAll('g');
+            expect(lineGroups.length).toBe(2);
+
+            // Check first line
+            const lineGroup1 = textGroup.querySelector('g[id="text-1.line.0"]');
+            expect(lineGroup1).not.toBeNull();
+            const textElements1 = lineGroup1.querySelectorAll('text');
+            expect(textElements1.length).toBe(2); // Bullet and text
+            expect(textElements1[0].textContent).toBe('•');
+            expect(textElements1[1].textContent).toBe('Line 1');
+
+            // Check second line
+            const lineGroup2 = textGroup.querySelector('g[id="text-1.line.1"]');
+            expect(lineGroup2).not.toBeNull();
+            const textElements2 = lineGroup2.querySelectorAll('text');
+            expect(textElements2.length).toBe(2);
+            expect(textElements2[0].textContent).toBe('•');
+            expect(textElements2[1].textContent).toBe('Line 2');
+        });
     });
 
     describe('Edge Cases and Error Handling', () => {

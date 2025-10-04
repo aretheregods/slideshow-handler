@@ -285,17 +285,17 @@ export class SlideHandler {
     async renderShapeTree( shapes = [], activeElementId ) {
         for ( const [ index, shapeData ] of shapes.entries() ) {
             const id = `${ this.slideId }.shapes.${ index }`;
-            const isActive = activeElementId === id;
+            const isActive = activeElementId && activeElementId.startsWith( id );
             const options = { id, className: isActive ? 'active-element' : '' };
             switch ( shapeData.type ) {
                 case 'shape':
-                    await this.renderShape( shapeData, options );
+                    await this.renderShape( shapeData, options, activeElementId );
                     break;
                 case 'group':
                     // Groups are not rendered directly in a flat model
                     break;
                 case 'table':
-                    await this.renderTable( shapeData, options );
+                    await this.renderTable( shapeData, options, activeElementId );
                     break;
                 case 'chart':
                     await this.renderChart( shapeData, options );
@@ -304,7 +304,7 @@ export class SlideHandler {
                     await this.renderPicture( shapeData, options );
                     break;
                 case 'diagram':
-                    await this.renderDiagram( shapeData, options );
+                    await this.renderDiagram( shapeData, options, activeElementId );
                     break;
             }
         };
@@ -447,7 +447,7 @@ export class SlideHandler {
         };
     }
 
-    async renderShape( shapeData, options ) {
+    async renderShape( shapeData, options, activeElementId ) {
         const matrix = new Matrix();
         if ( shapeData.transform ) {
             const transformString = shapeData.transform.replace( 'matrix(', '' ).replace( ')', '' );
@@ -468,7 +468,7 @@ export class SlideHandler {
         }
 
         if ( shapeData.text ) {
-            await this.renderParagraphs( shapeData.text, `${ options.id }.text` );
+            await this.renderParagraphs( shapeData.text, `${ options.id }.text`, activeElementId );
         }
     }
 
@@ -780,7 +780,7 @@ export class SlideHandler {
         return { type: 'table', transform, pos, cells };
     }
 
-    async renderTable( tableData, options ) {
+    async renderTable( tableData, options, activeElementId ) {
         const matrix = new Matrix();
         if ( tableData.transform ) {
             const transformString = tableData.transform.replace( 'matrix(', '' ).replace( ')', '' );
@@ -791,7 +791,13 @@ export class SlideHandler {
 
         for ( const [ index, cell ] of tableData.cells.entries() ) {
             const cellId = `${ options.id }.cells.${ index }`;
-            this.renderer.drawRect( cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent', id: cellId } );
+            const isCellActive = activeElementId && activeElementId.startsWith( cellId );
+            const cellOptions = {
+                fill: cell.fill || 'transparent',
+                id: cellId,
+                className: isCellActive ? 'active-element' : '',
+            };
+            this.renderer.drawRect( cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, cellOptions );
 
             const { x, y, width, height } = cell.pos;
             if ( cell.borders.top ) this.renderer.drawLine( x, y, x + width, y, { stroke: cell.borders.top } );
@@ -817,7 +823,7 @@ export class SlideHandler {
 
                 const originalGroup = this.renderer.currentGroup;
                 this.renderer.currentGroup = group;
-                await this.renderParagraphs( cell.text, `${ cellId }.text` );
+                await this.renderParagraphs( cell.text, `${ cellId }.text`, activeElementId );
                 this.renderer.currentGroup = originalGroup;
             }
         }
@@ -863,7 +869,7 @@ export class SlideHandler {
         return { layout, bodyPr, pos };
     }
 
-    renderParagraphs( textData, id ) {
+    renderParagraphs( textData, id, activeElementId ) {
         const { layout, bodyPr, pos } = textData;
         const paddedPos = {
             x: pos.x + ( bodyPr.lIns || 0 ),
@@ -882,12 +888,23 @@ export class SlideHandler {
         }
 
         for ( const [ lineIndex, line ] of layout.lines.entries() ) {
+            const lineGroupId = `${id}.line.${lineIndex}`;
+            const isLineActive = activeElementId === lineGroupId;
+            const lineGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            lineGroup.setAttribute('id', lineGroupId);
+            if (isLineActive) {
+                lineGroup.setAttribute('class', 'active-element');
+            }
+
             const { paragraphProps: finalProps } = line;
             if ( line.isFirstLine && finalProps.bullet?.type && finalProps.bullet.type !== 'none' ) {
                 const bulletColor = ColorParser.resolveColor( finalProps.bullet.color, this.slideContext ) || ColorParser.resolveColor( finalProps.defRPr.color, this.slideContext ) || '#000';
                 const firstRunSize = line.runs[ 0 ]?.font.size || ( finalProps.defRPr.size || 18 * PT_TO_PX );
                 const bulletBaselineY = startY + line.startY + firstRunSize;
                 const bulletX = line.x - BULLET_OFFSET;
+
+                const originalGroup = this.renderer.currentGroup;
+                this.renderer.currentGroup = lineGroup;
 
                 if ( finalProps.bullet.type === 'char' ) {
                     this.renderer.drawText( finalProps.bullet.char, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${ finalProps.defRPr.size || 18 * PT_TO_PX }px`, fontFamily: finalProps.bullet.font || 'Arial' } );
@@ -896,6 +913,8 @@ export class SlideHandler {
                 } else if ( finalProps.bullet.type === 'image' && finalProps.bullet.relId && this.slideImageMap[ finalProps.bullet.relId ] ) {
                     this.renderer.drawImage( this.slideImageMap[ finalProps.bullet.relId ], bulletX, bulletBaselineY - 8, 16, 16, {} );
                 }
+
+                this.renderer.currentGroup = originalGroup;
             }
 
             const textElement = document.createElementNS( 'http://www.w3.org/2000/svg', 'text' );
@@ -927,7 +946,8 @@ export class SlideHandler {
                 tspan.textContent = run.text;
                 textElement.appendChild( tspan );
             }
-            textGroup.appendChild( textElement );
+            lineGroup.appendChild( textElement );
+            textGroup.appendChild( lineGroup );
         }
         this.renderer.currentGroup.appendChild( textGroup );
     }
@@ -1131,7 +1151,7 @@ export class SlideHandler {
         };
     }
 
-    async renderDiagram( diagramData, options ) {
+    async renderDiagram( diagramData, options, activeElementId ) {
         const diagramGroup = document.createElementNS( 'http://www.w3.org/2000/svg', 'g' );
         diagramGroup.setAttribute( 'id', options.id );
         if ( options.className ) {
@@ -1144,7 +1164,9 @@ export class SlideHandler {
 
         for ( const [ index, shapeData ] of diagramData.shapes.entries() ) {
             const shapeId = `${ options.id }.shapes.${ index }`;
-            await this.renderShape( shapeData, { id: shapeId } );
+            const isActive = activeElementId && activeElementId.startsWith(shapeId);
+            const shapeOptions = { id: shapeId, className: isActive ? 'active-element' : '' };
+            await this.renderShape( shapeData, shapeOptions, activeElementId );
         }
 
         this.renderer.currentGroup = originalGroup;

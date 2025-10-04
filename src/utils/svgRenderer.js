@@ -303,6 +303,9 @@ export class SvgRenderer {
         if ( options.id ) {
             rect.setAttribute( 'id', options.id );
         }
+        if ( options.className ) {
+            rect.setAttribute( 'class', options.className );
+        }
 
         const strokeWidth = ( options.stroke && options.stroke.width > 0 ) ? options.stroke.width : 0;
 
