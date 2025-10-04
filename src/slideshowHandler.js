@@ -251,6 +251,10 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
 					const renderingData = slide.getState( 'renderingData' );
 					const slideHandler = slideHandlers[ activeSlide ].newSlideContainer( slideContainer.id );
 					slideHandler.render( renderingData );
+					slideContainer.addEventListener('click', event => {
+						event.stopPropagation();
+						console.log(event.target.closest('[id]'));
+					})
 				}
 			}
 		} );

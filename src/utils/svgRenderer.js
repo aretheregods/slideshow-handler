@@ -426,7 +426,7 @@ export class SvgRenderer {
      * @param {object} options - The rendering options.
      * @private
      */
-    _drawCompoundLine( x1, y1, x2, y2, options ) {
+    _drawCompoundLine( x1, y1, x2, y2, options, parentGroup ) {
         const stroke = options.stroke;
         const totalWidth = stroke.width;
 
@@ -458,7 +458,7 @@ export class SvgRenderer {
             if ( stroke.cap ) {
                 line.setAttribute( 'stroke-linecap', stroke.cap );
             }
-            this.currentGroup.appendChild( line );
+            parentGroup.appendChild( line );
         };
 
         const sng = () => {
@@ -520,8 +520,28 @@ export class SvgRenderer {
         const filterUrl = this.applyEffects( options );
 
         if ( options.stroke && options.stroke.width > 0 ) {
+            // Create a parent group for the line and its hitbox
+            const g = document.createElementNS( 'http://www.w3.org/2000/svg', 'g' );
+            if ( options.id ) {
+                g.setAttribute( 'id', options.id );
+            }
+
+            // Hitbox for better clickability
+            const hitbox = document.createElementNS( 'http://www.w3.org/2000/svg', 'line' );
+            hitbox.setAttribute( 'x1', x1 );
+            hitbox.setAttribute( 'y1', y1 );
+            hitbox.setAttribute( 'x2', x2 );
+            hitbox.setAttribute( 'y2', y2 );
+            hitbox.setAttribute( 'stroke', 'transparent' );
+            // Make hitbox wider than the actual line
+            hitbox.setAttribute( 'stroke-width', Math.max( 10, options.stroke.width + 5 ) );
+            if ( options.stroke.cap ) {
+                hitbox.setAttribute( 'stroke-linecap', options.stroke.cap || 'butt' );
+            }
+            g.appendChild( hitbox );
+
             if ( options.stroke.cmpd && options.stroke.cmpd !== 'sng' ) {
-                this._drawCompoundLine( x1, y1, x2, y2, options );
+                this._drawCompoundLine( x1, y1, x2, y2, options, g );
             } else {
                 if ( typeof options.stroke.color === 'object' && options.stroke.color?.type === 'gradient' ) {
                     const lineId = options.id || `line-${ this.defs.children.length }`;
@@ -555,13 +575,10 @@ export class SvgRenderer {
                     if ( filterUrl ) {
                         rect.setAttribute( 'filter', filterUrl );
                     }
-                    this.currentGroup.appendChild( rect );
+                    g.appendChild( rect );
 
                 } else {
                     const line = document.createElementNS( 'http://www.w3.org/2000/svg', 'line' );
-                    if ( options.id ) {
-                        line.setAttribute( 'id', options.id );
-                    }
                     line.setAttribute( 'x1', x1 );
                     line.setAttribute( 'y1', y1 );
                     line.setAttribute( 'x2', x2 );
@@ -580,9 +597,11 @@ export class SvgRenderer {
                     if ( filterUrl ) {
                         line.setAttribute( 'filter', filterUrl );
                     }
-                    this.currentGroup.appendChild( line );
+                    g.appendChild( line );
                 }
             }
+
+            this.currentGroup.appendChild( g );
         }
     }
 
@@ -593,6 +612,9 @@ export class SvgRenderer {
      */
     drawPath( pathData, options = {} ) {
         const path = document.createElementNS( 'http://www.w3.org/2000/svg', 'path' );
+        if ( options.id ) {
+            path.setAttribute( 'id', options.id );
+        }
         path.setAttribute( 'd', pathData );
 
         const filterUrl = this.applyEffects( options );
@@ -758,6 +780,9 @@ export class SvgRenderer {
      */
     drawImage( href, x, y, width, height, options = {} ) {
         const image = document.createElementNS( 'http://www.w3.org/2000/svg', 'image' );
+        if ( options.id ) {
+            image.setAttribute( 'id', options.id );
+        }
         image.setAttribute( 'href', href );
         image.setAttribute( 'x', x );
         image.setAttribute( 'y', y );

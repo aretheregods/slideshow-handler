@@ -168,15 +168,19 @@ describe('SvgRenderer', () => {
     });
 
     describe('drawLine', () => {
-        it('should draw a simple line', () => {
-            const options = { stroke: { color: 'black', width: 1 } };
+        it('should draw a simple line and set the id on the group', () => {
+            const options = { id: 'test-line', stroke: { color: 'black', width: 1 } };
             renderer.drawLine(10, 10, 100, 100, options);
+            expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'g');
+            expect(mockGElement.setAttribute).toHaveBeenCalledWith('id', 'test-line');
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'line');
-            expect(mockLineElement.setAttribute).toHaveBeenCalledWith('x1', 10);
-            expect(mockLineElement.setAttribute).toHaveBeenCalledWith('y1', 10);
-            expect(mockLineElement.setAttribute).toHaveBeenCalledWith('x2', 100);
-            expect(mockLineElement.setAttribute).toHaveBeenCalledWith('y2', 100);
-            expect(renderer.currentGroup.appendChild).toHaveBeenCalledWith(mockLineElement);
+
+            // The hitbox and the line are appended to the group
+            expect(mockGElement.appendChild).toHaveBeenCalledWith(mockLineElement);
+            expect(mockGElement.appendChild).toHaveBeenCalledTimes(2);
+
+            // The group is appended to the current group
+            expect(renderer.currentGroup.appendChild).toHaveBeenCalledWith(mockGElement);
         });
 
         it('should draw a line with a gradient fill using a clipped rectangle', () => {
@@ -190,6 +194,10 @@ describe('SvgRenderer', () => {
             const options = { stroke: { color: gradientFill, width: 2 } };
             renderer.drawLine(10, 10, 10, 110, options);
 
+            // Check that a group is created and appended
+            expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'g');
+            expect(renderer.currentGroup.appendChild).toHaveBeenCalledWith(mockGElement);
+
             // Check for clipPath creation
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'clipPath');
 
@@ -197,11 +205,13 @@ describe('SvgRenderer', () => {
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'path');
             expect(mockPathElement.setAttribute).toHaveBeenCalledWith('d', 'M 10 10 L 10 110');
 
-            // Check for rect with gradient and clip-path
+            // Check for rect with gradient
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'rect');
             expect(mockRectElement.setAttribute).toHaveBeenCalledWith('fill', expect.stringMatching(/^url\(#grad-\d+\)$/));
 
-            expect(renderer.currentGroup.appendChild).toHaveBeenCalledWith(mockRectElement);
+            // Check that the rect and hitbox are appended to the group
+            expect(mockGElement.appendChild).toHaveBeenCalledWith(mockRectElement);
+            expect(mockGElement.appendChild).toHaveBeenCalledWith(mockLineElement);
         });
     });
 

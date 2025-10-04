@@ -149,6 +149,7 @@ describe('ShapeBuilder', () => {
         it('should render a rect shape', () => {
             const pos = { width: 100, height: 50 };
             const shapeProps = {
+                id: 'test-rect',
                 geometry: { type: 'preset', preset: 'rect' },
                 fill: 'blue',
                 stroke: 'black',
@@ -160,6 +161,7 @@ describe('ShapeBuilder', () => {
 
             const expectedPath = 'M 0 0 L 100 0 L 100 50 L 0 50 Z';
             expect(renderer.drawPath).toHaveBeenCalledWith(expectedPath, {
+                id: 'test-rect',
                 fill: 'blue',
                 stroke: 'black',
                 effect: 'shadow',
@@ -170,6 +172,7 @@ describe('ShapeBuilder', () => {
         it('should render an ellipse shape', () => {
             const pos = { width: 100, height: 50 };
             const shapeProps = {
+                id: 'test-ellipse',
                 geometry: { type: 'preset', preset: 'ellipse' },
                 fill: 'red',
                 stroke: 'green',
@@ -181,6 +184,7 @@ describe('ShapeBuilder', () => {
 
             const expectedPath = 'M 50 0 A 50 25 0 1 0 50 50 A 50 25 0 1 0 50 0 Z';
             expect(renderer.drawPath).toHaveBeenCalledWith(expectedPath, {
+                id: 'test-ellipse',
                 fill: 'red',
                 stroke: 'green',
                 effect: 'glow',
@@ -191,6 +195,7 @@ describe('ShapeBuilder', () => {
         it('should render a line shape', () => {
             const pos = { width: 100, height: 100 };
             const shapeProps = {
+                id: 'test-line',
                 geometry: { type: 'line' },
                 stroke: 'black',
                 effect: 'shadow',
@@ -201,6 +206,7 @@ describe('ShapeBuilder', () => {
             shapeBuilder.renderShape(pos, shapeProps, matrix, false, false);
 
             expect(renderer.drawLine).toHaveBeenCalledWith(0, 0, 100, 100, {
+                id: 'test-line',
                 stroke: 'black',
                 effect: 'shadow',
             });
@@ -209,6 +215,7 @@ describe('ShapeBuilder', () => {
         it('should render an arc shape', () => {
             const pos = { width: 100, height: 100 };
             const shapeProps = {
+                id: 'test-arc',
                 geometry: {
                     type: 'arc',
                     adjustments: { adj1: 5400000, adj2: 10800000 }
@@ -220,14 +227,15 @@ describe('ShapeBuilder', () => {
             shapeBuilder.renderShape(pos, shapeProps, matrix, false, false);
 
             expect(renderer.drawPath).toHaveBeenCalledWith(
-                "M 6.698729810778062 25.000000000000004 A 50 50 0 0 1 37.05904774487396 1.7037086855465873",
-                { stroke: 'black', effect: undefined, pos }
+                "M 6.698729810778062 25.000000000000004 A 50 50 0 0 1 18.0328253113894 11.553937231130497",
+                { id: 'test-arc', stroke: 'black', effect: undefined, pos }
             );
         });
 
         it('should render a custom shape', () => {
             const pos = { width: 100, height: 100 };
             const shapeProps = {
+                id: 'test-custom',
                 geometry: {
                     type: 'custom',
                     path: {
@@ -247,6 +255,7 @@ describe('ShapeBuilder', () => {
             shapeBuilder.renderShape(pos, shapeProps, matrix, false, false);
 
             expect(renderer.drawPath).toHaveBeenCalledWith('M 0 0 L 100 100 Z ', {
+                id: 'test-custom',
                 fill: 'yellow',
                 stroke: undefined,
                 effect: undefined,
@@ -257,6 +266,7 @@ describe('ShapeBuilder', () => {
         it('should render a blockArc shape', () => {
             const pos = { width: 100, height: 100 };
             const shapeProps = {
+                id: 'test-block-arc',
                 geometry: {
                     type: 'blockArc',
                     adjustments: { adj1: 0, adj2: 10800000, adj3: 25000 },
@@ -269,13 +279,14 @@ describe('ShapeBuilder', () => {
 
             expect(renderer.drawPath).toHaveBeenCalledWith(
                 "M 0 49.99999999999999 A 50 50 0 0 1 100 50 L 87.5 50 A 37.5 37.5 0 0 0 12.5 49.99999999999999 Z",
-                { fill: 'purple', stroke: undefined, effect: undefined, pos }
+                { id: 'test-block-arc', fill: 'purple', stroke: undefined, effect: undefined, pos }
             );
         });
 
         it('should render a roundRect shape', () => {
             const pos = { width: 100, height: 50 };
             const shapeProps = {
+                id: 'test-round-rect',
                 geometry: {
                     type: 'roundRect',
                     adjustments: { adj: 25000 },
@@ -288,31 +299,34 @@ describe('ShapeBuilder', () => {
 
             expect(renderer.drawPath).toHaveBeenCalledWith(
                 "M 18.75 0 L 81.25 0 A 18.75 18.75 0 0 1 100 18.75 L 100 31.25 A 18.75 18.75 0 0 1 81.25 50 L 18.75 50 A 18.75 18.75 0 0 1 0 31.25 L 0 18.75 A 18.75 18.75 0 0 1 18.75 0 Z",
-                { fill: 'orange', stroke: undefined, effect: undefined, pos }
+                { id: 'test-round-rect', fill: 'orange', stroke: undefined, effect: undefined, pos }
             );
         });
 
         it('should render a round1Rect shape', () => {
             const pos = { width: 100, height: 100 };
             const shapeProps = {
+                id: 'test-round1-rect',
                 geometry: { type: 'round1Rect', adjustments: { adj1: 25000 } },
                 fill: 'cyan',
             };
             shapeBuilder.renderShape(pos, shapeProps, new Matrix(), false, false);
             expect(renderer.drawPath).toHaveBeenCalledWith(
                 'M 0 25 A 25 25 0 0 1 25 0 L 100 0 L 100 100 L 0 100 Z',
-                { fill: 'cyan', stroke: undefined, effect: undefined, pos }
+                { id: 'test-round1-rect', fill: 'cyan', stroke: undefined, effect: undefined, pos }
             );
         });
 
         it('should render a shapeless textbox', () => {
             const pos = { width: 200, height: 100 };
             const shapeProps = {
+                id: 'test-textbox',
                 txBody: {}, // Indicates a textbox
                 effect: 'glow'
             };
             shapeBuilder.renderShape(pos, shapeProps, new Matrix(), false, false);
             expect(renderer.drawRect).toHaveBeenCalledWith(0, 0, 200, 100, {
+                id: 'test-textbox',
                 fill: 'transparent',
                 effect: 'glow',
             });

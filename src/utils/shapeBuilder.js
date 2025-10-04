@@ -62,12 +62,14 @@ export class ShapeBuilder {
             if ( path ) {
                 if ( geomType === 'arc') {
                     this.renderer.drawPath( path, {
+                        id: shapeProps.id,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
                         pos,
                     } );
                 } else {
                     this.renderer.drawPath( path, {
+                        id: shapeProps.id,
                         fill: shapeProps.fill,
                         stroke: shapeProps.stroke,
                         effect: shapeProps.effect,
@@ -76,32 +78,15 @@ export class ShapeBuilder {
                 }
             } else if (geomType === 'line') {
                 // Fallback for line shape
-                const m = matrix.m;
-                const sx = Math.sqrt( m[ 0 ] * m[ 0 ] + m[ 1 ] * m[ 1 ] );
-                const sy = Math.sqrt( m[ 2 ] * m[ 2 ] + m[ 3 ] * m[ 3 ] );
-
-                const noScaleMatrix = matrix.clone();
-                if ( sx !== 0 && sy !== 0 ) {
-                    noScaleMatrix.scale( 1 / sx, 1 / sy );
-                }
-
-                const scaledWidth = pos.width * sx;
-                const scaledHeight = pos.height * sy;
-
-                const originalGroup = this.renderer.currentGroup;
-                this.renderer.currentGroup = this.renderer.svg;
-
-                this.renderer.setTransform( noScaleMatrix );
-                this.renderer.drawLine( 0, 0, scaledWidth, scaledHeight, {
+                this.renderer.drawLine(0, 0, pos.width, pos.height, {
+                    id: shapeProps.id,
                     stroke: shapeProps.stroke,
                     effect: shapeProps.effect,
-                } );
-
-                this.renderer.currentGroup = originalGroup;
+                });
             }
         } else if ( txBody ) {
             // This is a shapeless textbox. Create a transparent rectangle to host the text.
-            this.renderer.drawRect( 0, 0, pos.width, pos.height, { fill: 'transparent', effect: shapeProps.effect } );
+            this.renderer.drawRect( 0, 0, pos.width, pos.height, { id: shapeProps.id, fill: 'transparent', effect: shapeProps.effect } );
         }
     }
 
