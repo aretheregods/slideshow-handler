@@ -882,12 +882,19 @@ export class SlideHandler {
         }
 
         for ( const [ lineIndex, line ] of layout.lines.entries() ) {
+            const lineGroupId = `${id}.line.${lineIndex}`;
+            const lineGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            lineGroup.setAttribute('id', lineGroupId);
+
             const { paragraphProps: finalProps } = line;
             if ( line.isFirstLine && finalProps.bullet?.type && finalProps.bullet.type !== 'none' ) {
                 const bulletColor = ColorParser.resolveColor( finalProps.bullet.color, this.slideContext ) || ColorParser.resolveColor( finalProps.defRPr.color, this.slideContext ) || '#000';
                 const firstRunSize = line.runs[ 0 ]?.font.size || ( finalProps.defRPr.size || 18 * PT_TO_PX );
                 const bulletBaselineY = startY + line.startY + firstRunSize;
                 const bulletX = line.x - BULLET_OFFSET;
+
+                const originalGroup = this.renderer.currentGroup;
+                this.renderer.currentGroup = lineGroup;
 
                 if ( finalProps.bullet.type === 'char' ) {
                     this.renderer.drawText( finalProps.bullet.char, bulletX, bulletBaselineY, { fill: bulletColor, fontSize: `${ finalProps.defRPr.size || 18 * PT_TO_PX }px`, fontFamily: finalProps.bullet.font || 'Arial' } );
@@ -896,6 +903,8 @@ export class SlideHandler {
                 } else if ( finalProps.bullet.type === 'image' && finalProps.bullet.relId && this.slideImageMap[ finalProps.bullet.relId ] ) {
                     this.renderer.drawImage( this.slideImageMap[ finalProps.bullet.relId ], bulletX, bulletBaselineY - 8, 16, 16, {} );
                 }
+
+                this.renderer.currentGroup = originalGroup;
             }
 
             const textElement = document.createElementNS( 'http://www.w3.org/2000/svg', 'text' );
@@ -927,7 +936,8 @@ export class SlideHandler {
                 tspan.textContent = run.text;
                 textElement.appendChild( tspan );
             }
-            textGroup.appendChild( textElement );
+            lineGroup.appendChild( textElement );
+            textGroup.appendChild( lineGroup );
         }
         this.renderer.currentGroup.appendChild( textGroup );
     }
