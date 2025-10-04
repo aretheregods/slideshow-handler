@@ -188,7 +188,11 @@ export class SlideHandler {
         };
     }
 
-    async render( slideData ) {
+    async render( slideData, activeElementId ) {
+        while ( this.svg.firstChild ) {
+            this.svg.removeChild( this.svg.firstChild );
+        }
+
         const SVG_NS = "http://www.w3.org/2000/svg";
         const defs = document.createElementNS( SVG_NS, 'defs' );
         this.svg.appendChild( defs );
@@ -231,7 +235,7 @@ export class SlideHandler {
             }
         }
 
-        await this.renderShapeTree( slideData.shapes );
+        await this.renderShapeTree( slideData.shapes, activeElementId );
     }
 
     async parseShapeTree( elements, parentMatrix, slideLevelVisibility, imageMap ) {
@@ -278,27 +282,29 @@ export class SlideHandler {
         return shapes;
     }
 
-    async renderShapeTree( shapes = [] ) {
+    async renderShapeTree( shapes = [], activeElementId ) {
         for ( const [ index, shapeData ] of shapes.entries() ) {
             const id = `${ this.slideId }.shapes.${ index }`;
+            const isActive = activeElementId === id;
+            const options = { id, className: isActive ? 'active-element' : '' };
             switch ( shapeData.type ) {
                 case 'shape':
-                    await this.renderShape( shapeData, id );
+                    await this.renderShape( shapeData, options );
                     break;
                 case 'group':
                     // Groups are not rendered directly in a flat model
                     break;
                 case 'table':
-                    await this.renderTable( shapeData, id );
+                    await this.renderTable( shapeData, options );
                     break;
                 case 'chart':
-                    await this.renderChart( shapeData, id );
+                    await this.renderChart( shapeData, options );
                     break;
                 case 'picture':
-                    await this.renderPicture( shapeData, id );
+                    await this.renderPicture( shapeData, options );
                     break;
                 case 'diagram':
-                    await this.renderDiagram( shapeData, id );
+                    await this.renderDiagram( shapeData, options );
                     break;
             }
         };
@@ -441,14 +447,14 @@ export class SlideHandler {
         };
     }
 
-    async renderShape( shapeData, id ) {
+    async renderShape( shapeData, options ) {
         const matrix = new Matrix();
         if ( shapeData.transform ) {
             const transformString = shapeData.transform.replace( 'matrix(', '' ).replace( ')', '' );
             const transformValues = transformString.split( ' ' ).map( Number );
             matrix.m = transformValues;
         }
-        this.renderer.setTransform( matrix, id );
+        this.renderer.setTransform( matrix, options );
 
         if ( shapeData.shapeProps.path ) {
             this.renderer.drawPath( shapeData.shapeProps.path, {
@@ -462,7 +468,7 @@ export class SlideHandler {
         }
 
         if ( shapeData.text ) {
-            await this.renderParagraphs( shapeData.text, `${ id }.text` );
+            await this.renderParagraphs( shapeData.text, `${ options.id }.text` );
         }
     }
 
@@ -629,14 +635,14 @@ export class SlideHandler {
         };
     }
 
-    async renderPicture( picData, id ) {
+    async renderPicture( picData, options ) {
         const matrix = new Matrix();
         if ( picData.transform ) {
             const transformString = picData.transform.replace( 'matrix(', '' ).replace( ')', '' );
             const transformValues = transformString.split( ' ' ).map( Number );
             matrix.m = transformValues;
         }
-        this.renderer.setTransform( matrix, id );
+        this.renderer.setTransform( matrix, options );
         let pathString = '';
 
         if ( picData.placeholderProps?.fill?.type === 'solid' || picData.placeholderProps?.fill?.type === 'gradient' ) {
@@ -650,7 +656,7 @@ export class SlideHandler {
 
         if ( picData.image ) {
             const imageOptions = {
-                id: `${ id }.image`,
+                id: `${ options.id }.image`,
             };
 
             const filters = [];
@@ -774,17 +780,17 @@ export class SlideHandler {
         return { type: 'table', transform, pos, cells };
     }
 
-    async renderTable( tableData, id ) {
+    async renderTable( tableData, options ) {
         const matrix = new Matrix();
         if ( tableData.transform ) {
             const transformString = tableData.transform.replace( 'matrix(', '' ).replace( ')', '' );
             const transformValues = transformString.split( ' ' ).map( Number );
             matrix.m = transformValues;
         }
-        this.renderer.setTransform( matrix, id );
+        this.renderer.setTransform( matrix, options );
 
         for ( const [ index, cell ] of tableData.cells.entries() ) {
-            const cellId = `${ id }.cells.${ index }`;
+            const cellId = `${ options.id }.cells.${ index }`;
             this.renderer.drawRect( cell.pos.x, cell.pos.y, cell.pos.width, cell.pos.height, { fill: cell.fill || 'transparent', id: cellId } );
 
             const { x, y, width, height } = cell.pos;
@@ -1071,14 +1077,14 @@ export class SlideHandler {
         };
     }
 
-    async renderChart( chartData, id ) {
+    async renderChart( chartData, options ) {
         const matrix = new Matrix();
         if ( chartData.transform ) {
             const transformString = chartData.transform.replace( 'matrix(', '' ).replace( ')', '' );
             const transformValues = transformString.split( ' ' ).map( Number );
             matrix.m = transformValues;
         }
-        this.renderer.setTransform( matrix, id );
+        this.renderer.setTransform( matrix, options );
 
         const { pos, chartData: data } = chartData;
         const foreignObject = document.createElementNS( 'http://www.w3.org/2000/svg', 'foreignObject' );
@@ -1125,17 +1131,20 @@ export class SlideHandler {
         };
     }
 
-    async renderDiagram( diagramData, id ) {
+    async renderDiagram( diagramData, options ) {
         const diagramGroup = document.createElementNS( 'http://www.w3.org/2000/svg', 'g' );
-        diagramGroup.setAttribute( 'id', id );
+        diagramGroup.setAttribute( 'id', options.id );
+        if ( options.className ) {
+            diagramGroup.setAttribute( 'class', options.className );
+        }
         this.renderer.currentGroup.appendChild( diagramGroup );
 
         const originalGroup = this.renderer.currentGroup;
         this.renderer.currentGroup = diagramGroup;
 
         for ( const [ index, shapeData ] of diagramData.shapes.entries() ) {
-            const shapeId = `${ id }.shapes.${ index }`;
-            await this.renderShape( shapeData, shapeId );
+            const shapeId = `${ options.id }.shapes.${ index }`;
+            await this.renderShape( shapeData, { id: shapeId } );
         }
 
         this.renderer.currentGroup = originalGroup;

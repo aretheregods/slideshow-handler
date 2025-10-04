@@ -5,6 +5,7 @@ describe('presentationStore', () => {
   const initialPresentationState = {
     status: 'idle',
     activeSlide: 0,
+    activeElement: null,
     slideSize: null,
     theme: null,
     error: null,

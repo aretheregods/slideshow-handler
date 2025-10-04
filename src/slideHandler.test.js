@@ -274,7 +274,7 @@ describe('SlideHandler', () => {
             };
             await slideHandler.render(slideData);
 
-            expect(slideHandler.renderShapeTree).toHaveBeenCalledWith(slideData.shapes);
+            expect(slideHandler.renderShapeTree).toHaveBeenCalledWith(slideData.shapes, undefined);
         });
     });
 
@@ -336,9 +336,9 @@ describe('SlideHandler', () => {
             slideHandler.renderer = {
                 setTransform: vi.fn(),
             }
-            await slideHandler.renderShape(shapeData, 'shape-1');
+            await slideHandler.renderShape(shapeData, { id: 'shape-1' });
 
-            expect(slideHandler.renderer.setTransform).toHaveBeenCalledWith(expect.any(Object), 'shape-1');
+            expect(slideHandler.renderer.setTransform).toHaveBeenCalledWith(expect.any(Object), { id: 'shape-1' });
             expect(slideHandler.renderParagraphs).toHaveBeenCalledWith(shapeData.text, 'shape-1.text');
         });
     });

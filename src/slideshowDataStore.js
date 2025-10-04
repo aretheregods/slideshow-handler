@@ -25,6 +25,8 @@ function presentationReducer(state = initialPresentationState, action) {
 			return { ...state, status: 'error', error: action.payload };
 		case 'SET_ACTIVE_ELEMENT':
 			return { ...state, activeElement: action.payload };
+		case 'CHANGE_SLIDE':
+			return { ...state, activeSlide: action.payload, activeElement: null };
         default:
             return state;
     }

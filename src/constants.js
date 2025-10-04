@@ -31,5 +31,8 @@ export const slideshowProcessingActions = {
 				active: 'SET_ACTIVE_ELEMENT'
 			}
         }
+    },
+    change: {
+        slide: 'CHANGE_SLIDE'
     }
 }

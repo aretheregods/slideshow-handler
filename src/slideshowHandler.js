@@ -179,7 +179,7 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
             const slideSelector = document.getElementById( slideSelectorContainer )
             slideSelector.appendChild( slideContainer );
             slideContainer.addEventListener( 'click', ( event ) => {
-                presentationStore.dispatch( { type: actions.set.presentation.data, payload: { activeSlide: event.currentTarget.id } } );
+                presentationStore.dispatch( { type: actions.change.slide, payload: event.currentTarget.id } );
             } );
 
             const parsingData = {
@@ -223,38 +223,54 @@ export async function slideshowHandler( { file, slideViewerContainer, slideSelec
 
         presentationStore.dispatch( { type: actions.set.presentation.data, payload: { id: crypto.randomUUID() } } );
 		const unsubscribePresentation = presentationStore.subscribe( {
-			key: [ 'id', 'activeSlide' ], callback: ( { id: newId, activeSlide: newActiveSlide }, { id: oldId, activeSlide: oldActiveSlide } ) => {
+			key: [ 'id', 'activeSlide', 'activeElement' ], callback: ( { id: newId, activeSlide: newActiveSlide, activeElement: newActiveElement }, { id: oldId, activeSlide: oldActiveSlide, activeElement: oldActiveElement } ) => {
+                const slideChanged = newActiveSlide !== oldActiveSlide || newId !== oldId;
+                const activeElementChanged = newActiveElement !== oldActiveElement;
+
                 if (
-                    ( newActiveSlide !== oldActiveSlide || newId !== oldId ) &&
-                    slideStores.has( newActiveSlide
-                ) ) {
+                    ( slideChanged || activeElementChanged ) &&
+                    slideStores.has( newActiveSlide )
+                ) {
 					if ( !slideHandlers[ newActiveSlide ] ) return;
 					const activeSlide = newActiveSlide;
 					const slide = slideStores.get( activeSlide );
-					const slideViewContainer = document.getElementById( slideViewerContainer );
-					const availableWidth = slideViewContainer.clientWidth;
-
-					const slideSize = slide.getState( 'parsingData.slideSize' );
-					const slideContainer = document.createElement( 'div' );
-					slideContainer.className = 'slide-viewer';
-					slideContainer.id = `slide-viewer-${ activeSlide }`;
-					slideContainer.style.aspectRatio = `${ slideSize.width } / ${ slideSize.height }`;
-					slideContainer.style.width = `${ availableWidth - 16 }px`;
-					slideContainer.style.height = `${ availableWidth - 16 / ( slideSize.width / slideSize.height ) }px`;
-					const currentSlide = slideViewContainer.firstElementChild
-					if ( currentSlide ) {
-						currentSlide.replaceWith( slideContainer );
-					} else {
-						slideViewContainer.appendChild( slideContainer );
-					}
-
+                    const slideHandler = slideHandlers[ activeSlide ];
 					const renderingData = slide.getState( 'renderingData' );
-					const slideHandler = slideHandlers[ activeSlide ].newSlideContainer( slideContainer.id );
-					slideHandler.render( renderingData );
-					slideContainer.addEventListener('click', event => {
-                        event.stopPropagation();
-                        presentationStore.dispatch( { type: actions.set.slide.element.active, payload: event.target.closest( '[id]' ).id } );
-					})
+
+                    if ( slideChanged ) {
+                        const slideViewContainer = document.getElementById( slideViewerContainer );
+                        const availableWidth = slideViewContainer.clientWidth;
+
+                        const slideSize = slide.getState( 'parsingData.slideSize' );
+                        const slideContainer = document.createElement( 'div' );
+                        slideContainer.className = 'slide-viewer';
+                        slideContainer.id = `slide-viewer-${ activeSlide }`;
+                        slideContainer.style.aspectRatio = `${ slideSize.width } / ${ slideSize.height }`;
+                        slideContainer.style.width = `${ availableWidth - 16 }px`;
+                        slideContainer.style.height = `${ ( availableWidth - 16 ) / ( slideSize.width / slideSize.height ) }px`;
+                        const currentSlide = slideViewContainer.firstElementChild
+                        if ( currentSlide ) {
+                            currentSlide.replaceWith( slideContainer );
+                        } else {
+                            slideViewContainer.appendChild( slideContainer );
+                        }
+
+                        slideHandler.newSlideContainer( slideContainer.id );
+                        slideContainer.addEventListener('click', event => {
+                            event.stopPropagation();
+                            let targetId = event.target.closest( '[id]' )?.id;
+                            if ( targetId ) {
+                                if ( targetId.endsWith( '.text' ) ) {
+                                    targetId = targetId.substring( 0, targetId.lastIndexOf( '.text' ) );
+                                } else if ( targetId.endsWith( '.image' ) ) {
+                                    targetId = targetId.substring( 0, targetId.lastIndexOf( '.image' ) );
+                                }
+                                presentationStore.dispatch( { type: actions.set.slide.element.active, payload: targetId } );
+                            }
+                        })
+                    }
+
+					slideHandler.render( renderingData, newActiveElement );
 				}
 			}
 		} );

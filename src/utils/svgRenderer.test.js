@@ -277,7 +277,7 @@ describe('SvgRenderer', () => {
     describe('setTransform', () => {
         it('should create a group with the given transform matrix', () => {
             const matrix = { m: [1, 0, 0, 1, 10, 20] };
-            renderer.setTransform(matrix, 'test-group');
+            renderer.setTransform(matrix, { id: 'test-group' });
             expect(document.createElementNS).toHaveBeenCalledWith('http://www.w3.org/2000/svg', 'g');
             expect(mockGElement.setAttribute).toHaveBeenCalledWith('id', 'test-group');
             expect(mockGElement.setAttribute).toHaveBeenCalledWith('transform', 'matrix(1 0 0 1 10 20)');
