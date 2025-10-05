@@ -572,19 +572,7 @@ export const currentSchema = {
                     ]
                 }
             },
-            "required": ["type", "shapeProps"]
-        },
-        "group": {
-            "type": "object",
-            "properties": {
-                "type": { "enum": ["group"] },
-                "name": { "type": "string" },
-                "shapes": {
-                    "type": "array",
-                    "items": { "$ref": "#/definitions/anyShape" }
-                }
-            },
-            "required": ["type", "name", "shapes"]
+            "required": ["type", "shapeProps", "flipH", "flipV", "rot"]
         },
         "table": {
             "type": "object",
@@ -641,7 +629,7 @@ export const currentSchema = {
                     ]
                 }
             },
-            "required": ["type", "transform", "pos"]
+            "required": ["type", "transform", "pos", "rot"]
         }
     },
     "properties": {
