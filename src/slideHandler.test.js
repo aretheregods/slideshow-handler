@@ -339,7 +339,7 @@ describe('SlideHandler', () => {
             await slideHandler.renderShape(shapeData, { id: 'shape-1' });
 
             expect(slideHandler.renderer.setTransform).toHaveBeenCalledWith(expect.any(Object), { id: 'shape-1' });
-            expect(slideHandler.renderParagraphs).toHaveBeenCalledWith(shapeData.text, 'shape-1.text');
+            expect(slideHandler.renderParagraphs).toHaveBeenCalledWith(shapeData.text, 'shape-1.text', undefined);
         });
     });
 

@@ -92,7 +92,8 @@ export const currentSchema = {
             "properties": {
                 "type": { "const": "image" },
                 "relId": { "type": "string" },
-                "rotWithShape": { "type": "boolean" }
+                "rotWithShape": { "type": "boolean" },
+                "href": { "type": "string" }
             },
             "required": ["type", "relId"]
         },
@@ -474,6 +475,11 @@ export const currentSchema = {
                         { "type": "null" },
                         { "$ref": "#/definitions/srcRect" }
                     ]
+                },
+                "opacity": { "type": "number" },
+                "duotone": {
+                    "type": "array",
+                    "items": { "$ref": "#/definitions/intermediateColor" }
                 }
             },
             "required": ["href"]
@@ -495,18 +501,26 @@ export const currentSchema = {
                     "type": "object",
                     "properties": {
                         "type": { "enum": ["color"] },
-                        "value": { "type": "string" }
+                        "value": { "type": "string" },
+                        "source": { "type": "string", "enum": ["slide", "layout", "master"] }
                     },
-                    "required": ["type", "value"]
+                    "required": ["type", "value", "source"]
                 },
-                { "$ref": "#/definitions/gradientFill" },
+                {
+                    "allOf": [ { "$ref": "#/definitions/gradientFill" } ],
+                    "properties": {
+                        "source": { "type": "string", "enum": ["slide", "layout", "master"] }
+                    },
+                    "required": ["source"]
+                },
                 {
                     "type": "object",
                     "properties": {
                         "type": { "enum": ["image"] },
-                        "relId": { "type": "string" }
+                        "relId": { "type": "string" },
+                        "source": { "type": "string", "enum": ["slide", "layout", "master"] }
                     },
-                    "required": ["type", "relId"]
+                    "required": ["type", "relId", "source"]
                 }
             ]
         },
@@ -517,7 +531,6 @@ export const currentSchema = {
                 { "$ref": "#/definitions/table" },
                 { "$ref": "#/definitions/chart" },
                 { "$ref": "#/definitions/picture" },
-                { "$ref": "#/definitions/connector" },
                 { "$ref": "#/definitions/diagram" }
             ]
         },
@@ -555,25 +568,7 @@ export const currentSchema = {
                     ]
                 }
             },
-            "required": ["type", "transform", "pos", "shapeProps", "text", "flipH", "flipV"]
-        },
-        "connector": {
-            "type": "object",
-            "properties": {
-                "type": { "enum": ["connector"] },
-                "transform": { "type": "string" },
-                "pos": { "$ref": "#/definitions/pos" },
-                "shapeProps": { "$ref": "#/definitions/shapeProps" },
-                "text": {
-                    "oneOf": [
-                        { "type": "null" },
-                        { "$ref": "#/definitions/text" }
-                    ]
-                },
-                "flipH": { "type": "boolean" },
-                "flipV": { "type": "boolean" }
-            },
-            "required": ["type", "transform", "pos", "shapeProps", "text", "flipH", "flipV"]
+            "required": ["type", "transform", "pos", "shapeProps", "text", "flipH", "flipV", "rot"]
         },
         "group": {
             "type": "object",
@@ -596,8 +591,7 @@ export const currentSchema = {
                 "cells": {
                     "type": "array",
                     "items": { "$ref": "#/definitions/tableCell" }
-                },
-                "style": { "$ref": "#/definitions/tableStyle" }
+                }
             },
             "required": ["type", "transform", "pos", "cells"]
         },
@@ -605,10 +599,11 @@ export const currentSchema = {
             "type": "object",
             "properties": {
                 "type": { "enum": ["chart"] },
+                "transform": { "type": "string" },
                 "pos": { "$ref": "#/definitions/pos" },
                 "chartData": { "$ref": "#/definitions/chartData" }
             },
-            "required": ["type", "pos", "chartData"]
+            "required": ["type", "pos", "chartData", "transform"]
         },
         "picture": {
             "type": "object",
@@ -619,7 +614,7 @@ export const currentSchema = {
                 "placeholderProps": {
                     "oneOf": [
                         { "type": "null" },
-                        { "$ref": "#/definitions/placeholder" }
+                        { "$ref": "#/definitions/shapeProps" }
                     ]
                 },
                 "pathString": {
