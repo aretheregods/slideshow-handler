@@ -548,7 +548,7 @@ export const currentSchema = {
             "type": "object",
             "properties": {
                 "type": { "enum": ["shape"] },
-                "transform": { "type": "string" },
+                "transform": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
                 "pos": {
                     "oneOf": [
                         { "type": "null" },
@@ -572,7 +572,7 @@ export const currentSchema = {
                     ]
                 }
             },
-            "required": ["type", "transform", "shapeProps", "flipH", "flipV", "rot"]
+            "required": ["type", "shapeProps"]
         },
         "group": {
             "type": "object",
