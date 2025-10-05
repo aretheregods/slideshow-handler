@@ -530,8 +530,7 @@ export const currentSchema = {
                 { "$ref": "#/definitions/table" },
                 { "$ref": "#/definitions/chart" },
                 { "$ref": "#/definitions/picture" },
-                { "$ref": "#/definitions/diagram" },
-                { "$ref": "#/definitions/group" }
+                { "$ref": "#/definitions/diagram" }
             ]
         },
         "diagram": {
@@ -540,7 +539,7 @@ export const currentSchema = {
                 "type": { "enum": ["diagram"] },
                 "shapes": {
                     "type": "array",
-                    "items": { "$ref": "#/definitions/anyShape" }
+                    "items": { "$ref": "#/definitions/shape" }
                 }
             },
             "required": ["type", "shapes"]
