@@ -530,7 +530,8 @@ export const currentSchema = {
                 { "$ref": "#/definitions/table" },
                 { "$ref": "#/definitions/chart" },
                 { "$ref": "#/definitions/picture" },
-                { "$ref": "#/definitions/diagram" }
+                { "$ref": "#/definitions/diagram" },
+                { "$ref": "#/definitions/group" }
             ]
         },
         "diagram": {
