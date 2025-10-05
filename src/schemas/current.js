@@ -527,7 +527,6 @@ export const currentSchema = {
         "anyShape": {
             "oneOf": [
                 { "$ref": "#/definitions/shape" },
-                { "$ref": "#/definitions/group" },
                 { "$ref": "#/definitions/table" },
                 { "$ref": "#/definitions/chart" },
                 { "$ref": "#/definitions/picture" },
@@ -550,7 +549,12 @@ export const currentSchema = {
             "properties": {
                 "type": { "enum": ["shape"] },
                 "transform": { "type": "string" },
-                "pos": { "$ref": "#/definitions/pos" },
+                "pos": {
+                    "oneOf": [
+                        { "type": "null" },
+                        { "$ref": "#/definitions/pos" }
+                    ]
+                },
                 "shapeProps": { "$ref": "#/definitions/shapeProps" },
                 "text": {
                     "oneOf": [
@@ -568,7 +572,7 @@ export const currentSchema = {
                     ]
                 }
             },
-            "required": ["type", "transform", "pos", "shapeProps", "text", "flipH", "flipV", "rot"]
+            "required": ["type", "transform", "shapeProps", "flipH", "flipV", "rot"]
         },
         "group": {
             "type": "object",
@@ -637,7 +641,7 @@ export const currentSchema = {
                     ]
                 }
             },
-            "required": ["type", "transform", "pos", "image"]
+            "required": ["type", "transform", "pos"]
         }
     },
     "properties": {
