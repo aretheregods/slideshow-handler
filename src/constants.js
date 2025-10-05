@@ -36,3 +36,8 @@ export const slideshowProcessingActions = {
         slide: 'CHANGE_SLIDE'
     }
 }
+
+export const messageType = {
+    success: 'SUCCESS',
+    error: 'ERROR',
+}

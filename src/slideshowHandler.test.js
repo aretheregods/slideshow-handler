@@ -1,48 +1,26 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { slideshowHandler } from './slideshowHandler.js';
-import * as utils from 'utils';
-import JSZip from 'jszip';
-import { SlideHandler } from './slideHandler.js';
+import { SlideRenderer } from './slideRenderer.js';
 import { presentationStore, slideStores, createSlideStore } from './slideshowDataStore.js';
-import { slideshowProcessingActions as actions } from './constants.js';
+import { slideshowProcessingActions as actions, messageType } from './constants.js';
 
-// Mock dependencies
-const mockFiles = new Map();
-vi.mock('jszip', () => ({
-    default: {
-        loadAsync: vi.fn().mockImplementation(() => Promise.resolve({
-            files: mockFiles,
-        })),
-    },
-}));
-
-vi.mock('utils', async (importOriginal) => {
-    const actual = await importOriginal();
-    return {
-        ...actual,
-        parseXmlString: vi.fn(),
-        resolvePath: vi.fn((...args) => args.filter(Boolean).join('/')),
-        getNormalizedXmlString: vi.fn().mockResolvedValue('<xml/>'),
-        getRelationships: vi.fn().mockResolvedValue({}),
-        getSlideOrder: vi.fn().mockReturnValue([]),
-        getSlideSize: vi.fn().mockReturnValue({ width: 1280, height: 720 }),
-        parseTheme: vi.fn().mockReturnValue({ fontScheme: { major: { latin: { typeface: 'Arial' } }, minor: { latin: { typeface: 'Calibri' } } } }),
-        parseTableStyles: vi.fn().mockReturnValue({ styles: {}, defaultStyleId: null }),
-        parseMasterOrLayout: vi.fn().mockReturnValue({ placeholders: {}, staticShapes: [], defaultTextStyles: {}, colorMap: {} }),
-        parseBackground: vi.fn().mockReturnValue(null),
-        populateImageMap: vi.fn().mockResolvedValue(undefined),
-    };
-});
+// Mock Worker
+const mockWorker = {
+    postMessage: vi.fn(),
+    onmessage: null,
+    onerror: null,
+    terminate: vi.fn(),
+};
+vi.stubGlobal('Worker', vi.fn(() => mockWorker));
 
 
-// Mock SlideHandler
-const mockSlideHandlerInstance = {
-    parse: vi.fn().mockResolvedValue({ shapes: [], background: null }),
+// Mock SlideRenderer
+const mockSlideRendererInstance = {
     render: vi.fn().mockResolvedValue(undefined),
     newSlideContainer: vi.fn().mockReturnThis(),
 };
-vi.mock('./slideHandler.js', () => ({
-    SlideHandler: vi.fn(() => mockSlideHandlerInstance),
+vi.mock('./slideRenderer.js', () => ({
+    SlideRenderer: vi.fn(() => mockSlideRendererInstance),
 }));
 
 // Mock Data Stores
@@ -50,8 +28,11 @@ vi.mock('./slideshowDataStore.js', () => {
     const mockSlideStore = {
         dispatch: vi.fn(),
         getState: vi.fn((key) => {
-            if (key === 'parsingData.slideSize') {
-                return { width: 1280, height: 720 };
+            if (key === 'renderingData') {
+                return { shapes: [], background: null, imageMaps: {} };
+            }
+            if (key === 'slideSize') {
+                return { width: 960, height: 540 };
             }
             return {};
         }),
@@ -65,7 +46,15 @@ vi.mock('./slideshowDataStore.js', () => {
             if (action.payload) {
                 presentationStoreState = { ...presentationStoreState, ...action.payload };
             }
-            presentationStoreSubscribers.forEach(sub => sub.callback(presentationStoreState, oldState));
+            // Manually trigger subscription for the active slide change
+            if (action.type === actions.set.presentation.data && action.payload.activeSlide) {
+                presentationStoreSubscribers.forEach(sub => sub.callback({ ...presentationStoreState }, oldState));
+            }
+             if (action.type === actions.change.slide) {
+                const oldActiveSlide = oldState.activeSlide;
+                presentationStoreState.activeSlide = action.payload;
+                 presentationStoreSubscribers.forEach(sub => sub.callback({ ...presentationStoreState }, { ...oldState, activeSlide: oldActiveSlide }));
+            }
         }),
         subscribe: vi.fn((subscriber) => {
             presentationStoreSubscribers.push(subscriber);
@@ -75,7 +64,7 @@ vi.mock('./slideshowDataStore.js', () => {
         }),
         getState: vi.fn((key) => presentationStoreState[key]),
         clear: () => {
-            presentationStoreState = {};
+            presentationStoreState = { activeSlide: '' };
             presentationStoreSubscribers = [];
         }
     };
@@ -107,7 +96,7 @@ describe('slideshowHandler', () => {
     beforeEach(() => {
         // Set up mock DOM
         document.body.innerHTML = `
-            <div id="slide-viewer-container"></div>
+            <div id="slide-viewer-container" style="width: 800px;"></div>
             <div id="slide-selector-container"></div>
         `;
 
@@ -121,7 +110,6 @@ describe('slideshowHandler', () => {
         presentationStore.clear();
         slideStores.clear();
         vi.clearAllMocks();
-        mockFiles.clear();
     });
 
     afterEach(() => {
@@ -134,58 +122,49 @@ describe('slideshowHandler', () => {
     });
 
     describe('Happy Path', () => {
-        it('should process a presentation with multiple slides and render the active slide', async () => {
-            // Arrange: Set up mock return values for a 2-slide presentation
-            const mockEntries = new Map([
-                ['ppt/_rels/presentation.xml.rels', {}],
-                ['ppt/presentation.xml', {}],
-                ['ppt/slides/slide1.xml', {}],
-                ['ppt/slides/slide2.xml', {}],
-                ['ppt/slides/_rels/slide1.xml.rels', {}],
-                ['ppt/slides/_rels/slide2.xml.rels', {}],
-                ['ppt/theme/theme1.xml', {}],
-            ]);
-            for (const [filename, data] of mockEntries.entries()) {
-                mockFiles.set(filename, data);
-            }
+        it('should process a presentation and render slides via worker', async () => {
+            // Arrange
+            const mockParsedData = {
+                theme: { name: 'mockTheme' },
+                tableStyles: {},
+                defaultTableStyleId: null,
+                slideSize: { width: 960, height: 540 },
+                slides: [
+                    { id: 'rId1', data: { shapes: [], background: null, imageMaps: {} } },
+                    { id: 'rId2', data: { shapes: [], background: null, imageMaps: {} } },
+                ],
+            };
 
-            vi.mocked(utils.getRelationships).mockImplementation(async (entries, path) => {
-                if (path === 'ppt/_rels/presentation.xml.rels') {
-                    return {
-                        'rId1': { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide', target: 'slides/slide1.xml' },
-                        'rId2': { id: 'rId2', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide', target: 'slides/slide2.xml' },
-                        'rId3': { id: 'rId3', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme', target: 'theme/theme1.xml' },
-                    };
-                }
-                return {};
-            });
+            // Act
+            const handlerPromise = slideshowHandler(options);
 
-            vi.mocked(utils.getSlideOrder).mockReturnValue(['rId1', 'rId2']);
-            vi.mocked(utils.getSlideSize).mockReturnValue({ width: 960, height: 540 });
-            vi.mocked(utils.parseTheme).mockReturnValue({ name: 'mockTheme' });
-            vi.mocked(utils.getNormalizedXmlString).mockResolvedValue('<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"></p:sld>');
-            vi.mocked(utils.parseXmlString).mockImplementation((xml) => {
-                const parser = new DOMParser();
-                return parser.parseFromString(xml, 'text/xml');
-            });
+            // Simulate worker sending data
+            mockWorker.onmessage({ data: { type: messageType.success, data: mockParsedData } });
 
-            // Act: Call the handler
-            const result = await slideshowHandler(options);
+            const result = await handlerPromise;
 
             // Assert: Verify the overall process
             expect(result.slideshowLength).toBe(2);
             expect(result.activeSlide).toBe('rId1');
-            expect(JSZip.loadAsync).toHaveBeenCalled();
-            expect(utils.getSlideOrder).toHaveBeenCalled();
-            expect(presentationStore.dispatch).toHaveBeenCalledWith({ type: 'START_PARSING' });
-            expect(presentationStore.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_PRESENTATION_DATA', payload: { theme: { name: 'mockTheme' } } }));
+            expect(Worker).toHaveBeenCalledWith('./src/parser.worker.js', { type: 'module' });
+            expect(mockWorker.postMessage).toHaveBeenCalledWith({ file: options.file });
+            expect(presentationStore.dispatch).toHaveBeenCalledWith({ type: actions.start.parsing });
+            expect(presentationStore.dispatch).toHaveBeenCalledWith(expect.objectContaining({
+                type: actions.set.presentation.data,
+                payload: {
+                    theme: mockParsedData.theme,
+                    tableStyles: mockParsedData.tableStyles,
+                    defaultTableStyleId: mockParsedData.defaultTableStyleId,
+                    slideSize: mockParsedData.slideSize,
+                }
+            }));
 
             // Assert: Verify slide processing loop
-            expect(SlideHandler).toHaveBeenCalledTimes(2);
             expect(createSlideStore).toHaveBeenCalledTimes(2);
             expect(slideStores.set).toHaveBeenCalledWith('rId1', expect.any(Object));
             expect(slideStores.set).toHaveBeenCalledWith('rId2', expect.any(Object));
-            expect(mockSlideHandlerInstance.parse).toHaveBeenCalledTimes(2);
+            expect(SlideRenderer).toHaveBeenCalledTimes(2);
+            expect(mockSlideRendererInstance.render).toHaveBeenCalledTimes(2);
 
             // Assert: Verify DOM manipulation for slide selector
             const slideSelectorContainer = document.getElementById(options.slideSelectorContainer);
@@ -194,74 +173,67 @@ describe('slideshowHandler', () => {
             expect(slideSelectorContainer.children[1].id).toBe('rId2');
 
             // Assert: Verify active slide rendering via store subscription
+            presentationStore.dispatch({ type: actions.set.presentation.data, payload: { activeSlide: 'rId1' } });
             const slideViewerContainer = document.getElementById(options.slideViewerContainer);
             expect(slideViewerContainer.children.length).toBeGreaterThan(0);
             expect(slideViewerContainer.firstElementChild.id).toBe('slide-viewer-rId1');
-            expect(mockSlideHandlerInstance.newSlideContainer).toHaveBeenCalledWith('slide-viewer-rId1');
+            expect(mockSlideRendererInstance.newSlideContainer).toHaveBeenCalledWith('slide-viewer-rId1');
+            expect(mockSlideRendererInstance.render).toHaveBeenCalledTimes(3);
 
             // Act: Simulate changing the active slide
-            presentationStore.dispatch({ payload: { activeSlide: 'rId2' } });
+            presentationStore.dispatch({ type: actions.change.slide, payload: 'rId2' });
 
             // Assert: Verify the new slide is rendered
             expect(slideViewerContainer.children.length).toBe(1);
             expect(slideViewerContainer.firstElementChild.id).toBe('slide-viewer-rId2');
-            expect(mockSlideHandlerInstance.newSlideContainer).toHaveBeenCalledWith('slide-viewer-rId2');
-            expect(mockSlideHandlerInstance.render).toHaveBeenCalledTimes(4); // 2 for thumbnails, 2 for main view
+            expect(mockSlideRendererInstance.newSlideContainer).toHaveBeenCalledWith('slide-viewer-rId2');
+            expect(mockSlideRendererInstance.render).toHaveBeenCalledTimes(4);
+
+            // Assert: Worker is terminated
+            expect(mockWorker.terminate).toHaveBeenCalled();
         });
     });
 
     describe('Edge Cases and Error Handling', () => {
         it('should return a message when no slides are found', async () => {
             // Arrange
-            vi.mocked(utils.getSlideOrder).mockReturnValue([]);
+            const mockParsedData = { slides: [] };
 
             // Act
-            const result = await slideshowHandler(options);
+            const handlerPromise = slideshowHandler(options);
+            mockWorker.onmessage({ data: { type: messageType.success, data: mockParsedData } });
+            const result = await handlerPromise;
 
             // Assert
             expect(result.slideshowLength).toBe("No slides found in the presentation.");
-            expect(SlideHandler).not.toHaveBeenCalled();
+            expect(SlideRenderer).not.toHaveBeenCalled();
+            expect(mockWorker.terminate).toHaveBeenCalled();
         });
 
-        it('should handle presentations with no theme', async () => {
+        it('should reject with a formatted error if worker sends an error message', async () => {
             // Arrange
-            vi.mocked(utils.getRelationships).mockResolvedValue({
-                'rId1': { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide', target: 'slides/slide1.xml' },
-            });
-            vi.mocked(utils.getSlideOrder).mockReturnValue(['rId1']);
-            vi.mocked(utils.parseTheme).mockReturnValue(null);
-
-            // Act & Assert
-            await expect(slideshowHandler(options)).resolves.not.toThrow();
-            expect(presentationStore.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
-                payload: expect.objectContaining({ theme: expect.any(Object) })
-            }));
-            expect(SlideHandler).toHaveBeenCalledOnce();
-        });
-
-        it('should throw a formatted error if parsing fails', async () => {
-            // Arrange
-            const parsingError = new Error('Failed to get relationships');
-            vi.mocked(utils.getRelationships).mockRejectedValue(parsingError);
-
-            // Act & Assert
-            await expect(slideshowHandler(options)).rejects.toThrow('Error: Could not parse presentation. Failed to get relationships');
-        });
-
-        it('should not process a slide if its relationship is missing', async () => {
-            // Arrange
-            vi.mocked(utils.getSlideOrder).mockReturnValue(['rId1', 'rId2']); // rId2 is missing from rels
-            vi.mocked(utils.getRelationships).mockResolvedValue({
-                'rId1': { id: 'rId1', type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide', target: 'slides/slide1.xml' },
-            });
+            const errorMessage = 'Worker failed to parse';
 
             // Act
-            await slideshowHandler(options);
+            const handlerPromise = slideshowHandler(options);
+            mockWorker.onmessage({ data: { type: messageType.error, error: errorMessage } });
 
             // Assert
-            expect(SlideHandler).toHaveBeenCalledOnce();
-            expect(slideStores.set).toHaveBeenCalledOnce();
-            expect(slideStores.set).toHaveBeenCalledWith('rId1', expect.any(Object));
+            await expect(handlerPromise).rejects.toThrow(`Error: Could not parse presentation. ${errorMessage}`);
+            expect(mockWorker.terminate).toHaveBeenCalled();
+        });
+
+        it('should reject with a formatted error if worker fails to load', async () => {
+            // Arrange
+            const workerError = new Error('Failed to load worker');
+
+            // Act
+            const handlerPromise = slideshowHandler(options);
+            mockWorker.onerror(workerError);
+
+            // Assert
+            await expect(handlerPromise).rejects.toThrow('A critical error occurred in the parsing worker.');
+            expect(mockWorker.terminate).toHaveBeenCalled();
         });
     });
 });
