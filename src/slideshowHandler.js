@@ -7,7 +7,7 @@ export function slideshowHandler( { file, slideViewerContainer, slideSelectorCon
     slideStores.clear();
     presentationStore.dispatch( { type: actions.start.parsing } );
 
-    const worker = new Worker( './src/parser.worker.js', { type: 'module' } );
+    const worker = new Worker( '/src/parser.worker.js', { type: 'module' } );
 
     worker.postMessage( { file } );
 

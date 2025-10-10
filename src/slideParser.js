@@ -19,7 +19,7 @@ import {
     parseExtensions,
     parseBackground,
     DiagramBuilder,
-} from 'utils';
+} from './utils/index.js';
 import {
     EMU_PER_PIXEL,
     PT_TO_PX,
@@ -27,7 +27,7 @@ import {
     INDENTATION_AMOUNT,
     BULLET_OFFSET,
     PML_NS, DML_NS, CHART_NS, TABLE_NS, DIAGRAM_NS,
-} from 'constants';
+} from './constants.js';
 import { ShapeBuilder } from './shapeBuilder.js';
 
 export class SlideParser {

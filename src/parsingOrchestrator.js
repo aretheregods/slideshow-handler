@@ -1,4 +1,4 @@
-import JSZip from 'jszip';
+import JSZip from '../libraries/jszip/index.js';
 import {
     getNormalizedXmlString,
     getRelationships,
@@ -9,7 +9,7 @@ import {
     parseMasterOrLayout,
     populateImageMap,
     resolvePath,
-} from 'utils';
+} from './utils/index.js';
 import { SlideParser } from './slideParser.js';
 
 export async function parsingOrchestrator( { file } ) {

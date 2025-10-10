@@ -46,14 +46,17 @@ vi.mock('./slideshowDataStore.js', () => {
             if (action.payload) {
                 presentationStoreState = { ...presentationStoreState, ...action.payload };
             }
-            // Manually trigger subscription for the active slide change
-            if (action.type === actions.set.presentation.data && action.payload.activeSlide) {
+
+            const changedKeys = Object.keys(action.payload || {});
+            const isSubscribedToKey = presentationStoreSubscribers.some(sub =>
+                sub.key.some(k => changedKeys.includes(k) || (action.type === actions.change.slide && k === 'activeSlide'))
+            );
+
+            if (isSubscribedToKey || (action.type === actions.set.presentation.data && action.payload.activeSlide)) {
+                 if (action.type === actions.change.slide) {
+                    presentationStoreState.activeSlide = action.payload;
+                }
                 presentationStoreSubscribers.forEach(sub => sub.callback({ ...presentationStoreState }, oldState));
-            }
-             if (action.type === actions.change.slide) {
-                const oldActiveSlide = oldState.activeSlide;
-                presentationStoreState.activeSlide = action.payload;
-                 presentationStoreSubscribers.forEach(sub => sub.callback({ ...presentationStoreState }, { ...oldState, activeSlide: oldActiveSlide }));
             }
         }),
         subscribe: vi.fn((subscriber) => {
@@ -146,7 +149,7 @@ describe('slideshowHandler', () => {
             // Assert: Verify the overall process
             expect(result.slideshowLength).toBe(2);
             expect(result.activeSlide).toBe('rId1');
-            expect(Worker).toHaveBeenCalledWith('./src/parser.worker.js', { type: 'module' });
+            expect(Worker).toHaveBeenCalledWith('/src/parser.worker.js', { type: 'module' });
             expect(mockWorker.postMessage).toHaveBeenCalledWith({ file: options.file });
             expect(presentationStore.dispatch).toHaveBeenCalledWith({ type: actions.start.parsing });
             expect(presentationStore.dispatch).toHaveBeenCalledWith(expect.objectContaining({
@@ -164,7 +167,8 @@ describe('slideshowHandler', () => {
             expect(slideStores.set).toHaveBeenCalledWith('rId1', expect.any(Object));
             expect(slideStores.set).toHaveBeenCalledWith('rId2', expect.any(Object));
             expect(SlideRenderer).toHaveBeenCalledTimes(2);
-            expect(mockSlideRendererInstance.render).toHaveBeenCalledTimes(2);
+            // Thumbnails (2) + initial active slide (1)
+            expect(mockSlideRendererInstance.render).toHaveBeenCalledTimes(3);
 
             // Assert: Verify DOM manipulation for slide selector
             const slideSelectorContainer = document.getElementById(options.slideSelectorContainer);
@@ -173,12 +177,10 @@ describe('slideshowHandler', () => {
             expect(slideSelectorContainer.children[1].id).toBe('rId2');
 
             // Assert: Verify active slide rendering via store subscription
-            presentationStore.dispatch({ type: actions.set.presentation.data, payload: { activeSlide: 'rId1' } });
             const slideViewerContainer = document.getElementById(options.slideViewerContainer);
             expect(slideViewerContainer.children.length).toBeGreaterThan(0);
             expect(slideViewerContainer.firstElementChild.id).toBe('slide-viewer-rId1');
             expect(mockSlideRendererInstance.newSlideContainer).toHaveBeenCalledWith('slide-viewer-rId1');
-            expect(mockSlideRendererInstance.render).toHaveBeenCalledTimes(3);
 
             // Act: Simulate changing the active slide
             presentationStore.dispatch({ type: actions.change.slide, payload: 'rId2' });
